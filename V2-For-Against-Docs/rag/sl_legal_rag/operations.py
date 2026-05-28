@@ -75,12 +75,212 @@ class ProvenanceEvidence:
     expected_status: str | None = None
 
 
+@dataclass(frozen=True)
+class ReleaseAttestationSubject:
+    subject_id: str
+    title: str
+    path: str
+    subject_type: str
+    required: bool = True
+    expected_status: str | None = None
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("load scenario file must contain a non-empty scenarios array")
     return [scenario_from_mapping(item) for item in scenarios]
+
+
+def canonical_json_bytes(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def load_release_attestation_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase13_release_attestation.v1":
+        raise ValueError("release attestation manifest schema_version must be phase13_release_attestation.v1")
+    subjects = payload.get("subjects")
+    if not isinstance(subjects, list) or not subjects:
+        raise ValueError("release attestation manifest must contain a non-empty subjects array")
+    return payload
+
+
+def attestation_subject_from_mapping(item: dict[str, Any]) -> ReleaseAttestationSubject:
+    subject_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    path = str(item.get("path") or "").strip()
+    subject_type = str(item.get("type") or "").strip()
+    expected_status = str(item["expected_status"]).strip() if item.get("expected_status") else None
+    if not subject_id:
+        raise ValueError("attestation subject id is required")
+    if not title:
+        raise ValueError(f"{subject_id} title is required")
+    if not path:
+        raise ValueError(f"{subject_id} path is required")
+    if subject_type not in {"document", "json_status"}:
+        raise ValueError(f"{subject_id} has unsupported attestation subject type: {subject_type}")
+    return ReleaseAttestationSubject(
+        subject_id=subject_id,
+        title=title,
+        path=path,
+        subject_type=subject_type,
+        required=bool(item.get("required", True)),
+        expected_status=expected_status,
+    )
+
+
+def attestation_subjects(payload: dict[str, Any]) -> list[ReleaseAttestationSubject]:
+    return [attestation_subject_from_mapping(item) for item in payload["subjects"]]
+
+
+def evaluate_attestation_subject(item: ReleaseAttestationSubject, project_root: Path) -> dict[str, Any]:
+    path = Path(item.path)
+    if not path.is_absolute():
+        path = project_root / path
+    base = {
+        "id": item.subject_id,
+        "title": item.title,
+        "path": item.path,
+        "type": item.subject_type,
+        "required": item.required,
+        "expected_status": item.expected_status,
+        "exists": path.is_file(),
+    }
+    if not path.is_file():
+        return {**base, "status": "missing", "summary": "attestation subject is not present"}
+    result = {
+        **base,
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+    }
+    if item.subject_type == "document":
+        return {**result, "status": "verified", "summary": "document subject present"}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    actual_status = str(payload.get("status") or payload.get("decision") or "").strip()
+    matches = actual_status == item.expected_status if item.expected_status else bool(actual_status)
+    return {
+        **result,
+        "status": "verified" if matches else "failed",
+        "actual_status": actual_status,
+        "summary": f"json status={actual_status}",
+    }
+
+
+def build_release_attestation(
+    attestation_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    release_metadata: dict[str, Any],
+    git_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    target_tag = str(attestation_payload.get("target_release_tag") or "").strip()
+    repo = str(attestation_payload.get("repo") or "").strip()
+    predicate_type = str(attestation_payload.get("predicate_type") or "").strip()
+    builder_id = str(attestation_payload.get("builder_id") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    if not predicate_type:
+        raise ValueError("predicate_type is required")
+    if not builder_id:
+        raise ValueError("builder_id is required")
+    subjects = [evaluate_attestation_subject(item, project_root) for item in attestation_subjects(attestation_payload)]
+    release_status = (
+        "verified"
+        if str(release_metadata.get("tagName") or "") == target_tag
+        and not bool(release_metadata.get("isDraft"))
+        and not bool(release_metadata.get("isPrerelease"))
+        and bool(release_metadata.get("url"))
+        else "failed"
+    )
+    tag_commit = str(git_metadata.get("tag_commit") or "").strip()
+    remote_tag_commit = str(git_metadata.get("remote_tag_commit") or "").strip()
+    commit_status = "verified" if tag_commit and remote_tag_commit and tag_commit == remote_tag_commit else "failed"
+    failures = [item for item in subjects if item["required"] and item["status"] != "verified"]
+    if release_status != "verified":
+        failures.append({"id": "github_release", "status": release_status, "summary": "release metadata failed"})
+    if commit_status != "verified":
+        failures.append({"id": "release_tag_commit", "status": commit_status, "summary": "local and remote tag commits differ"})
+    statement = {
+        "_type": "https://in-toto.io/Statement/v1",
+        "predicateType": predicate_type,
+        "subject": [
+            {
+                "name": item["path"],
+                "digest": {"sha256": item["sha256"]},
+                "size_bytes": item["size_bytes"],
+            }
+            for item in subjects
+            if item.get("sha256")
+        ],
+        "predicate": {
+            "builder": {"id": builder_id},
+            "buildType": "https://sl-legal.local/release-attestation/v1",
+            "target": {
+                "repo": repo,
+                "release_tag": target_tag,
+                "release_url": release_metadata.get("url"),
+                "tag_commit": tag_commit,
+            },
+            "materials": [
+                {
+                    "uri": f"git+https://github.com/{repo}@{target_tag}",
+                    "digest": {"sha1": tag_commit},
+                }
+            ],
+            "verification": {
+                "release_status": release_status,
+                "tag_commit_status": commit_status,
+                "subject_count": len(subjects),
+                "verified_subject_count": sum(1 for item in subjects if item["status"] == "verified"),
+            },
+        },
+    }
+    attestation_digest = sha256_bytes(canonical_json_bytes(statement))
+    return {
+        "schema_version": "phase13_release_attestation.v1",
+        "source_schema_version": attestation_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": "verified" if not failures else "failed",
+        "attestation_digest": attestation_digest,
+        "signature": {
+            "type": "local-checksum-attestation",
+            "algorithm": "sha256",
+            "signed": False,
+            "digest": attestation_digest,
+        },
+        "release": {
+            "status": release_status,
+            "tagName": release_metadata.get("tagName"),
+            "name": release_metadata.get("name"),
+            "url": release_metadata.get("url"),
+            "isDraft": bool(release_metadata.get("isDraft")),
+            "isPrerelease": bool(release_metadata.get("isPrerelease")),
+        },
+        "git": {
+            "status": commit_status,
+            "tag_commit": tag_commit,
+            "remote_tag_commit": remote_tag_commit,
+        },
+        "subjects": subjects,
+        "statement": statement,
+        "failures": failures,
+        "summary": {
+            "total_subjects": len(subjects),
+            "verified_subjects": sum(1 for item in subjects if item["status"] == "verified"),
+            "failed_subjects": sum(1 for item in subjects if item["status"] == "failed"),
+            "missing_subjects": sum(1 for item in subjects if item["status"] == "missing"),
+        },
+    }
 
 
 def load_release_provenance_manifest(path: Path) -> dict[str, Any]:

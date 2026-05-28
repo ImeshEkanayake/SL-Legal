@@ -1,0 +1,46 @@
+{
+  "schema_version": "phase13_release_attestation.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-12-release-provenance-ledger",
+  "phase_name": "V2 Phase 12: Release Provenance Ledger",
+  "predicate_type": "https://sl-legal.local/attestations/release-provenance/v1",
+  "builder_id": "sl-legal-v2-local-release-gate",
+  "subjects": [
+    {
+      "id": "phase12_provenance_ledger",
+      "title": "Phase 12 provenance ledger",
+      "type": "json_status",
+      "path": "logs/release-artifacts/phase12-release-provenance-ledger.json",
+      "expected_status": "verified",
+      "required": true
+    },
+    {
+      "id": "phase12_release_note",
+      "title": "Phase 12 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_12_release_provenance_ledger.md",
+      "required": true
+    },
+    {
+      "id": "phase12_contract",
+      "title": "Phase 12 provenance contract",
+      "type": "document",
+      "path": "Docs/v2_phase_12_release_provenance_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase12_runbook",
+      "title": "Phase 12 provenance runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_12_release_provenance_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase12_manifest",
+      "title": "Phase 12 provenance manifest",
+      "type": "document",
+      "path": "rag/evals/phase12_release_provenance.json",
+      "required": true
+    }
+  ]
+}

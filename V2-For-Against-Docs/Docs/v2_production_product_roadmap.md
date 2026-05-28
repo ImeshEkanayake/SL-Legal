@@ -358,6 +358,26 @@ Exit criteria:
 - Provenance ledger is generated without committing logs or release bundles.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 13: Release Attestation Envelope
+
+Outcome: each completed release can produce a deterministic attestation envelope that binds the release tag, release URL, tag commit, provenance ledger, and release documentation into a stable checksum-backed statement.
+
+Deliverables:
+
+- Release attestation manifest for the latest completed phase.
+- In-toto-style attestation statement with subject digests and release predicate metadata.
+- Deterministic canonical SHA-256 attestation digest.
+- Detached release-attestation gate.
+- Contract, runbook, and release documentation for checksum-backed attestations.
+
+Exit criteria:
+
+- Attestation tests pass for verified subjects, deterministic digest generation, failed provenance status, and saved metadata payloads.
+- Live attestation verifies the Phase 12 GitHub release and remote tag commit.
+- Required Phase 12 provenance ledger, release docs, and provenance manifest are checksummed as subjects.
+- Attestation envelope is generated without committing logs or release bundles.
+- No V1 changes, no raw data upload, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -422,3 +442,4 @@ Every release candidate must pass:
 - Phase 10 must not upload release assets unless `--execute` is deliberately supplied.
 - Phase 11 must fail verification when GitHub asset digests or sizes do not match local approved artifacts.
 - Phase 12 must fail provenance verification when release metadata, tag commits, required docs, detached logs, or JSON evidence statuses are missing or mismatched.
+- Phase 13 must fail attestation generation when release metadata, tag commits, provenance ledger status, or required subject digests are missing or mismatched.

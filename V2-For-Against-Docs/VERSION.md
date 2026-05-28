@@ -40,3 +40,6 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/v2_phase_12_release_provenance_contract.md`
 - `Docs/v2_phase_12_release_provenance_runbook.md`
 - `Docs/releases/v2_phase_12_release_provenance_ledger.md`
+- `Docs/v2_phase_13_release_attestation_contract.md`
+- `Docs/v2_phase_13_release_attestation_runbook.md`
+- `Docs/releases/v2_phase_13_release_attestation_envelope.md`

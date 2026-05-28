@@ -47,6 +47,7 @@ Important modules:
 - Phase 10 support in `operations.py`: release publication manifests, allowed-path checks, publication plans, and asset SHA-256 verification.
 - Phase 11 support in `operations.py`: GitHub release asset digest normalization, remote/local asset comparison, and verification reports.
 - Phase 12 support in `operations.py`: release provenance manifests, GitHub release checks, tag commit checks, evidence checksums, and ledger generation.
+- Phase 13 support in `operations.py`: release attestation manifests, subject digest evaluation, in-toto-style statements, and deterministic attestation digests.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -307,6 +308,18 @@ Phase 12 adds a release provenance ledger without changing the database schema. 
 - `tests/test_phase12_release_provenance.py`: verified, missing, draft-release, saved-metadata, and manifest tests.
 - `Docs/v2_phase_12_release_provenance_contract.md`: provenance contract.
 - `Docs/v2_phase_12_release_provenance_runbook.md`: provenance workflow.
+
+## V2 Phase 13 Release Attestation Envelope Contract
+
+Phase 13 adds checksum-backed release attestation envelopes without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase13_release_attestation.json`: required attestation subjects for the latest completed release.
+- `rag/sl_legal_rag/operations.py`: attestation manifest validation, subject digest evaluation, in-toto-style statement construction, and canonical attestation digesting.
+- `scripts/build_phase13_release_attestation.py`: GitHub/git metadata collector and attestation writer.
+- `scripts/run_detached_quality_gate.sh`: `release-attestation` detached mode.
+- `tests/test_phase13_release_attestation.py`: verified, deterministic digest, failed-ledger, saved-metadata, and manifest tests.
+- `Docs/v2_phase_13_release_attestation_contract.md`: attestation contract.
+- `Docs/v2_phase_13_release_attestation_runbook.md`: attestation workflow.
 
 ## Data Boundary
 
