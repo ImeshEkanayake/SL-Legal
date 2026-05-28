@@ -398,6 +398,26 @@ Exit criteria:
 - Signing execution remains disabled unless a reviewed approval flag and environment plan are supplied.
 - No V1 changes, no raw data upload, no private signing keys, and no database schema migration.
 
+### Phase 15: Release Signing Execution Plan
+
+Outcome: approved signing commands can be generated as a deterministic non-mutating plan, with release/tag verification, readiness evidence checks, artifact checksums, expected signature outputs, and verification commands captured before any signing execution is permitted.
+
+Deliverables:
+
+- Release signing plan manifest for the latest completed phase.
+- Signing plan report for release metadata, tag commit identity, readiness report status, signing artifacts, planned commands, and expected outputs.
+- Detached signing-plan gate.
+- Sigstore keyless and KMS/HSM command templates.
+- Contract, runbook, and release documentation for controlled signing execution planning.
+
+Exit criteria:
+
+- Signing plan tests pass for planned reports, missing artifacts, unready readiness reports, and saved metadata payloads.
+- Live signing plan verifies the Phase 14 GitHub release and remote tag commit.
+- Required Phase 13 attestation and Phase 14 signing readiness artifacts are checksummed.
+- Signing commands are planned but not executed unless a future reviewed approval flag is supplied.
+- No V1 changes, no raw data upload, no private signing keys, no signature output files, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -464,3 +484,4 @@ Every release candidate must pass:
 - Phase 12 must fail provenance verification when release metadata, tag commits, required docs, detached logs, or JSON evidence statuses are missing or mismatched.
 - Phase 13 must fail attestation generation when release metadata, tag commits, provenance ledger status, or required subject digests are missing or mismatched.
 - Phase 14 must fail signing readiness when release metadata, tag commits, required attestation evidence, approved signing modes, or forbidden private-key file scans fail.
+- Phase 15 must fail signing planning when release metadata, tag commits, readiness reports, or required signing artifacts are missing or mismatched.

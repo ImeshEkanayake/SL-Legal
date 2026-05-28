@@ -49,6 +49,7 @@ Important modules:
 - Phase 12 support in `operations.py`: release provenance manifests, GitHub release checks, tag commit checks, evidence checksums, and ledger generation.
 - Phase 13 support in `operations.py`: release attestation manifests, subject digest evaluation, in-toto-style statements, and deterministic attestation digests.
 - Phase 14 support in `operations.py`: signing readiness manifests, approved signing mode validation, forbidden private-key scans, and signing-readiness reports.
+- Phase 15 support in `operations.py`: signing plan manifests, artifact checksum evaluation, non-mutating signing command plans, and verification command templates.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -333,6 +334,18 @@ Phase 14 adds a release signing readiness gate without changing the database sch
 - `tests/test_phase14_signing_readiness.py`: ready report, forbidden-key, unsupported-mode, saved-metadata, and manifest tests.
 - `Docs/v2_phase_14_release_signing_readiness_contract.md`: signing-readiness contract.
 - `Docs/v2_phase_14_release_signing_readiness_runbook.md`: signing-readiness workflow.
+
+## V2 Phase 15 Release Signing Execution Plan Contract
+
+Phase 15 adds a non-mutating release signing execution plan without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase15_release_signing_plan.json`: target release, signing mode, readiness report, signature output directory, and signing artifacts.
+- `rag/sl_legal_rag/operations.py`: signing plan manifest validation, artifact checksum evaluation, release/tag checks, readiness report checks, and signing/verification command templates.
+- `scripts/build_phase15_signing_plan.py`: GitHub/git metadata collector and signing plan writer.
+- `scripts/run_detached_quality_gate.sh`: `signing-plan` detached mode.
+- `tests/test_phase15_signing_plan.py`: planned report, missing-artifact, unready-readiness, saved-metadata, and manifest tests.
+- `Docs/v2_phase_15_release_signing_plan_contract.md`: signing-plan contract.
+- `Docs/v2_phase_15_release_signing_plan_runbook.md`: signing-plan workflow.
 
 ## Data Boundary
 

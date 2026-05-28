@@ -95,12 +95,249 @@ class SigningReadinessEvidence:
     expected_status: str | None = None
 
 
+@dataclass(frozen=True)
+class SigningPlanArtifact:
+    artifact_id: str
+    title: str
+    path: str
+    label: str
+    required: bool = True
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("load scenario file must contain a non-empty scenarios array")
     return [scenario_from_mapping(item) for item in scenarios]
+
+
+def load_release_signing_plan_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase15_release_signing_plan.v1":
+        raise ValueError("release signing plan manifest schema_version must be phase15_release_signing_plan.v1")
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise ValueError("release signing plan manifest must contain a non-empty artifacts array")
+    return payload
+
+
+def signing_plan_artifact_from_mapping(item: dict[str, Any]) -> SigningPlanArtifact:
+    artifact_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    path = str(item.get("path") or "").strip()
+    label = str(item.get("label") or Path(path).name).strip()
+    if not artifact_id:
+        raise ValueError("signing plan artifact id is required")
+    if not title:
+        raise ValueError(f"{artifact_id} title is required")
+    if not path:
+        raise ValueError(f"{artifact_id} path is required")
+    if not label:
+        raise ValueError(f"{artifact_id} label is required")
+    return SigningPlanArtifact(
+        artifact_id=artifact_id,
+        title=title,
+        path=path,
+        label=label,
+        required=bool(item.get("required", True)),
+    )
+
+
+def signing_plan_artifacts(payload: dict[str, Any]) -> list[SigningPlanArtifact]:
+    return [signing_plan_artifact_from_mapping(item) for item in payload["artifacts"]]
+
+
+def evaluate_signing_plan_artifact(item: SigningPlanArtifact, project_root: Path) -> dict[str, Any]:
+    path = Path(item.path)
+    if not path.is_absolute():
+        path = project_root / path
+    exists = path.is_file()
+    result = {
+        "id": item.artifact_id,
+        "title": item.title,
+        "path": item.path,
+        "label": item.label,
+        "required": item.required,
+        "exists": exists,
+        "status": "ready" if exists else "missing",
+    }
+    if exists:
+        result["size_bytes"] = path.stat().st_size
+        result["sha256"] = sha256_file(path)
+    return result
+
+
+def signing_command_for_artifact(mode: str, artifact: dict[str, Any], *, output_dir: str) -> dict[str, Any]:
+    source = str(artifact["path"])
+    signature = f"{output_dir}/{artifact['label']}.sig"
+    certificate = f"{output_dir}/{artifact['label']}.crt"
+    bundle = f"{output_dir}/{artifact['label']}.bundle"
+    if mode == "sigstore_keyless":
+        command = [
+            "cosign",
+            "sign-blob",
+            "--yes",
+            "--output-signature",
+            signature,
+            "--output-certificate",
+            certificate,
+            "--bundle",
+            bundle,
+            source,
+        ]
+        verify_command = [
+            "cosign",
+            "verify-blob",
+            "--signature",
+            signature,
+            "--certificate",
+            certificate,
+            "--certificate-identity",
+            "$SL_LEGAL_SIGNING_IDENTITY",
+            "--certificate-oidc-issuer",
+            "$SL_LEGAL_SIGNING_ISSUER",
+            source,
+        ]
+    elif mode == "kms_hsm":
+        command = [
+            "cosign",
+            "sign-blob",
+            "--key",
+            "$SL_LEGAL_KMS_KEY_URI",
+            "--output-signature",
+            signature,
+            source,
+        ]
+        verify_command = [
+            "cosign",
+            "verify-blob",
+            "--key",
+            "$SL_LEGAL_KMS_PUBLIC_KEY_URI",
+            "--signature",
+            signature,
+            source,
+        ]
+    else:
+        command = []
+        verify_command = []
+    return {
+        "artifact_id": artifact["id"],
+        "mode": mode,
+        "command": command,
+        "command_line": " ".join(shlex.quote(part) for part in command),
+        "verify_command": verify_command,
+        "verify_command_line": " ".join(shlex.quote(part) for part in verify_command),
+        "expected_outputs": {
+            "signature": signature,
+            "certificate": certificate if mode == "sigstore_keyless" else None,
+            "bundle": bundle if mode == "sigstore_keyless" else None,
+        },
+    }
+
+
+def build_release_signing_plan(
+    plan_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    release_metadata: dict[str, Any],
+    git_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    target_tag = str(plan_payload.get("target_release_tag") or "").strip()
+    repo = str(plan_payload.get("repo") or "").strip()
+    mode = str(plan_payload.get("signing_mode") or "").strip()
+    output_dir = str(plan_payload.get("signature_output_dir") or "logs/release-artifacts/signatures").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    if mode not in {"sigstore_keyless", "kms_hsm"}:
+        raise ValueError(f"unsupported signing mode: {mode}")
+    artifacts = [evaluate_signing_plan_artifact(item, project_root) for item in signing_plan_artifacts(plan_payload)]
+    readiness_path = str(plan_payload.get("readiness_report_path") or "").strip()
+    if not readiness_path:
+        raise ValueError("readiness_report_path is required")
+    readiness_file = Path(readiness_path)
+    if not readiness_file.is_absolute():
+        readiness_file = project_root / readiness_file
+    readiness_exists = readiness_file.is_file()
+    readiness_status = "missing"
+    readiness_sha = ""
+    readiness_size = None
+    if readiness_exists:
+        readiness_payload = json.loads(readiness_file.read_text(encoding="utf-8"))
+        readiness_status = str(readiness_payload.get("status") or "")
+        readiness_sha = sha256_file(readiness_file)
+        readiness_size = readiness_file.stat().st_size
+    release_status = (
+        "verified"
+        if str(release_metadata.get("tagName") or "") == target_tag
+        and not bool(release_metadata.get("isDraft"))
+        and not bool(release_metadata.get("isPrerelease"))
+        and bool(release_metadata.get("url"))
+        else "failed"
+    )
+    tag_commit = str(git_metadata.get("tag_commit") or "").strip()
+    remote_tag_commit = str(git_metadata.get("remote_tag_commit") or "").strip()
+    commit_status = "verified" if tag_commit and remote_tag_commit and tag_commit == remote_tag_commit else "failed"
+    execution_approved = bool(plan_payload.get("signing_execution_approved", False))
+    blockers = [item for item in artifacts if item["required"] and item["status"] != "ready"]
+    if release_status != "verified":
+        blockers.append({"id": "github_release", "status": release_status, "summary": "release metadata failed"})
+    if commit_status != "verified":
+        blockers.append({"id": "release_tag_commit", "status": commit_status, "summary": "local and remote tag commits differ"})
+    if readiness_status != "ready_for_signing_review":
+        blockers.append({"id": "signing_readiness", "status": readiness_status, "summary": "signing readiness report is not ready"})
+    commands = [
+        signing_command_for_artifact(mode, artifact, output_dir=output_dir)
+        for artifact in artifacts
+        if artifact["status"] == "ready"
+    ]
+    if blockers:
+        status = "blocked"
+    elif execution_approved:
+        status = "execution_ready"
+    else:
+        status = "planned"
+    return {
+        "schema_version": "phase15_release_signing_plan.v1",
+        "source_schema_version": plan_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "signing_mode": mode,
+        "signing_execution_approved": execution_approved,
+        "release": {
+            "status": release_status,
+            "tagName": release_metadata.get("tagName"),
+            "name": release_metadata.get("name"),
+            "url": release_metadata.get("url"),
+            "isDraft": bool(release_metadata.get("isDraft")),
+            "isPrerelease": bool(release_metadata.get("isPrerelease")),
+        },
+        "git": {
+            "status": commit_status,
+            "tag_commit": tag_commit,
+            "remote_tag_commit": remote_tag_commit,
+        },
+        "readiness_report": {
+            "path": readiness_path,
+            "exists": readiness_exists,
+            "status": readiness_status,
+            "size_bytes": readiness_size,
+            "sha256": readiness_sha,
+        },
+        "artifacts": artifacts,
+        "commands": commands,
+        "blockers": blockers,
+        "summary": {
+            "total_artifacts": len(artifacts),
+            "ready_artifacts": sum(1 for item in artifacts if item["status"] == "ready"),
+            "missing_artifacts": sum(1 for item in artifacts if item["status"] == "missing"),
+            "planned_commands": len(commands),
+        },
+    }
 
 
 def load_release_signing_readiness_manifest(path: Path) -> dict[str, Any]:

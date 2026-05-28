@@ -1,0 +1,26 @@
+{
+  "schema_version": "phase15_release_signing_plan.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-14-release-signing-readiness",
+  "phase_name": "V2 Phase 14: Release Signing Readiness",
+  "signing_mode": "sigstore_keyless",
+  "signing_execution_approved": false,
+  "readiness_report_path": "logs/release-artifacts/phase14-signing-readiness.json",
+  "signature_output_dir": "logs/release-artifacts/signatures",
+  "artifacts": [
+    {
+      "id": "phase13_release_attestation",
+      "title": "Phase 13 release attestation envelope",
+      "path": "logs/release-artifacts/phase13-release-attestation.json",
+      "label": "phase13-release-attestation.json",
+      "required": true
+    },
+    {
+      "id": "phase14_signing_readiness",
+      "title": "Phase 14 signing readiness report",
+      "path": "logs/release-artifacts/phase14-signing-readiness.json",
+      "label": "phase14-signing-readiness.json",
+      "required": true
+    }
+  ]
+}
