@@ -963,10 +963,12 @@ class WorkspaceDraftSummary(BaseModel):
     draftId: str
     title: str
     draftType: str
+    requestedOutput: str | None = None
     status: str
     reviewStatus: str | None = None
     contentPreview: str
     claimCount: int = Field(ge=0)
+    reasoningPack: ReasoningPackOutput | None = None
 
 
 class WorkspaceReviewItem(BaseModel):

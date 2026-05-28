@@ -1189,18 +1189,23 @@ class LegalWorkspaceRepository:
         return anchors
 
     def _workspace_drafts(self, *, case_id: str, limit: int) -> list[dict[str, Any]]:
-        return [
-            {
-                "draftId": str(row["draft_id"]),
-                "title": str(row["title"]),
-                "draftType": str(row["draft_type"]),
-                "status": str(row["status"]),
-                "reviewStatus": str(row["review_status"]) if row["review_status"] else None,
-                "contentPreview": str(row["content_preview"] or ""),
-                "claimCount": int(row["claim_count"]),
-            }
-            for row in self.list_case_drafts(case_id=case_id, limit=limit)
-        ]
+        drafts: list[dict[str, Any]] = []
+        for row in self.list_case_drafts(case_id=case_id, limit=limit):
+            metadata = dict(row.get("metadata") or {})
+            drafts.append(
+                {
+                    "draftId": str(row["draft_id"]),
+                    "title": str(row["title"]),
+                    "draftType": str(row["draft_type"]),
+                    "requestedOutput": str(metadata["requested_output"]) if metadata.get("requested_output") else None,
+                    "status": str(row["status"]),
+                    "reviewStatus": str(row["review_status"]) if row["review_status"] else None,
+                    "contentPreview": str(row["content_preview"] or ""),
+                    "claimCount": int(row["claim_count"]),
+                    "reasoningPack": metadata.get("reasoning_pack"),
+                }
+            )
+        return drafts
 
     def _workspace_review_items(self, *, case_id: str, limit: int) -> list[dict[str, Any]]:
         return [

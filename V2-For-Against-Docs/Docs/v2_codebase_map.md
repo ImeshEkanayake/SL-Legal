@@ -77,13 +77,13 @@ web/
 Important files:
 
 - `web/src/app/page.tsx`: workspace entry.
-- `web/src/app/actions.ts`: server actions that call backend APIs.
+- `web/src/app/actions.ts`: server actions that call backend APIs for cases, messages, and review decisions.
 - `web/src/components/CaseWorkspace.tsx`: main workspace shell.
-- `web/src/components/DocumentWorkspace.tsx`: documents, research pack, drafts, and review panels.
-- `web/src/components/SourceInspector.tsx`: citation and source context panel.
+- `web/src/components/DocumentWorkspace.tsx`: documents, research pack, reasoning pack, and review panels.
+- `web/src/components/SourceInspector.tsx`: citation, reasoning, and source context panel.
 - `web/src/components/PdfDocumentViewer.tsx`: PDF rendering.
-- `web/src/lib/workspace-types.ts`: TypeScript workspace contracts.
-- `web/src/lib/workspace-api.ts`: API client helpers.
+- `web/src/lib/workspace-types.ts`: TypeScript workspace and reasoning-pack contracts.
+- `web/src/lib/workspace-api.ts`: API client helpers for signed workspace and review calls.
 - `web/src/lib/ui-session*.ts`: UI session signing support.
 
 V2 UI work should add reasoning pack first views, evidence stance grouping, and review actions beside support/adverse/mixed evidence.
@@ -194,6 +194,21 @@ Phase 4 adds the production reasoning layer without changing the database schema
 - `tests/test_strategy_reasoning.py`: generation and pack-bounded citation coverage.
 - `tests/test_db_access_layer.py`: integration coverage for persistence, draft detail metadata, review queue items, and audit.
 - `Docs/v2_phase_4_reasoning_pack_contract.md`: output structure, storage boundary, validation rules, and release scope.
+
+## V2 Phase 5 Production UI Contract
+
+Phase 5 adds the lawyer-facing reasoning pack workspace without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `WorkspaceDraftSummary` exposes `requestedOutput` and `reasoningPack`.
+- `rag/sl_legal_rag/db/repositories.py`: workspace draft summaries read `reasoning_pack` from existing draft metadata.
+- `web/src/lib/workspace-types.ts`: TypeScript reasoning-pack, preliminary opinion, review decision, and workspace contracts.
+- `web/src/lib/workspace-api.ts`: signed review decision client for `/v1/cases/{case_id}/review/items/{review_item_id}/decision`.
+- `web/src/app/actions.ts`: `recordReviewDecisionAction`.
+- `web/src/components/CaseWorkspace.tsx`: reasoning navigation and local review item status updates.
+- `web/src/components/DocumentWorkspace.tsx`: reasoning pack detail, citation navigation, and review decision controls.
+- `web/src/components/SourceInspector.tsx`: reasoning rail summary.
+- `web/src/components/CaseWorkspace.test.tsx`: UI tests for reasoning view, citation navigation, and review actions.
+- `Docs/v2_phase_5_production_ui_contract.md`: UI contract, safety rules, tests, and release boundary.
 
 ## Data Boundary
 

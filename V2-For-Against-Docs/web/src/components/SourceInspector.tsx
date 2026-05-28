@@ -1,10 +1,10 @@
 "use client";
 
-import { ExternalLink, FileText, MessageSquare, Package, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ExternalLink, FileText, MessageSquare, Network, Package, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { CaseDocument, DraftSummary, ResearchPackItem, ReviewItem } from "@/lib/workspace-types";
 
-export type InspectorTab = "docs" | "reviews" | "pack" | "chat";
+export type InspectorTab = "docs" | "reviews" | "pack" | "reasoning" | "chat";
 
 type SourceInspectorProps = {
   packItems: ResearchPackItem[];
@@ -34,10 +34,11 @@ export function SourceInspector({
 
   return (
     <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col border-l border-[#c3c6d6] bg-white" aria-label="Source inspector">
-      <nav className="grid h-16 shrink-0 grid-cols-4 border-b border-[#c3c6d6]" aria-label="Source inspector views">
+      <nav className="grid h-14 shrink-0 grid-cols-5 border-b border-[#c3c6d6]" aria-label="Source inspector views">
         <InspectorTabButton active={activeTab === "docs"} icon={<FileText size={18} />} label="Docs" onClick={() => onActiveTabChange("docs")} />
         <InspectorTabButton active={activeTab === "reviews"} icon={<ShieldCheck size={18} />} label="Reviews" onClick={() => onActiveTabChange("reviews")} />
         <InspectorTabButton active={activeTab === "pack"} icon={<Package size={18} />} label="Pack" onClick={() => onActiveTabChange("pack")} />
+        <InspectorTabButton active={activeTab === "reasoning"} icon={<Network size={18} />} label="Reasoning" onClick={() => onActiveTabChange("reasoning")} />
         <InspectorTabButton active={activeTab === "chat"} icon={<MessageSquare size={18} />} label="Chat" onClick={() => onActiveTabChange("chat")} />
       </nav>
 
@@ -45,6 +46,7 @@ export function SourceInspector({
         {activeTab === "docs" ? <DocumentsPanel documents={documents} onSelectDocument={onSelectDocument} /> : null}
         {activeTab === "reviews" ? <ReviewsPanel drafts={drafts} reviewItems={reviewItems} /> : null}
         {activeTab === "pack" ? <PackPanel packItems={packItems} selectedPackItemId={selectedItem?.packItemId ?? null} onSelectPackItem={onSelectPackItem} /> : null}
+        {activeTab === "reasoning" ? <ReasoningPanel drafts={drafts} /> : null}
         {activeTab === "chat" ? (
           <ChatContextPanel
             selectedItem={selectedItem}
@@ -70,18 +72,44 @@ export function SourceInspector({
   );
 }
 
+function ReasoningPanel({ drafts }: { drafts: DraftSummary[] }) {
+  const reasoningDrafts = drafts.filter((draft) => draft.reasoningPack);
+  return (
+    <section className="space-y-3">
+      <PanelTitle title="Reasoning packs" count={`${reasoningDrafts.length} packs`} />
+      {reasoningDrafts.length === 0 ? (
+        <EmptyPanel text="Reasoning packs will appear here after Phase 4 draft generation." />
+      ) : (
+        <div className="space-y-3">
+          {reasoningDrafts.map((draft) => (
+            <article key={draft.draftId} className="rounded-lg border border-[#c3c6d6] bg-white p-3 text-xs">
+              <p className="font-bold text-[#1c1c1a]">{draft.title}</p>
+              <p className="mt-2 text-[#434654]">
+                {draft.reasoningPack?.issue_matrix.length ?? 0} issues | {draft.reasoningPack?.missing_evidence_checklist.length ?? 0} missing evidence
+              </p>
+              <p className="mt-2 line-clamp-3 text-[#1c1c1a]">{draft.reasoningPack?.lawyer_review_pack.one_page_case_summary}</p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function InspectorTabButton({ active, icon, label, onClick }: { active: boolean; icon: ReactNode; label: string; onClick: () => void }) {
   return (
     <button
-      className={`flex flex-col items-center justify-center gap-1 border-b-2 text-[9px] font-bold uppercase tracking-[0.12em] transition ${
+      className={`flex items-center justify-center border-b-2 transition ${
         active ? "border-[#003d9b] text-[#003d9b]" : "border-transparent text-[#434654] hover:bg-[#f6f3ef] hover:text-[#003d9b]"
       }`}
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      aria-label={label}
+      title={label}
     >
       {icon}
-      {label}
+      <span className="sr-only">{label}</span>
     </button>
   );
 }

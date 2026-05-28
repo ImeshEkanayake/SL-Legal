@@ -7,6 +7,8 @@ import {
   type CreateCaseInput,
   type CreateCaseResult,
   type DocumentFileResult,
+  type ReviewDecisionInput,
+  type ReviewItem,
   type WorkspaceActionResult,
   type WorkspaceSnapshot,
 } from "./workspace-types";
@@ -99,6 +101,33 @@ export async function cacheWorkspaceDocumentFile(input: { caseId: string; docume
     `/v1/ui/cases/${encodeURIComponent(input.caseId)}/documents/${encodeURIComponent(input.documentId)}/cache`,
     { method: "POST", json: {} },
   );
+}
+
+export async function recordWorkspaceReviewDecision(input: ReviewDecisionInput): Promise<WorkspaceActionResult<ReviewItem>> {
+  try {
+    if (!input.caseId) {
+      return { ok: false, error: "Open a matter before recording review." };
+    }
+    if (!input.reviewItemId) {
+      return { ok: false, error: "Select a review item before recording review." };
+    }
+    if ((input.decision === "rejected" || input.decision === "changes_requested") && !input.comment?.trim()) {
+      return { ok: false, error: "Add a review comment before rejecting or requesting changes." };
+    }
+    const data = await signedJsonFetch<{ review_item: ReviewItem }>(
+      `/v1/cases/${encodeURIComponent(input.caseId)}/review/items/${encodeURIComponent(input.reviewItemId)}/decision`,
+      {
+        method: "POST",
+        json: {
+          decision: input.decision,
+          comment: input.comment?.trim() || null,
+        },
+      },
+    );
+    return { ok: true, data: data.review_item };
+  } catch (error) {
+    return { ok: false, error: apiErrorMessage(error) };
+  }
 }
 
 export async function signedWorkspaceFetch(path: string, options: SignedFetchOptions = {}): Promise<Response> {

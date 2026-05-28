@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CaseWorkspace } from "./CaseWorkspace";
-import type { ChatMessageCreateResult, CreateCaseInput, CreateCaseResult, WorkspaceActionResult, WorkspaceSnapshot } from "@/lib/workspace-types";
+import type { ChatMessageCreateResult, CreateCaseInput, CreateCaseResult, ReviewDecisionInput, ReviewItem, WorkspaceActionResult, WorkspaceSnapshot } from "@/lib/workspace-types";
 
 const routerPush = vi.fn();
 
@@ -97,12 +97,116 @@ const snapshot: WorkspaceSnapshot = {
   drafts: [
     {
       draftId: "draft_1",
-      title: "Strategy Report",
-      draftType: "strategy_report",
+      title: "Reasoning Pack",
+      draftType: "lawyer_review_pack",
+      requestedOutput: "lawyer_review_pack",
       status: "draft",
       reviewStatus: "pending",
       contentPreview: "The cited Act supports the argument.",
       claimCount: 1,
+      reasoningPack: {
+        schema_version: "reasoning_pack.v1",
+        output_type: "lawyer_review_pack",
+        authority_verifications: [
+          {
+            authority_id: "AUTH_001",
+            title: "Industrial Disputes Act",
+            authority_type: "Act",
+            citation: "Industrial Disputes Act s 1",
+            pack_item_ids: ["pack_1_item_001"],
+            section: "s 1",
+            official_source_checked: false,
+            amendment_checked: false,
+            case_law_checked: false,
+            procedural_rule_checked: false,
+            verification_status: "requires_lawyer_review",
+            notes: "Verify current force and amendments.",
+          },
+        ],
+        issue_matrix: [
+          {
+            issue_id: "ISSUE_001",
+            issue: "Whether refusal to bargain is prohibited.",
+            legal_area: "Labour law",
+            elements: [
+              {
+                element_id: "ELEMENT_001",
+                element: "Qualifying trade union status.",
+                supporting_facts: ["The union requested bargaining."],
+                opposing_facts: ["Qualification evidence is incomplete."],
+                authority_ids: ["AUTH_001"],
+                pack_item_ids: ["pack_1_item_001"],
+                missing_evidence: ["Union registration certificate."],
+                verification_status: "requires_lawyer_review",
+              },
+            ],
+            authority_ids: ["AUTH_001"],
+            facts_supporting: ["The employer refused to bargain."],
+            facts_against: ["Union qualification is not yet proved."],
+            missing_evidence: ["Worker representation evidence."],
+            confidence: 0.55,
+            verification_status: "requires_lawyer_review",
+          },
+        ],
+        fact_to_law_mappings: [
+          {
+            issue_id: "ISSUE_001",
+            fact: "The employer refused to bargain.",
+            legal_question: "Whether the refusal engages the statutory duty.",
+            authority_id: "AUTH_001",
+            specific_section: "s 1",
+            supporting_reasoning: "The current pack supports a preliminary argument if qualification is proven.",
+            risk: "Qualification evidence is incomplete.",
+            missing_documents: ["Union registration certificate."],
+            pack_item_ids: ["pack_1_item_001"],
+            verification_status: "requires_lawyer_review",
+            lawyer_verification_required: true,
+          },
+        ],
+        for_against_brief: [
+          {
+            issue_id: "ISSUE_001",
+            issue: "Whether refusal to bargain is prohibited.",
+            facts_relied_on: ["The employer refused to bargain."],
+            client_argument: "The refusal supports the client's position if qualification is established.",
+            opposing_argument: "The opposing party may argue the union was not qualifying.",
+            rebuttal: "Collect registration and representation evidence.",
+            weaknesses: ["Qualification evidence is incomplete."],
+            missing_evidence: ["Union registration certificate."],
+            strength: "medium",
+            confidence: 0.55,
+            requires_lawyer_verification: true,
+            pack_item_ids: ["pack_1_item_001"],
+          },
+        ],
+        missing_evidence_checklist: ["Union registration certificate.", "Current Act verification."],
+        preliminary_legal_opinion: {
+          matter: "Union refusal matter.",
+          instructions: "Assess refusal to bargain.",
+          important_qualification: "This is a preliminary lawyer-review draft requiring verification before reliance.",
+          assumed_facts: ["The employer refused to bargain."],
+          documents_reviewed: ["Industrial Disputes Act extract."],
+          issues: ["Whether statutory refusal-to-bargain requirements are met."],
+          applicable_law: ["Industrial Disputes Act s 1, subject to lawyer verification."],
+          analysis: "On a preliminary basis, lawyer verification is required.",
+          preliminary_opinion: "The preliminary view is that the argument may be available, subject to lawyer verification.",
+          risks: ["Union qualification evidence is incomplete."],
+          recommended_next_steps: ["Verify authority and collect documents."],
+          conclusion: "The preliminary conclusion remains subject to lawyer verification and further evidence.",
+          lawyer_verification_required: true,
+        },
+        lawyer_review_pack: {
+          one_page_case_summary: "Employer refusal to bargain requires review against statutory elements.",
+          issue_matrix_ids: ["ISSUE_001"],
+          authority_ids: ["AUTH_001"],
+          missing_documents: ["Union registration certificate."],
+          questions_for_client: ["When was the union registered?"],
+          questions_for_lawyer: ["Is the cited section current and amended?"],
+          review_notes: ["Verify all authorities."],
+        },
+        lawyer_verification_required: true,
+        warnings: ["Pack-bounded draft only."],
+      },
     },
   ],
   reviewItems: [
@@ -113,15 +217,24 @@ const snapshot: WorkspaceSnapshot = {
       status: "pending",
       priority: "normal",
     },
+    {
+      reviewItemId: "review_2",
+      itemType: "missing_evidence",
+      itemTitle: "Missing evidence review",
+      status: "pending",
+      priority: "normal",
+    },
   ],
 };
 
 function renderWorkspace({
   onCreateCase,
   onSendMessage,
+  onReviewDecision,
 }: {
   onCreateCase?: (input: CreateCaseInput) => Promise<WorkspaceActionResult<CreateCaseResult>>;
   onSendMessage?: (input: { caseId: string; content: string; threadId?: string | null }) => Promise<WorkspaceActionResult<ChatMessageCreateResult>>;
+  onReviewDecision?: (input: ReviewDecisionInput) => Promise<WorkspaceActionResult<ReviewItem>>;
 } = {}) {
   return render(
     <CaseWorkspace
@@ -149,6 +262,19 @@ function renderWorkspace({
             ],
             packId: null,
             retrievalStatus: "empty",
+          },
+        }))
+      }
+      onReviewDecision={
+        onReviewDecision ??
+        vi.fn(async (input) => ({
+          ok: true,
+          data: {
+            reviewItemId: input.reviewItemId,
+            itemType: "legal_claim",
+            itemTitle: "Review supported claim",
+            status: input.decision,
+            priority: "normal",
           },
         }))
       }
@@ -197,6 +323,12 @@ describe("CaseWorkspace", () => {
     expect(screen.getAllByRole("heading", { name: "Research pack" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("pack_1_item_001").length).toBeGreaterThan(0);
 
+    fireEvent.click(screen.getByRole("button", { name: "Reasoning" }));
+    expect(screen.getAllByRole("heading", { name: "Reasoning Pack" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("region", { name: "Reasoning pack detail" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preliminary opinion" })).toBeInTheDocument();
+    expect(screen.getAllByText("Whether refusal to bargain is prohibited.").length).toBeGreaterThan(0);
+
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(screen.getByRole("heading", { name: "Document Navigation & Chat Workspace" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /legal chat/i })).toBeInTheDocument();
@@ -240,6 +372,43 @@ describe("CaseWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(screen.getByRole("region", { name: /legal chat/i })).toBeInTheDocument();
+  });
+
+  it("opens reasoning-pack citations back to the source pack item", () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reasoning" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /pack_1_item_001/i })[0]);
+
+    expect(screen.getByRole("region", { name: "Research pack detail" })).toBeInTheDocument();
+    expect(screen.getAllByText("Industrial Disputes Act s 1").length).toBeGreaterThan(0);
+  });
+
+  it("records review decisions from the review workspace", async () => {
+    const reviewDecision = vi.fn(async (input: ReviewDecisionInput) => ({
+      ok: true as const,
+      data: {
+        reviewItemId: input.reviewItemId,
+        itemType: "legal_claim",
+        itemTitle: "Review supported claim",
+        status: input.decision,
+        priority: "normal",
+      },
+    }));
+    renderWorkspace({ onReviewDecision: reviewDecision });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reviews" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(reviewDecision).toHaveBeenCalledWith({
+        caseId: "case_1",
+        reviewItemId: "review_1",
+        decision: "approved",
+        comment: "",
+      }),
+    );
+    expect(await screen.findByText("Review approved.")).toBeInTheDocument();
   });
 
   it("filters documents by category and opens a case-file viewer modal", () => {

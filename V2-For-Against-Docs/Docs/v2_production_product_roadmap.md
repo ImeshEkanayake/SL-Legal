@@ -207,12 +207,16 @@ Deliverables:
 - Claim detail with grouped citations.
 - Source viewer deep links from every evidence item.
 - Review actions for draft sections and evidence assessments.
+- Workspace snapshot exposes reasoning-pack draft metadata without a schema migration.
+- Review decision actions use the existing signed backend endpoint and audit workflow.
 
 Exit criteria:
 
 - E2E tests cover strategy generation, evidence inspection, source viewing, and reviewer decision.
 - UI tests cover empty, loading, error, mixed, and adverse evidence states.
 - All labels are claim-relative and do not imply document-level certainty.
+- Reasoning-pack citation buttons navigate back to source pack evidence.
+- Drafts without reasoning metadata remain readable as draft previews.
 
 ### Phase 6: Production Operations
 

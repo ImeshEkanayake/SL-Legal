@@ -12,6 +12,8 @@ import type {
   ChatMessageCreateResult,
   CreateCaseInput,
   CreateCaseResult,
+  ReviewDecisionInput,
+  ReviewItem,
   WorkspaceActionResult,
   WorkspaceSnapshot,
 } from "@/lib/workspace-types";
@@ -24,9 +26,10 @@ type CaseWorkspaceProps = {
     content: string;
     threadId?: string | null;
   }) => Promise<WorkspaceActionResult<ChatMessageCreateResult>>;
+  onReviewDecision: (input: ReviewDecisionInput) => Promise<WorkspaceActionResult<ReviewItem>>;
 };
 
-export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWorkspaceProps) {
+export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewDecision }: CaseWorkspaceProps) {
   const router = useRouter();
   const firstDocumentId = snapshot.documents[0]?.documentId ?? null;
   const firstPackItemId = snapshot.researchPackItems[0]?.packItemId ?? null;
@@ -34,6 +37,7 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWor
   const [selectedDocumentId, setSelectedDocumentId] = useState(firstDocumentId);
   const [selectedPackItemId, setSelectedPackItemId] = useState(firstPackItemId);
   const [messages, setMessages] = useState(snapshot.messages);
+  const [reviewItems, setReviewItems] = useState(snapshot.reviewItems);
   const [projectQuery, setProjectQuery] = useState("");
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -56,8 +60,23 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWor
       setWorkspaceTab("documents");
     } else if (view === "pack") {
       setWorkspaceTab("pack");
+    } else if (view === "reasoning") {
+      setWorkspaceTab("reasoning");
     } else if (view === "reviews") {
       setWorkspaceTab("review");
+    }
+  }
+
+  function changeWorkspaceTab(tab: WorkspaceTab) {
+    setWorkspaceTab(tab);
+    if (tab === "documents") {
+      setActiveWorkspaceView("docs");
+    } else if (tab === "pack") {
+      setActiveWorkspaceView("pack");
+    } else if (tab === "reasoning" || tab === "drafts") {
+      setActiveWorkspaceView("reasoning");
+    } else if (tab === "review") {
+      setActiveWorkspaceView("reviews");
     }
   }
 
@@ -86,8 +105,25 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWor
     return result;
   }
 
+  async function recordReviewDecision(input: ReviewDecisionInput): Promise<WorkspaceActionResult<ReviewItem>> {
+    const result = await onReviewDecision(input);
+    if (result.ok) {
+      setReviewItems((current) => current.map((item) => (item.reviewItemId === result.data.reviewItemId ? result.data : item)));
+    }
+    return result;
+  }
+
   const workspaceHeading = workspaceViewHeading(activeWorkspaceView);
-  const activeDocumentWorkspaceTab = activeWorkspaceView === "docs" ? "documents" : activeWorkspaceView === "pack" ? "pack" : activeWorkspaceView === "reviews" ? "review" : workspaceTab;
+  const activeDocumentWorkspaceTab =
+    activeWorkspaceView === "docs"
+      ? "documents"
+      : activeWorkspaceView === "pack"
+        ? "pack"
+        : activeWorkspaceView === "reasoning"
+          ? "reasoning"
+          : activeWorkspaceView === "reviews"
+            ? "review"
+            : workspaceTab;
 
   return (
     <div className="flex h-dvh min-h-dvh overflow-hidden bg-[#fcf9f5] text-[#1c1c1a]">
@@ -116,7 +152,7 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWor
                   {activeCase.court || activeCase.matterType || "Sri Lankan legal matter"}
                 </span>
               ) : null}
-              <span className="rounded-full bg-[#dae2ff] px-2.5 py-1 text-[11px] font-bold text-[#003d9b]">{snapshot.reviewItems.length} review</span>
+              <span className="rounded-full bg-[#dae2ff] px-2.5 py-1 text-[11px] font-bold text-[#003d9b]">{reviewItems.length} review</span>
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -128,15 +164,16 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWor
                 documents={snapshot.documents}
                 packItems={snapshot.researchPackItems}
                 drafts={snapshot.drafts}
-                reviewItems={snapshot.reviewItems}
+                reviewItems={reviewItems}
                 selectedDocumentId={selectedDocumentId}
                 selectedPackItemId={selectedPackItemId}
                 activeTab={activeDocumentWorkspaceTab}
                 showTabHeader={false}
                 showSummaryFooter={false}
-                onActiveTabChange={setWorkspaceTab}
+                onActiveTabChange={changeWorkspaceTab}
                 onSelectDocument={setSelectedDocumentId}
                 onSelectPackItem={selectPackItem}
+                onReviewDecision={recordReviewDecision}
               />
             )}
           </div>
@@ -145,7 +182,7 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage }: CaseWor
           packItems={snapshot.researchPackItems}
           documents={snapshot.documents}
           drafts={snapshot.drafts}
-          reviewItems={snapshot.reviewItems}
+          reviewItems={reviewItems}
           selectedPackItemId={selectedPackItemId}
           activeTab={activeWorkspaceView}
           onActiveTabChange={showWorkspaceView}
@@ -336,6 +373,12 @@ function workspaceViewHeading(view: InspectorTab): { title: string; subtitle: (c
     return {
       title: "Research Pack",
       subtitle: (caseTitle) => `${caseTitle} | cited authorities and retrieval evidence`,
+    };
+  }
+  if (view === "reasoning") {
+    return {
+      title: "Reasoning Pack",
+      subtitle: (caseTitle) => `${caseTitle} | preliminary opinion, missing evidence, and issue matrix`,
     };
   }
   if (view === "reviews") {

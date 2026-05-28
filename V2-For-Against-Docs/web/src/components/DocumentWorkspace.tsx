@@ -5,23 +5,24 @@ import {
   CheckCircle2,
   Download,
   ExternalLink,
-  FileSearch,
   Gavel,
   Loader2,
   Maximize2,
+  Network,
   RefreshCw,
   Scale,
   Search,
+  Send,
   ShieldCheck,
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { PdfDocumentViewer } from "./PdfDocumentViewer";
-import type { CaseDocument, DraftSummary, ResearchPackItem, ReviewItem } from "@/lib/workspace-types";
+import type { CaseDocument, DraftSummary, ReasoningPack, ResearchPackItem, ReviewDecisionInput, ReviewItem } from "@/lib/workspace-types";
 
-export type WorkspaceTab = "documents" | "pack" | "drafts" | "review";
+export type WorkspaceTab = "documents" | "pack" | "drafts" | "reasoning" | "review";
 type DocumentCategoryId = "all" | "acts" | "gazettes" | "supreme_court" | "court_of_appeal" | "high_court" | "hazards" | "other";
 type DocumentCacheOverlay = Partial<CaseDocument>;
 type DocumentViewerMode = "text" | "file";
@@ -40,6 +41,7 @@ type DocumentWorkspaceProps = {
   onActiveTabChange: (tab: WorkspaceTab) => void;
   onSelectDocument: (documentId: string) => void;
   onSelectPackItem: (packItemId: string) => void;
+  onReviewDecision: (input: ReviewDecisionInput) => Promise<{ ok: true; data: ReviewItem } | { ok: false; error: string }>;
 };
 
 export function DocumentWorkspace({
@@ -56,6 +58,7 @@ export function DocumentWorkspace({
   onActiveTabChange,
   onSelectDocument,
   onSelectPackItem,
+  onReviewDecision,
 }: DocumentWorkspaceProps) {
   const selectedDocument = documents.find((document) => document.documentId === selectedDocumentId) ?? documents[0] ?? null;
   const selectedPackItem = packItems.find((item) => item.packItemId === selectedPackItemId) ?? packItems[0] ?? null;
@@ -66,7 +69,7 @@ export function DocumentWorkspace({
         <header className="flex min-h-12 shrink-0 items-center gap-2 overflow-x-auto border-b border-[#c3c6d6] bg-[#fcf9f5] px-3">
           <TabButton active={activeTab === "documents"} icon={<BookOpen size={16} />} label="Documents" onClick={() => onActiveTabChange("documents")} />
           <TabButton active={activeTab === "pack"} icon={<Scale size={16} />} label="Research Pack" onClick={() => onActiveTabChange("pack")} />
-          <TabButton active={activeTab === "drafts"} icon={<FileSearch size={16} />} label="Drafts" onClick={() => onActiveTabChange("drafts")} />
+          <TabButton active={activeTab === "reasoning" || activeTab === "drafts"} icon={<Network size={16} />} label="Reasoning" onClick={() => onActiveTabChange("reasoning")} />
           <TabButton active={activeTab === "review"} icon={<ShieldCheck size={16} />} label="Review" onClick={() => onActiveTabChange("review")} />
         </header>
       ) : null}
@@ -92,12 +95,25 @@ export function DocumentWorkspace({
           }}
         />
       ) : null}
-      {activeTab === "drafts" ? <DraftsTab drafts={drafts} /> : null}
-      {activeTab === "review" ? <ReviewTab reviewItems={reviewItems} /> : null}
+      {activeTab === "drafts" || activeTab === "reasoning" ? (
+        <ReasoningTab
+          drafts={drafts}
+          packItems={packItems}
+          onOpenPackItem={(packItemId) => {
+            onSelectPackItem(packItemId);
+            const item = packItems.find((candidate) => candidate.packItemId === packItemId);
+            if (item) {
+              onSelectDocument(item.documentId);
+            }
+            onActiveTabChange("pack");
+          }}
+        />
+      ) : null}
+      {activeTab === "review" ? <ReviewTab activeCaseId={activeCaseId} reviewItems={reviewItems} onReviewDecision={onReviewDecision} /> : null}
       {showSummaryFooter ? (
         <footer className="grid shrink-0 grid-cols-1 gap-px border-t border-[#c3c6d6] bg-[#c3c6d6] xl:grid-cols-3">
           <SummaryPanel title="Pack Items" value={packItems.length} body={selectedPackItem?.citation || "No cited pack item selected."} onClick={() => onActiveTabChange("pack")} />
-          <SummaryPanel title="Drafts" value={drafts.length} body={drafts[0]?.title || "No draft loaded for this case."} onClick={() => onActiveTabChange("drafts")} />
+          <SummaryPanel title="Reasoning" value={drafts.filter((draft) => draft.reasoningPack).length} body={drafts[0]?.title || "No reasoning pack loaded for this case."} onClick={() => onActiveTabChange("reasoning")} />
           <SummaryPanel title="Review" value={reviewItems.length} body={reviewItems[0]?.itemTitle || "No review items loaded."} onClick={() => onActiveTabChange("review")} />
         </footer>
       ) : null}
@@ -887,16 +903,25 @@ function ResearchPackTab({
   );
 }
 
-function DraftsTab({ drafts }: { drafts: DraftSummary[] }) {
+function ReasoningTab({
+  drafts,
+  packItems,
+  onOpenPackItem,
+}: {
+  drafts: DraftSummary[];
+  packItems: ResearchPackItem[];
+  onOpenPackItem: (packItemId: string) => void;
+}) {
   const [selectedDraftId, setSelectedDraftId] = useState(drafts[0]?.draftId ?? null);
   const selectedDraft = drafts.find((draft) => draft.draftId === selectedDraftId) ?? drafts[0] ?? null;
+  const selectedPack = selectedDraft?.reasoningPack ?? null;
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-hidden bg-slate-200 2xl:grid-cols-[minmax(260px,340px)_1fr]">
-      <section className="min-h-0 overflow-y-auto bg-white" aria-label="Draft list">
-        <PanelHeader title="Drafts" count={drafts.length} />
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-hidden bg-[#c3c6d6] 2xl:grid-cols-[minmax(280px,360px)_1fr]">
+      <section className="min-h-0 overflow-y-auto bg-white" aria-label="Reasoning pack list">
+        <PanelHeader title="Reasoning packs" count={drafts.length} />
         <div className="space-y-1 p-2">
           {drafts.length === 0 ? (
-            <EmptyPanel text="Pack-bounded drafts will appear here after generation." />
+            <EmptyPanel text="Pack-bounded reasoning drafts will appear here after generation." />
           ) : (
             drafts.map((draft) => (
               <button
@@ -909,28 +934,43 @@ function DraftsTab({ drafts }: { drafts: DraftSummary[] }) {
               >
                 <span className="block text-sm font-semibold text-slate-950">{draft.title}</span>
                 <span className="mt-1 block text-xs text-slate-500">
-                  {draft.draftType} | {draft.status}
+                  {draft.requestedOutput ?? draft.draftType} | {draft.status}
                 </span>
+                {draft.reasoningPack ? (
+                  <span className="mt-2 flex flex-wrap gap-1">
+                    <StatusPill tone="blue">{draft.reasoningPack.issue_matrix.length} issues</StatusPill>
+                    <StatusPill tone="rose">{draft.reasoningPack.missing_evidence_checklist.length} missing</StatusPill>
+                  </span>
+                ) : null}
               </button>
             ))
           )}
         </div>
       </section>
-      <section className="min-h-0 overflow-y-auto bg-white" aria-label="Draft preview">
+      <section className="min-h-0 overflow-y-auto bg-white" aria-label="Reasoning pack detail">
         {selectedDraft ? (
-          <div className="mx-auto max-w-3xl px-6 py-6">
-            <p className="text-xs font-medium uppercase text-slate-500">{selectedDraft.draftType}</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedDraft.title}</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              {selectedDraft.claimCount} claims | Review {selectedDraft.reviewStatus ?? "open"}
-            </p>
-            <article className="mt-5 min-h-[420px] whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-5 text-sm leading-7 text-slate-900">
-              {selectedDraft.contentPreview}
-            </article>
+          <div className="mx-auto max-w-5xl space-y-5 px-5 py-5">
+            <header className="border-b border-[#c3c6d6] pb-4">
+              <p className="text-xs font-bold uppercase text-[#434654]">{selectedDraft.requestedOutput ?? selectedDraft.draftType}</p>
+              <h2 className="mt-1 text-2xl font-semibold text-[#1c1c1a]">{selectedDraft.title}</h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StatusPill tone="blue">{selectedDraft.claimCount} claims</StatusPill>
+                <StatusPill tone="neutral">Review {selectedDraft.reviewStatus ?? "open"}</StatusPill>
+                {selectedPack ? <StatusPill tone="green">{selectedPack.schema_version}</StatusPill> : null}
+              </div>
+            </header>
+
+            {selectedPack ? (
+              <ReasoningPackDetail pack={selectedPack} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+            ) : (
+              <article className="min-h-[420px] whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-5 text-sm leading-7 text-slate-900">
+                {selectedDraft.contentPreview}
+              </article>
+            )}
           </div>
         ) : (
           <div className="flex h-full items-center justify-center p-6">
-            <EmptyPanel text="Select a draft to inspect its cited content." />
+            <EmptyPanel text="Select a reasoning pack to inspect its cited content." />
           </div>
         )}
       </section>
@@ -938,11 +978,161 @@ function DraftsTab({ drafts }: { drafts: DraftSummary[] }) {
   );
 }
 
-function ReviewTab({ reviewItems }: { reviewItems: ReviewItem[] }) {
+function ReasoningPackDetail({
+  pack,
+  packItems,
+  onOpenPackItem,
+}: {
+  pack: ReasoningPack;
+  packItems: ResearchPackItem[];
+  onOpenPackItem: (packItemId: string) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-3 xl:grid-cols-3" aria-label="Reasoning pack summary">
+        <Metric label="Issues" value={String(pack.issue_matrix.length)} />
+        <Metric label="Arguments" value={String(pack.for_against_brief.length)} />
+        <Metric label="Missing evidence" value={String(pack.missing_evidence_checklist.length)} />
+      </section>
+
+      <section className="rounded-md border border-[#c3c6d6] bg-[#fcf9f5] p-4" aria-label="Preliminary opinion">
+        <h3 className="text-sm font-extrabold text-[#1c1c1a]">Preliminary opinion</h3>
+        <p className="mt-2 text-sm leading-6 text-[#434654]">{pack.preliminary_legal_opinion.important_qualification}</p>
+        <p className="mt-3 text-sm leading-6 text-[#1c1c1a]">{pack.preliminary_legal_opinion.preliminary_opinion}</p>
+        <p className="mt-3 text-sm leading-6 text-[#1c1c1a]">{pack.preliminary_legal_opinion.conclusion}</p>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ReasoningSection title="Issue matrix" count={pack.issue_matrix.length}>
+          {pack.issue_matrix.map((issue) => (
+            <article key={issue.issue_id} className="rounded-md border border-[#c3c6d6] bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h3 className="text-sm font-bold text-[#1c1c1a]">{issue.issue}</h3>
+                <StatusPill tone="neutral">{Math.round(issue.confidence * 100)}%</StatusPill>
+              </div>
+              <p className="mt-1 text-xs font-medium text-[#434654]">{issue.legal_area}</p>
+              <div className="mt-3 space-y-2">
+                {issue.elements.map((element) => (
+                  <div key={element.element_id} className="rounded-md bg-[#f6f3ef] p-2 text-xs leading-5 text-[#1c1c1a]">
+                    <p className="font-bold">{element.element}</p>
+                    <ListLine label="For" values={element.supporting_facts} />
+                    <ListLine label="Against" values={element.opposing_facts} />
+                    <PackItemButtons packItemIds={element.pack_item_ids} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </ReasoningSection>
+
+        <ReasoningSection title="For and against" count={pack.for_against_brief.length}>
+          {pack.for_against_brief.map((argument) => (
+            <article key={argument.issue_id} className="rounded-md border border-[#c3c6d6] bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-[#1c1c1a]">{argument.issue}</h3>
+                <StatusPill tone={argument.strength === "high" ? "green" : argument.strength === "low" ? "rose" : "blue"}>{argument.strength}</StatusPill>
+              </div>
+              <ListBlock title="For" values={[argument.client_argument]} />
+              <ListBlock title="Against" values={[argument.opposing_argument]} tone="rose" />
+              <ListBlock title="Rebuttal" values={[argument.rebuttal]} tone="blue" />
+              <ListBlock title="Weaknesses" values={argument.weaknesses} tone="rose" />
+              <PackItemButtons packItemIds={argument.pack_item_ids} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+            </article>
+          ))}
+        </ReasoningSection>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ReasoningSection title="Fact-to-law mapping" count={pack.fact_to_law_mappings.length}>
+          {pack.fact_to_law_mappings.map((mapping, index) => (
+            <article key={`${mapping.issue_id}-${index}`} className="rounded-md border border-[#c3c6d6] bg-white p-3">
+              <p className="text-xs font-bold uppercase text-[#434654]">{mapping.issue_id}</p>
+              <h3 className="mt-1 text-sm font-bold text-[#1c1c1a]">{mapping.legal_question}</h3>
+              <p className="mt-2 text-xs leading-5 text-[#1c1c1a]">{mapping.fact}</p>
+              <p className="mt-2 text-xs leading-5 text-[#434654]">{mapping.supporting_reasoning}</p>
+              <ListBlock title="Risk" values={[mapping.risk]} tone="rose" />
+              <PackItemButtons packItemIds={mapping.pack_item_ids} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+            </article>
+          ))}
+        </ReasoningSection>
+
+        <ReasoningSection title="Missing evidence" count={pack.missing_evidence_checklist.length}>
+          <ul className="space-y-2">
+            {pack.missing_evidence_checklist.map((item) => (
+              <li key={item} className="rounded-md border border-[#f0c7c7] bg-[#fff7f7] p-3 text-sm leading-6 text-[#7f1d1d]">
+                {item}
+              </li>
+            ))}
+          </ul>
+          <ListBlock title="Questions for client" values={pack.lawyer_review_pack.questions_for_client} tone="blue" />
+          <ListBlock title="Questions for lawyer" values={pack.lawyer_review_pack.questions_for_lawyer} tone="green" />
+        </ReasoningSection>
+      </section>
+
+      <ReasoningSection title="Authority verification" count={pack.authority_verifications.length}>
+        <div className="grid gap-3 xl:grid-cols-2">
+          {pack.authority_verifications.map((authority) => (
+            <article key={authority.authority_id} className="rounded-md border border-[#c3c6d6] bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-[#1c1c1a]">{authority.title}</h3>
+                  <p className="mt-1 text-xs text-[#434654]">{authority.citation}</p>
+                </div>
+                <StatusPill tone={authority.verification_status === "verified" ? "green" : "blue"}>{authority.verification_status}</StatusPill>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <Metric label="Official source" value={authority.official_source_checked ? "checked" : "review"} />
+                <Metric label="Amendments" value={authority.amendment_checked ? "checked" : "review"} />
+              </dl>
+              <p className="mt-3 text-xs leading-5 text-[#434654]">{authority.notes}</p>
+              <PackItemButtons packItemIds={authority.pack_item_ids} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+            </article>
+          ))}
+        </div>
+      </ReasoningSection>
+    </div>
+  );
+}
+
+function ReviewTab({
+  activeCaseId,
+  reviewItems,
+  onReviewDecision,
+}: {
+  activeCaseId: string | null;
+  reviewItems: ReviewItem[];
+  onReviewDecision: (input: ReviewDecisionInput) => Promise<{ ok: true; data: ReviewItem } | { ok: false; error: string }>;
+}) {
   const [selectedReviewId, setSelectedReviewId] = useState(reviewItems[0]?.reviewItemId ?? null);
   const selectedReview = reviewItems.find((item) => item.reviewItemId === selectedReviewId) ?? reviewItems[0] ?? null;
+  const [comment, setComment] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function submitDecision(decision: ReviewDecisionInput["decision"]) {
+    if (!activeCaseId || !selectedReview) {
+      setMessage("Open a matter and select a review item.");
+      return;
+    }
+    setMessage(null);
+    startTransition(async () => {
+      const result = await onReviewDecision({
+        caseId: activeCaseId,
+        reviewItemId: selectedReview.reviewItemId,
+        decision,
+        comment,
+      });
+      if (result.ok) {
+        setMessage(`Review ${result.data.status}.`);
+        setComment("");
+      } else {
+        setMessage(result.error);
+      }
+    });
+  }
+
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-hidden bg-slate-200 2xl:grid-cols-[minmax(260px,340px)_1fr]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-hidden bg-[#c3c6d6] 2xl:grid-cols-[minmax(280px,360px)_1fr]">
       <section className="min-h-0 overflow-y-auto bg-white" aria-label="Review queue">
         <PanelHeader title="Review queue" count={reviewItems.length} />
         <div className="space-y-1 p-2">
@@ -962,6 +1152,9 @@ function ReviewTab({ reviewItems }: { reviewItems: ReviewItem[] }) {
                 <span className="mt-1 block text-xs text-slate-500">
                   {item.itemType} | {item.priority}
                 </span>
+                <span className="mt-2 inline-flex">
+                  <StatusPill tone={item.status === "approved" ? "green" : item.status === "changes_requested" || item.status === "rejected" ? "rose" : "blue"}>{item.status}</StatusPill>
+                </span>
               </button>
             ))
           )}
@@ -976,9 +1169,49 @@ function ReviewTab({ reviewItems }: { reviewItems: ReviewItem[] }) {
               <Metric label="Status" value={selectedReview.status} />
               <Metric label="Priority" value={selectedReview.priority} />
             </dl>
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
-              Review decisions are captured in the backend review endpoints and audit stream.
-            </div>
+            <form
+              className="space-y-3 rounded-md border border-[#c3c6d6] bg-[#fcf9f5] p-4"
+              onSubmit={(event: FormEvent<HTMLFormElement>) => event.preventDefault()}
+            >
+              <label className="block text-sm font-medium text-[#1c1c1a]">
+                Review comment
+                <textarea
+                  className="mt-2 min-h-24 w-full resize-none rounded-md border border-[#c3c6d6] bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-[#003d9b] focus:ring-2 focus:ring-[#003d9b]/10"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                />
+              </label>
+              {message ? <p className="text-sm text-[#434654]">{message}</p> : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-[#0f766e] px-3 text-sm font-bold text-white hover:bg-[#115e59] disabled:bg-slate-300"
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => submitDecision("approved")}
+                >
+                  <CheckCircle2 size={16} />
+                  Approve
+                </button>
+                <button
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-[#003d9b] px-3 text-sm font-bold text-white hover:bg-[#002d73] disabled:bg-slate-300"
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => submitDecision("changes_requested")}
+                >
+                  <Send size={16} />
+                  Request changes
+                </button>
+                <button
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[#c3c6d6] bg-white px-3 text-sm font-bold text-[#7f1d1d] hover:border-[#7f1d1d] disabled:text-slate-400"
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => submitDecision("rejected")}
+                >
+                  <X size={16} />
+                  Reject
+                </button>
+              </div>
+            </form>
           </div>
         ) : (
           <div className="flex h-full items-center justify-center p-6">
@@ -988,6 +1221,112 @@ function ReviewTab({ reviewItems }: { reviewItems: ReviewItem[] }) {
       </section>
     </div>
   );
+}
+
+function ReasoningSection({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+  return (
+    <section className="space-y-3" aria-label={title}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-extrabold text-[#1c1c1a]">{title}</h3>
+        <span className="rounded-lg bg-[#f0edea] px-2 py-0.5 text-[11px] font-bold text-[#434654]">{count}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ListBlock({ title, values, tone = "neutral" }: { title: string; values: string[]; tone?: "neutral" | "blue" | "green" | "rose" }) {
+  if (values.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-bold uppercase text-[#434654]">{title}</p>
+      <ul className="mt-1 space-y-1">
+        {values.map((value) => (
+          <li key={value} className={`rounded-md px-2 py-1.5 text-xs leading-5 ${listToneClass(tone)}`}>
+            {value}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ListLine({ label, values }: { label: string; values: string[] }) {
+  if (values.length === 0) {
+    return null;
+  }
+  return (
+    <p className="mt-1">
+      <span className="font-bold">{label}: </span>
+      {values.join("; ")}
+    </p>
+  );
+}
+
+function PackItemButtons({
+  packItemIds,
+  packItems,
+  onOpenPackItem,
+}: {
+  packItemIds: string[];
+  packItems: ResearchPackItem[];
+  onOpenPackItem: (packItemId: string) => void;
+}) {
+  const uniqueIds = [...new Set(packItemIds)];
+  if (uniqueIds.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {uniqueIds.map((packItemId) => {
+        const item = packItems.find((candidate) => candidate.packItemId === packItemId);
+        return (
+          <button
+            key={packItemId}
+            className="inline-flex max-w-full items-center gap-1 rounded-md border border-[#c3c6d6] bg-white px-2 py-1 text-xs font-bold text-[#003d9b] hover:border-[#003d9b]"
+            type="button"
+            title={item?.citation ?? packItemId}
+            onClick={() => onOpenPackItem(packItemId)}
+          >
+            <ExternalLink size={13} />
+            <span className="truncate">{packItemId}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatusPill({ children, tone }: { children: ReactNode; tone: "neutral" | "blue" | "green" | "rose" }) {
+  return <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${pillToneClass(tone)}`}>{children}</span>;
+}
+
+function pillToneClass(tone: "neutral" | "blue" | "green" | "rose"): string {
+  if (tone === "blue") {
+    return "bg-[#dae2ff] text-[#003d9b]";
+  }
+  if (tone === "green") {
+    return "bg-[#dcfce7] text-[#166534]";
+  }
+  if (tone === "rose") {
+    return "bg-[#ffe4e6] text-[#9f1239]";
+  }
+  return "bg-[#f0edea] text-[#434654]";
+}
+
+function listToneClass(tone: "neutral" | "blue" | "green" | "rose"): string {
+  if (tone === "blue") {
+    return "bg-[#eef3ff] text-[#003d9b]";
+  }
+  if (tone === "green") {
+    return "bg-[#ecfdf3] text-[#166534]";
+  }
+  if (tone === "rose") {
+    return "bg-[#fff1f2] text-[#9f1239]";
+  }
+  return "bg-[#f6f3ef] text-[#1c1c1a]";
 }
 
 function TabButton({ active = false, icon, label, onClick }: { active?: boolean; icon: ReactNode; label: string; onClick: () => void }) {
