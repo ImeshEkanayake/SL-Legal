@@ -224,14 +224,17 @@ Outcome: the service is observable, load-tested, and deployable.
 
 Deliverables:
 
-- Load-test scenarios for retrieval, strategy generation, source viewer, and review endpoints.
+- Load-test scenarios for workspace snapshot, retrieval, strategy validation, source viewer, and review endpoints.
+- Signed concurrent load runner with real-load and dry-run modes.
+- Detached `load-plan` and `load` quality-gate modes with PID and log files.
 - Metrics for latency, error rate, retrieval hit rate, adverse recall, pack size, token use, and citation validation failures.
-- Runbooks for data hydration, index rebuild, schema checks, rollback, incident response, and corpus quality audits.
+- Runbooks for release flow, metrics review, data hydration, index rebuild, schema checks, rollback, incident response, and corpus quality audits.
 - CI quality gate for backend, frontend, security, and contract tests.
 
 Exit criteria:
 
-- Load tests meet agreed service-level targets.
+- Load scenario contracts pass unit tests and dry-run validation.
+- Real load tests meet agreed service-level targets on a production-like stack before deployment.
 - E2E tests pass against a production-like local stack.
 - Documentation covers setup, operation, testing, data handling, and release.
 
@@ -281,3 +284,4 @@ Every release candidate must pass:
 - Large corpus data is not committed to normal Git.
 - Long-running tests and quality gates must run detached with PID and log files.
 - Phase 4 must not apply a database migration; structured reasoning output is stored in existing draft metadata until a reviewed schema migration is approved.
+- Phase 6 must not treat a dry-run load plan as production-like load evidence.

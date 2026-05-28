@@ -19,3 +19,6 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/releases/v2_phase_4_reasoning_pack_workflow.md`
 - `Docs/v2_phase_5_production_ui_contract.md`
 - `Docs/releases/v2_phase_5_production_ui.md`
+- `Docs/v2_phase_6_production_operations_contract.md`
+- `Docs/v2_phase_6_operations_runbook.md`
+- `Docs/releases/v2_phase_6_production_operations.md`

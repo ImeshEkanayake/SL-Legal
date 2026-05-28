@@ -41,6 +41,7 @@ Important modules:
 - `product_policy.py`: product safety policy checks.
 - `auth.py`: signed request authentication.
 - `metrics.py`: operational metric helpers.
+- `operations.py`: Phase 6 load scenario parsing, placeholder substitution, percentile summaries, and threshold evaluation.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -98,6 +99,7 @@ Quality and safety:
 - `scripts/smoke_test_postgres_schema.py`: rollback-only schema smoke test.
 - `scripts/check_rag_production_health.py`: RAG health check.
 - `scripts/run_detached_quality_gate.sh`: detached test and quality runner.
+- `scripts/run_phase6_load_tests.py`: signed concurrent API load runner for Phase 6 workspace, retrieval, strategy validation, source, and review paths.
 
 Retrieval and index operations:
 
@@ -209,6 +211,18 @@ Phase 5 adds the lawyer-facing reasoning pack workspace without changing the dat
 - `web/src/components/SourceInspector.tsx`: reasoning rail summary.
 - `web/src/components/CaseWorkspace.test.tsx`: UI tests for reasoning view, citation navigation, and review actions.
 - `Docs/v2_phase_5_production_ui_contract.md`: UI contract, safety rules, tests, and release boundary.
+
+## V2 Phase 6 Production Operations Contract
+
+Phase 6 adds the production operations package without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase6_load_scenarios.json`: canonical API load scenario fixture for workspace, research, strategy validation, source viewer, and review queue paths.
+- `rag/sl_legal_rag/operations.py`: load scenario schema parsing, recursive placeholder substitution, p50/p95/p99 summaries, error-rate calculation, and threshold status.
+- `scripts/run_phase6_load_tests.py`: signed load runner for local or staging APIs with dry-run and real-load modes.
+- `scripts/run_detached_quality_gate.sh`: `load-plan` and `load` detached modes with PID/log files.
+- `Docs/v2_phase_6_production_operations_contract.md`: service-level targets, observability, release gate, and safety boundaries.
+- `Docs/v2_phase_6_operations_runbook.md`: release, metrics, incident, rollback, corpus audit, and data hydration workflow.
+- `tests/test_phase6_operations.py`: contract coverage for scenario fixture, placeholder substitution, threshold enforcement, and fixture schema.
 
 ## Data Boundary
 

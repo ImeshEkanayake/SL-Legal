@@ -25,9 +25,15 @@ case "${MODE}" in
   frontend)
     COMMAND="if [ ! -d web/node_modules ]; then npm --prefix web ci; fi; npm --prefix web run quality"
     ;;
+  load)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase6_load_tests.py"
+    ;;
+  load-plan)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase6_load_tests.py --dry-run"
+    ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan] [run-id]" >&2
     exit 2
     ;;
 esac
