@@ -12,6 +12,8 @@ __pycache__/
 data/indexes/*.json
 data/indexes/*.jsonl
 logs/*.log
+logs/**/*.log
+logs/**/*.pid
 
 # Frontend generated artifacts.
 web/node_modules/
