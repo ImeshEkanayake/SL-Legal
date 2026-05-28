@@ -298,6 +298,132 @@ class CitedClaim(BaseModel):
 
 
 RiskSeverity = Literal["low", "medium", "high", "critical"]
+EvidenceReviewStatus = Literal["pending", "approved", "changes_requested", "rejected"]
+
+
+class EvidenceStance(StrEnum):
+    SUPPORTS_CLAIM = "supports_claim"
+    CONTRADICTS_CLAIM = "contradicts_claim"
+    MIXED = "mixed"
+    CONTEXT = "context"
+
+
+EVIDENCE_STANCE_TO_CITATION_ROLE: dict[str, str] = {
+    EvidenceStance.SUPPORTS_CLAIM: "support",
+    EvidenceStance.CONTRADICTS_CLAIM: "adverse",
+    EvidenceStance.MIXED: "mixed",
+    EvidenceStance.CONTEXT: "context",
+}
+EVIDENCE_CITATION_ROLE_TO_STANCE: dict[str, EvidenceStance] = {
+    role: stance for stance, role in EVIDENCE_STANCE_TO_CITATION_ROLE.items()
+}
+
+
+def citation_role_for_evidence_stance(stance: EvidenceStance | str) -> str:
+    return EVIDENCE_STANCE_TO_CITATION_ROLE[_normalize_evidence_stance(stance)]
+
+
+def evidence_stance_for_citation_role(citation_role: str) -> EvidenceStance:
+    normalized = citation_role.strip().lower()
+    if normalized not in EVIDENCE_CITATION_ROLE_TO_STANCE:
+        raise ValueError(f"Unsupported evidence citation role: {citation_role}")
+    return EVIDENCE_CITATION_ROLE_TO_STANCE[normalized]
+
+
+def _normalize_evidence_stance(stance: EvidenceStance | str) -> EvidenceStance:
+    if isinstance(stance, EvidenceStance):
+        return stance
+    return EvidenceStance(str(stance))
+
+
+class ClaimEvidenceAssessmentRequest(BaseModel):
+    schema_version: str = "claim_evidence_assessment.v1"
+    claim_id: str | None = None
+    claim_text: str | None = Field(default=None, min_length=1)
+    pack_id: str = Field(min_length=1)
+    pack_item_id: str = Field(min_length=1)
+    stance: EvidenceStance
+    rationale: str = Field(min_length=1)
+    confidence_score: float = Field(ge=0, le=1)
+    risk_level: RiskSeverity = "medium"
+    source_quote: str = Field(min_length=1)
+    page_start: int | None = Field(default=None, ge=1)
+    page_end: int | None = Field(default=None, ge=1)
+    review_status: EvidenceReviewStatus = "pending"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("claim_id", "claim_text", "rationale", "source_quote", mode="before")
+    @classmethod
+    def strip_optional_text(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @model_validator(mode="after")
+    def validate_assessment_contract(self) -> "ClaimEvidenceAssessmentRequest":
+        if not self.claim_id and not self.claim_text:
+            raise ValueError("claim_text is required when claim_id is not supplied")
+        if self.page_start is not None and self.page_end is not None and self.page_end < self.page_start:
+            raise ValueError("page_end must be greater than or equal to page_start")
+        if self.stance == EvidenceStance.MIXED and not self.rationale.strip():
+            raise ValueError("mixed evidence requires an assessment rationale")
+        return self
+
+    @property
+    def citation_role(self) -> str:
+        return citation_role_for_evidence_stance(self.stance)
+
+
+class ClaimEvidenceAssessment(BaseModel):
+    schema_version: str = "claim_evidence_assessment.v1"
+    assessment_id: str
+    case_id: str
+    claim_id: str
+    claim_text: str
+    pack_id: str
+    pack_item_id: str
+    stance: EvidenceStance
+    citation_role: str
+    rationale: str
+    confidence_score: float = Field(ge=0, le=1)
+    risk_level: RiskSeverity = "medium"
+    source_quote: str
+    page_start: int | None = None
+    page_end: int | None = None
+    review_status: EvidenceReviewStatus | str = "pending"
+    document_id: str
+    title: str
+    document_type: str
+    source_id: str
+    authority_level: int
+    year: int | None = None
+    citation: str
+    source_url: str | None = None
+    local_path: str | None = None
+    anchor_count: int = 0
+    source_endpoint: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceAssessmentStanceGroup(BaseModel):
+    stance: EvidenceStance
+    count: int = Field(ge=0)
+    items: list[ClaimEvidenceAssessment] = Field(default_factory=list)
+
+
+class EvidenceAssessmentGroupedResponse(BaseModel):
+    case_id: str
+    claim_id: str | None = None
+    pack_id: str | None = None
+    stance: EvidenceStance | None = None
+    total_count: int = Field(ge=0)
+    groups: list[EvidenceAssessmentStanceGroup] = Field(default_factory=list)
+
+
+class EvidenceAssessmentCreateResponse(BaseModel):
+    case_id: str
+    assessment: ClaimEvidenceAssessment
 
 
 class CounterargumentSimulation(BaseModel):

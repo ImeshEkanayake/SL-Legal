@@ -21,7 +21,16 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ..models import LegalResearchPack, PackItemSourceResponse, StrategyDraftResponse
+from ..models import (
+    ClaimEvidenceAssessment,
+    ClaimEvidenceAssessmentRequest,
+    EvidenceStance,
+    LegalResearchPack,
+    PackItemSourceResponse,
+    StrategyDraftResponse,
+    citation_role_for_evidence_stance,
+    evidence_stance_for_citation_role,
+)
 from ..research_pack import research_pack_hash as canonical_research_pack_hash
 from ..research_pack import require_valid_research_pack_contract, seal_research_pack
 from ..source_anchoring import PageText, SourceAnchor, build_source_anchors
@@ -3273,6 +3282,232 @@ class LegalWorkspaceRepository:
         self.session.flush()
         return claim_id
 
+    def add_claim_evidence_assessment(
+        self,
+        *,
+        case_id: str,
+        assessment: ClaimEvidenceAssessmentRequest,
+        thread_id: str | None = None,
+        message_id: str | None = None,
+        agent_run_id: str | None = None,
+        created_by_user_id: str | None = None,
+    ) -> dict[str, Any]:
+        pack_item = self._pack_item_context(
+            pack_id=assessment.pack_id,
+            pack_item_id=assessment.pack_item_id,
+        )
+        if pack_item is None:
+            raise ValueError(f"Pack item not found in research pack: {assessment.pack_item_id}")
+
+        citation_role = assessment.citation_role
+        claim_id = assessment.claim_id
+        if claim_id:
+            claim = self._claim_state_for_metadata(case_id=case_id, claim_id=claim_id)
+            if claim is None:
+                raise ValueError(f"Claim not found for case: {claim_id}")
+            if str(claim.get("pack_id") or assessment.pack_id) != assessment.pack_id:
+                raise ValueError("Assessment pack_id must match the claim pack_id")
+        else:
+            claim_id = new_id("claim")
+            self.session.execute(
+                text(
+                    """
+                    INSERT INTO legal_claims (
+                        claim_id, case_id, thread_id, message_id, pack_id, claim_text,
+                        claim_type, support_status, risk_level, created_by_agent_run_id,
+                        metadata
+                    )
+                    VALUES (
+                        :claim_id, :case_id, :thread_id, :message_id, :pack_id, :claim_text,
+                        'evidence_assessment', :support_status, :risk_level, :agent_run_id,
+                        CAST(:metadata AS jsonb)
+                    )
+                    """
+                ),
+                {
+                    "claim_id": claim_id,
+                    "case_id": case_id,
+                    "thread_id": thread_id,
+                    "message_id": message_id,
+                    "pack_id": assessment.pack_id,
+                    "claim_text": assessment.claim_text,
+                    "support_status": _support_status_for_stance(assessment.stance),
+                    "risk_level": assessment.risk_level,
+                    "agent_run_id": agent_run_id,
+                    "metadata": _json(
+                        {
+                            "created_by_user_id": created_by_user_id,
+                            "schema_version": assessment.schema_version,
+                        }
+                    ),
+                },
+            )
+
+        self.session.execute(
+            text(
+                """
+                INSERT INTO legal_claim_citations (claim_id, pack_item_id, citation_role)
+                VALUES (:claim_id, :pack_item_id, :citation_role)
+                ON CONFLICT (claim_id, pack_item_id, citation_role) DO NOTHING
+                """
+            ),
+            {
+                "claim_id": claim_id,
+                "pack_item_id": assessment.pack_item_id,
+                "citation_role": citation_role,
+            },
+        )
+        self._store_evidence_assessment_metadata(
+            case_id=case_id,
+            claim_id=claim_id,
+            assessment=assessment,
+            citation_role=citation_role,
+        )
+        self.session.flush()
+        created = self.list_claim_evidence_assessments(
+            case_id=case_id,
+            claim_id=claim_id,
+            pack_id=assessment.pack_id,
+            stance=assessment.stance,
+            limit=500,
+        )
+        for item in created:
+            if item["pack_item_id"] == assessment.pack_item_id:
+                return item
+        raise RuntimeError("Evidence assessment was not readable after persistence")
+
+    def list_claim_evidence_assessments(
+        self,
+        *,
+        case_id: str,
+        claim_id: str | None = None,
+        pack_id: str | None = None,
+        stance: EvidenceStance | str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        citation_role = citation_role_for_evidence_stance(stance) if stance is not None else None
+        conditions = ["lc.case_id = :case_id"]
+        params: dict[str, Any] = {"case_id": case_id, "limit": limit}
+        if claim_id is not None:
+            conditions.append("lc.claim_id = :claim_id")
+            params["claim_id"] = claim_id
+        if pack_id is not None:
+            conditions.append("lc.pack_id = :pack_id")
+            params["pack_id"] = pack_id
+        if citation_role is not None:
+            conditions.append("lcc.citation_role = :citation_role")
+            params["citation_role"] = citation_role
+        rows = self.session.execute(
+            text(
+                f"""
+                SELECT
+                    lc.claim_id,
+                    lc.case_id,
+                    lc.claim_text,
+                    lc.pack_id,
+                    lc.risk_level,
+                    lc.metadata AS claim_metadata,
+                    lcc.pack_item_id,
+                    lcc.citation_role,
+                    rpi.chunk_id,
+                    rc.document_id,
+                    rc.title,
+                    rc.document_type,
+                    rc.source_id,
+                    rc.authority_level,
+                    rc.year,
+                    rc.citation,
+                    COALESCE(rpi.page_start, rc.page_start) AS page_start,
+                    COALESCE(rpi.page_end, rc.page_end) AS page_end,
+                    rc.source_url,
+                    rc.local_path,
+                    COALESCE(rpi.selected_text, rc.chunk_text, '') AS selected_text,
+                    count(pia.anchor_id) FILTER (WHERE pia.status = 'active') AS anchor_count,
+                    (
+                        SELECT ri.status
+                        FROM review_items ri
+                        WHERE ri.case_id = lc.case_id
+                          AND ri.item_type = 'legal_claim'
+                          AND ri.item_id = lc.claim_id
+                        ORDER BY ri.created_at DESC
+                        LIMIT 1
+                    ) AS review_status,
+                    lcc.created_at AS cited_at
+                FROM legal_claims lc
+                JOIN legal_claim_citations lcc ON lcc.claim_id = lc.claim_id
+                JOIN research_pack_items rpi ON rpi.pack_item_id = lcc.pack_item_id
+                JOIN retrieval_chunks rc ON rc.chunk_id = rpi.chunk_id
+                LEFT JOIN pack_item_source_anchors pia ON pia.pack_item_id = lcc.pack_item_id
+                WHERE {' AND '.join(conditions)}
+                  AND lcc.citation_role IN ('support', 'adverse', 'mixed', 'context')
+                GROUP BY
+                    lc.claim_id,
+                    lc.case_id,
+                    lc.claim_text,
+                    lc.pack_id,
+                    lc.risk_level,
+                    lc.metadata,
+                    lcc.pack_item_id,
+                    lcc.citation_role,
+                    rpi.chunk_id,
+                    rc.document_id,
+                    rc.title,
+                    rc.document_type,
+                    rc.source_id,
+                    rc.authority_level,
+                    rc.year,
+                    rc.citation,
+                    COALESCE(rpi.page_start, rc.page_start),
+                    COALESCE(rpi.page_end, rc.page_end),
+                    rc.source_url,
+                    rc.local_path,
+                    COALESCE(rpi.selected_text, rc.chunk_text, ''),
+                    lcc.created_at
+                ORDER BY lc.created_at DESC, lcc.created_at ASC, lcc.pack_item_id ASC
+                LIMIT :limit
+                """
+            ),
+            params,
+        ).mappings().all()
+        return [_evidence_assessment(row) for row in rows]
+
+    def grouped_claim_evidence_assessments(
+        self,
+        *,
+        case_id: str,
+        claim_id: str | None = None,
+        pack_id: str | None = None,
+        stance: EvidenceStance | str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        assessments = self.list_claim_evidence_assessments(
+            case_id=case_id,
+            claim_id=claim_id,
+            pack_id=pack_id,
+            stance=stance,
+            limit=limit,
+        )
+        grouped: dict[str, list[dict[str, Any]]] = {
+            EvidenceStance.SUPPORTS_CLAIM.value: [],
+            EvidenceStance.CONTRADICTS_CLAIM.value: [],
+            EvidenceStance.MIXED.value: [],
+            EvidenceStance.CONTEXT.value: [],
+        }
+        for assessment in assessments:
+            grouped[str(assessment["stance"])].append(assessment)
+        return {
+            "case_id": case_id,
+            "claim_id": claim_id,
+            "pack_id": pack_id,
+            "stance": _evidence_stance_value(stance),
+            "total_count": len(assessments),
+            "groups": [
+                {"stance": group_stance, "count": len(items), "items": items}
+                for group_stance, items in grouped.items()
+                if items or stance is None
+            ],
+        }
+
     def create_review_item(
         self,
         *,
@@ -3924,6 +4159,109 @@ class LegalWorkspaceRepository:
             citations.append(item)
         return citations
 
+    def _pack_item_context(self, *, pack_id: str, pack_item_id: str) -> dict[str, Any] | None:
+        row = self.session.execute(
+            text(
+                """
+                SELECT
+                    rpi.pack_item_id,
+                    rpi.pack_id,
+                    rpi.chunk_id,
+                    rc.document_id,
+                    rc.title,
+                    rc.citation
+                FROM research_pack_items rpi
+                JOIN retrieval_chunks rc ON rc.chunk_id = rpi.chunk_id
+                WHERE rpi.pack_id = :pack_id
+                  AND rpi.pack_item_id = :pack_item_id
+                """
+            ),
+            {"pack_id": pack_id, "pack_item_id": pack_item_id},
+        ).mappings().first()
+        return _plain_dict(row) if row is not None else None
+
+    def _claim_state_for_metadata(self, *, case_id: str, claim_id: str) -> dict[str, Any] | None:
+        row = self.session.execute(
+            text(
+                """
+                SELECT
+                    claim_id,
+                    case_id,
+                    pack_id,
+                    claim_text,
+                    support_status,
+                    risk_level,
+                    metadata
+                FROM legal_claims
+                WHERE case_id = :case_id
+                  AND claim_id = :claim_id
+                FOR UPDATE
+                """
+            ),
+            {"case_id": case_id, "claim_id": claim_id},
+        ).mappings().first()
+        return _plain_dict(row) if row is not None else None
+
+    def _store_evidence_assessment_metadata(
+        self,
+        *,
+        case_id: str,
+        claim_id: str,
+        assessment: ClaimEvidenceAssessmentRequest,
+        citation_role: str,
+    ) -> None:
+        claim = self._claim_state_for_metadata(case_id=case_id, claim_id=claim_id)
+        if claim is None:
+            raise ValueError(f"Claim not found for case: {claim_id}")
+        metadata = dict(claim.get("metadata") or {})
+        assessments = dict(metadata.get("evidence_assessments") or {})
+        assessment_key = _evidence_assessment_key(
+            pack_item_id=assessment.pack_item_id,
+            citation_role=citation_role,
+        )
+        assessments[assessment_key] = {
+            "schema_version": assessment.schema_version,
+            "assessment_id": _evidence_assessment_id(
+                claim_id=claim_id,
+                pack_item_id=assessment.pack_item_id,
+                citation_role=citation_role,
+            ),
+            "stance": assessment.stance.value,
+            "citation_role": citation_role,
+            "rationale": assessment.rationale,
+            "confidence_score": assessment.confidence_score,
+            "risk_level": assessment.risk_level,
+            "source_quote": assessment.source_quote,
+            "page_start": assessment.page_start,
+            "page_end": assessment.page_end,
+            "review_status": assessment.review_status,
+            "metadata": assessment.metadata,
+        }
+        metadata["evidence_assessments"] = assessments
+        self.session.execute(
+            text(
+                """
+                UPDATE legal_claims
+                SET
+                    support_status = :support_status,
+                    risk_level = :risk_level,
+                    metadata = CAST(:metadata AS jsonb),
+                    updated_at = now()
+                WHERE case_id = :case_id
+                  AND claim_id = :claim_id
+                """
+            ),
+            {
+                "case_id": case_id,
+                "claim_id": claim_id,
+                "support_status": _aggregate_support_status(assessments),
+                "risk_level": _highest_risk_level(
+                    [str(item.get("risk_level") or "medium") for item in assessments.values()]
+                ),
+                "metadata": _json(metadata),
+            },
+        )
+
     def _review_item_state_for_update(self, *, case_id: str, review_item_id: str) -> dict[str, Any] | None:
         row = self.session.execute(
             text(
@@ -4255,6 +4593,118 @@ def _claim_summary(row: Any) -> dict[str, Any]:
     data["citation_count"] = int(data["citation_count"] or 0)
     data["metadata"] = dict(data["metadata"] or {})
     return data
+
+
+def _evidence_assessment(row: Any) -> dict[str, Any]:
+    data = _plain_dict(row)
+    citation_role = str(data["citation_role"])
+    stance = evidence_stance_for_citation_role(citation_role)
+    metadata = dict(data.get("claim_metadata") or {})
+    details = dict(
+        (metadata.get("evidence_assessments") or {}).get(
+            _evidence_assessment_key(pack_item_id=str(data["pack_item_id"]), citation_role=citation_role),
+            {},
+        )
+    )
+    page_start = details.get("page_start", data.get("page_start"))
+    page_end = details.get("page_end", data.get("page_end"))
+    assessment = {
+        "schema_version": str(details.get("schema_version") or "claim_evidence_assessment.v1"),
+        "assessment_id": str(
+            details.get("assessment_id")
+            or _evidence_assessment_id(
+                claim_id=str(data["claim_id"]),
+                pack_item_id=str(data["pack_item_id"]),
+                citation_role=citation_role,
+            )
+        ),
+        "case_id": str(data["case_id"]),
+        "claim_id": str(data["claim_id"]),
+        "claim_text": str(data["claim_text"]),
+        "pack_id": str(data["pack_id"]),
+        "pack_item_id": str(data["pack_item_id"]),
+        "stance": stance.value,
+        "citation_role": citation_role,
+        "rationale": str(details.get("rationale") or "Assessment rationale not yet recorded."),
+        "confidence_score": float(details.get("confidence_score", 0.0)),
+        "risk_level": str(details.get("risk_level") or data.get("risk_level") or "medium"),
+        "source_quote": str(details.get("source_quote") or data.get("selected_text") or ""),
+        "page_start": int(page_start) if page_start is not None else None,
+        "page_end": int(page_end) if page_end is not None else None,
+        "review_status": str(details.get("review_status") or data.get("review_status") or "pending"),
+        "document_id": str(data["document_id"]),
+        "title": str(data["title"]),
+        "document_type": str(data["document_type"]),
+        "source_id": str(data["source_id"]),
+        "authority_level": int(data["authority_level"]),
+        "year": int(data["year"]) if data.get("year") is not None else None,
+        "citation": str(data["citation"]),
+        "source_url": str(data["source_url"]) if data.get("source_url") else None,
+        "local_path": str(data["local_path"]) if data.get("local_path") else None,
+        "anchor_count": int(data.get("anchor_count") or 0),
+        "source_endpoint": f"/v1/research/packs/{data['pack_id']}/items/{data['pack_item_id']}/source",
+        "metadata": dict(details.get("metadata") or {}),
+    }
+    return ClaimEvidenceAssessment.model_validate(assessment).model_dump(mode="json")
+
+
+def _evidence_assessment_key(*, pack_item_id: str, citation_role: str) -> str:
+    return f"{pack_item_id}:{citation_role}"
+
+
+def _evidence_assessment_id(*, claim_id: str, pack_item_id: str, citation_role: str) -> str:
+    digest = hashlib.sha256(f"{claim_id}:{pack_item_id}:{citation_role}".encode("utf-8")).hexdigest()
+    return f"assess_{digest[:32]}"
+
+
+def _support_status_for_stance(stance: EvidenceStance | str) -> str:
+    normalized = _normalize_evidence_stance(stance)
+    return {
+        EvidenceStance.SUPPORTS_CLAIM: "supported",
+        EvidenceStance.CONTRADICTS_CLAIM: "adverse",
+        EvidenceStance.MIXED: "mixed",
+        EvidenceStance.CONTEXT: "context",
+    }[normalized]
+
+
+def _evidence_stance_value(stance: EvidenceStance | str | None) -> str | None:
+    if stance is None:
+        return None
+    return _normalize_evidence_stance(stance).value
+
+
+def _normalize_evidence_stance(stance: EvidenceStance | str) -> EvidenceStance:
+    if isinstance(stance, EvidenceStance):
+        return stance
+    return EvidenceStance(str(stance))
+
+
+def _aggregate_support_status(assessments: dict[str, Any]) -> str:
+    stances = {
+        str(item.get("stance"))
+        for item in assessments.values()
+        if isinstance(item, dict) and item.get("stance")
+    }
+    if EvidenceStance.MIXED.value in stances or len(stances.intersection({
+        EvidenceStance.SUPPORTS_CLAIM.value,
+        EvidenceStance.CONTRADICTS_CLAIM.value,
+    })) > 1:
+        return "mixed"
+    if EvidenceStance.CONTRADICTS_CLAIM.value in stances:
+        return "adverse"
+    if EvidenceStance.SUPPORTS_CLAIM.value in stances:
+        return "supported"
+    if EvidenceStance.CONTEXT.value in stances:
+        return "context"
+    return "unverified"
+
+
+def _highest_risk_level(values: Iterable[str]) -> str:
+    order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+    ranked = [value for value in values if value in order]
+    if not ranked:
+        return "medium"
+    return max(ranked, key=lambda value: order[value])
 
 
 def _case_document_file_context(*, case_id: str, row: Any) -> dict[str, Any]:

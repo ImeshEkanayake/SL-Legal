@@ -2115,6 +2115,125 @@ def test_review_decision_endpoint_records_audited_decision(monkeypatch):
     assert calls["reviewer_user_id"] == "user_1"
 
 
+def test_evidence_assessment_endpoints_return_grouped_stances(monkeypatch):
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    created_assessment = {
+        "schema_version": "claim_evidence_assessment.v1",
+        "assessment_id": "assess_1",
+        "case_id": "case_1",
+        "claim_id": "claim_1",
+        "claim_text": "The employer refused to bargain.",
+        "pack_id": "pack_1",
+        "pack_item_id": "pack_1_item_001",
+        "stance": "contradicts_claim",
+        "citation_role": "adverse",
+        "rationale": "The source is adverse because it sets a qualification condition.",
+        "confidence_score": 0.74,
+        "risk_level": "high",
+        "source_quote": "qualifying trade union",
+        "page_start": 1,
+        "page_end": 1,
+        "review_status": "pending",
+        "document_id": "doc_1",
+        "title": "Industrial Disputes",
+        "document_type": "Act",
+        "source_id": "PARL_ACTS",
+        "authority_level": 2,
+        "year": 1950,
+        "citation": "Industrial Disputes Act",
+        "source_url": "https://example.test/doc",
+        "local_path": "data/raw/doc.pdf",
+        "anchor_count": 1,
+        "source_endpoint": "/v1/research/packs/pack_1/items/pack_1_item_001/source",
+        "metadata": {},
+    }
+    calls: dict[str, object] = {}
+
+    class FakeRepository:
+        def __init__(self, _session):
+            pass
+
+        def case_context(self, case_id: str):
+            assert case_id == "case_1"
+            return SimpleNamespace(case_id=case_id, organization_id="org_1", created_by_user_id="user_1")
+
+        def user_has_case_permission(self, *, case_id: str, user_id: str):
+            assert case_id == "case_1"
+            assert user_id == "user_1"
+            return True
+
+        def add_claim_evidence_assessment(self, **kwargs):
+            calls["created"] = kwargs
+            return created_assessment
+
+        def grouped_claim_evidence_assessments(self, **kwargs):
+            calls["grouped"] = kwargs
+            return {
+                "case_id": "case_1",
+                "claim_id": None,
+                "pack_id": "pack_1",
+                "stance": None,
+                "total_count": 1,
+                "groups": [
+                    {
+                        "stance": "contradicts_claim",
+                        "count": 1,
+                        "items": [created_assessment],
+                    }
+                ],
+            }
+
+        def record_audit_event(self, **kwargs):
+            calls["audit"] = kwargs
+            return 11
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr("sl_legal_rag.api.LegalWorkspaceRepository", FakeRepository)
+    monkeypatch.setattr("sl_legal_rag.api.session_scope", fake_session_scope)
+
+    client = TestClient(app)
+    target = "/v1/cases/case_1/evidence/assessments"
+    body = json_body(
+        {
+            "claim_text": "The employer refused to bargain.",
+            "pack_id": "pack_1",
+            "pack_item_id": "pack_1_item_001",
+            "stance": "contradicts_claim",
+            "rationale": "The source is adverse because it sets a qualification condition.",
+            "confidence_score": 0.74,
+            "risk_level": "high",
+            "source_quote": "qualifying trade union",
+            "page_start": 1,
+            "page_end": 1,
+            "metadata": {"fixture_time": now.isoformat()},
+        }
+    )
+    create_response = client.post(
+        target,
+        content=body,
+        headers={
+            **signed_headers(monkeypatch, method="POST", target=target, body=body),
+            "Content-Type": "application/json",
+        },
+    )
+    assert create_response.status_code == 200
+    assert create_response.json()["assessment"]["stance"] == "contradicts_claim"
+    assert calls["audit"]["event_type"] == "evidence.assessment.recorded"
+    assert calls["created"]["created_by_user_id"] == "user_1"
+
+    list_target = "/v1/cases/case_1/evidence/assessments?pack_id=pack_1"
+    list_response = client.get(
+        list_target,
+        headers=signed_headers(monkeypatch, method="GET", target=list_target),
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()["groups"][0]["items"][0]["citation_role"] == "adverse"
+    assert calls["grouped"]["pack_id"] == "pack_1"
+
+
 def test_case_read_endpoint_rejects_user_without_case_permission(monkeypatch):
     class FakeRepository:
         def __init__(self, _session):

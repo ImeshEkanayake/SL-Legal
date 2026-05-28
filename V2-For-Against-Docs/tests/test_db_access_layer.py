@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from sl_legal_rag.db import LegalWorkspaceRepository, make_engine
 from sl_legal_rag.db.ids import new_id
-from sl_legal_rag.models import LegalResearchPack, StrategyDraftResponse
+from sl_legal_rag.models import ClaimEvidenceAssessmentRequest, LegalResearchPack, StrategyDraftResponse
 
 
 def test_db_access_layer_vertical_workflow_rolls_back():
@@ -536,6 +536,56 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert claim_detail["citations"][0]["source_endpoint"].endswith("/source")
             assert claim_detail["review_items"][0]["review_item_id"] == persisted_strategy.claim_review_item_ids[0]
 
+            supporting_assessment = repo.add_claim_evidence_assessment(
+                case_id=workspace.case_id,
+                assessment=ClaimEvidenceAssessmentRequest.model_validate(
+                    {
+                        "claim_id": persisted_strategy.claim_ids[0],
+                        "pack_id": persisted_pack.pack_id,
+                        "pack_item_id": pack_model.items[0].pack_item_id,
+                        "stance": "supports_claim",
+                        "rationale": "The source directly supports the pack-bounded claim.",
+                        "confidence_score": 0.91,
+                        "risk_level": "medium",
+                        "source_quote": "No employer shall refuse to bargain with a qualifying trade union.",
+                        "page_start": 1,
+                        "page_end": 1,
+                    }
+                ),
+                created_by_user_id=workspace.user_id,
+            )
+            adverse_assessment = repo.add_claim_evidence_assessment(
+                case_id=workspace.case_id,
+                assessment=ClaimEvidenceAssessmentRequest.model_validate(
+                    {
+                        "claim_text": "The employer can argue the union was not qualifying.",
+                        "pack_id": persisted_pack.pack_id,
+                        "pack_item_id": pack_model.items[0].pack_item_id,
+                        "stance": "contradicts_claim",
+                        "rationale": "The same item is adverse to a different claim because the duty depends on qualification.",
+                        "confidence_score": 0.78,
+                        "risk_level": "high",
+                        "source_quote": "qualifying trade union",
+                        "page_start": 1,
+                        "page_end": 1,
+                    }
+                ),
+                created_by_user_id=workspace.user_id,
+            )
+            assert supporting_assessment["stance"] == "supports_claim"
+            assert adverse_assessment["stance"] == "contradicts_claim"
+            assert supporting_assessment["pack_item_id"] == adverse_assessment["pack_item_id"]
+            assert supporting_assessment["claim_id"] != adverse_assessment["claim_id"]
+
+            grouped_assessments = repo.grouped_claim_evidence_assessments(case_id=workspace.case_id)
+            assert grouped_assessments["total_count"] == 2
+            assessment_counts = {
+                group["stance"]: group["count"]
+                for group in grouped_assessments["groups"]
+            }
+            assert assessment_counts["supports_claim"] == 1
+            assert assessment_counts["contradicts_claim"] == 1
+
             claim_review = repo.apply_review_decision(
                 case_id=workspace.case_id,
                 review_item_id=persisted_strategy.claim_review_item_ids[0],
@@ -594,7 +644,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert overview["issue_count"] == 1
             assert overview["thread_count"] == 1
             assert overview["pack_count"] == 1
-            assert overview["claim_count"] == 1
+            assert overview["claim_count"] == 2
             assert overview["review_count"] == 2
         finally:
             session.close()

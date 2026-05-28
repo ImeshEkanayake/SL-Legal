@@ -155,11 +155,19 @@ web/src/**/*.test.tsx
 Recommended additions:
 
 - `ClaimEvidenceAssessment` models in `rag/sl_legal_rag/models.py`.
-- Evidence assessment prompt and validation helpers in `rag/sl_legal_rag/strategy.py` or a new focused module.
-- Repository methods in `rag/sl_legal_rag/db/repositories.py`.
-- API endpoints in `rag/sl_legal_rag/api.py`.
+- Evidence assessment repository methods in `rag/sl_legal_rag/db/repositories.py`.
+- Evidence assessment API endpoints in `rag/sl_legal_rag/api.py`.
 - Strategy memo and evidence stance UI in `web/src/components`.
-- Tests in `tests/test_evidence_stance.py`, `tests/test_strategy_reasoning.py`, API tests, and UI tests.
+- Tests in `tests/test_evidence_assessments.py`, `tests/test_db_access_layer.py`, API tests, and future UI tests.
+
+## V2 Phase 2 Evidence Assessment Contract
+
+Phase 2 adds a claim-level evidence assessment contract without applying a database migration. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `EvidenceStance`, `ClaimEvidenceAssessmentRequest`, `ClaimEvidenceAssessment`, grouped response models, and stance-to-citation-role mapping.
+- `rag/sl_legal_rag/db/repositories.py`: create, list, and grouped retrieval methods backed by `legal_claims`, `legal_claim_citations`, `research_pack_items`, and `retrieval_chunks`.
+- `rag/sl_legal_rag/api.py`: signed create/list endpoints at `/v1/cases/{case_id}/evidence/assessments`.
+- `Docs/v2_phase_2_evidence_assessment_contract.md`: API, validation, persistence, review, and future migration contract.
 
 ## Data Boundary
 

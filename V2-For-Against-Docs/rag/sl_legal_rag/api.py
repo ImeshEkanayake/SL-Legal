@@ -35,10 +35,14 @@ from .models import (
     AuditEventStreamResponse,
     CaseWorkspaceSnapshot,
     CaseStructureRequest,
+    ClaimEvidenceAssessmentRequest,
     ClaimDetail,
     ClaimListResponse,
     DraftDetail,
     DraftListResponse,
+    EvidenceAssessmentCreateResponse,
+    EvidenceAssessmentGroupedResponse,
+    EvidenceStance,
     LegalResearchPack,
     PersistedStrategyDraftResponse,
     ResearchPackExpansionRequest,
@@ -135,6 +139,7 @@ STRATEGY_PROMPT_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_STRATEGY_PROMPT_BODY_LIMIT
 CASE_STRUCTURE_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_CASE_STRUCTURE_BODY_LIMIT_BYTES", 512 * 1024)
 STRATEGY_DRAFT_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_STRATEGY_DRAFT_BODY_LIMIT_BYTES", 2 * 1024 * 1024)
 STRATEGY_VALIDATE_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_STRATEGY_VALIDATE_BODY_LIMIT_BYTES", 1024 * 1024)
+EVIDENCE_ASSESSMENT_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_EVIDENCE_ASSESSMENT_BODY_LIMIT_BYTES", 256 * 1024)
 UI_CASE_CREATE_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_UI_CASE_CREATE_BODY_LIMIT_BYTES", 32 * 1024)
 UI_CHAT_MESSAGE_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_UI_CHAT_MESSAGE_BODY_LIMIT_BYTES", 64 * 1024)
 UI_DOCUMENT_CACHE_BODY_LIMIT_BYTES = _int_env("SL_LEGAL_UI_DOCUMENT_CACHE_BODY_LIMIT_BYTES", 4 * 1024)
@@ -170,6 +175,10 @@ STRATEGY_PROMPT_BODY_LIMIT = _request_body_limit_dependency("strategy.prompt", S
 CASE_STRUCTURE_BODY_LIMIT = _request_body_limit_dependency("case.structure", CASE_STRUCTURE_BODY_LIMIT_BYTES)
 STRATEGY_DRAFT_BODY_LIMIT = _request_body_limit_dependency("strategy.draft", STRATEGY_DRAFT_BODY_LIMIT_BYTES)
 STRATEGY_VALIDATE_BODY_LIMIT = _request_body_limit_dependency("strategy.validate", STRATEGY_VALIDATE_BODY_LIMIT_BYTES)
+EVIDENCE_ASSESSMENT_BODY_LIMIT = _request_body_limit_dependency(
+    "evidence.assessment",
+    EVIDENCE_ASSESSMENT_BODY_LIMIT_BYTES,
+)
 UI_CASE_CREATE_BODY_LIMIT = _request_body_limit_dependency("ui.case.create", UI_CASE_CREATE_BODY_LIMIT_BYTES)
 UI_CHAT_MESSAGE_BODY_LIMIT = _request_body_limit_dependency("ui.chat.message", UI_CHAT_MESSAGE_BODY_LIMIT_BYTES)
 UI_DOCUMENT_CACHE_BODY_LIMIT = _request_body_limit_dependency("ui.document.cache", UI_DOCUMENT_CACHE_BODY_LIMIT_BYTES)
@@ -180,6 +189,10 @@ SIGNED_POST_BODY_LIMITS = {
     "/v1/cases/structure": ("case.structure", CASE_STRUCTURE_BODY_LIMIT_BYTES),
     "/v1/strategy/draft": ("strategy.draft", STRATEGY_DRAFT_BODY_LIMIT_BYTES),
     "/v1/strategy/validate": ("strategy.validate", STRATEGY_VALIDATE_BODY_LIMIT_BYTES),
+    "/v1/cases/{case_id}/evidence/assessments": (
+        "evidence.assessment",
+        EVIDENCE_ASSESSMENT_BODY_LIMIT_BYTES,
+    ),
     "/v1/ui/cases": ("ui.case.create", UI_CASE_CREATE_BODY_LIMIT_BYTES),
 }
 
@@ -1044,6 +1057,71 @@ def get_case_claim(
     if claim is None:
         raise HTTPException(status_code=404, detail=f"Claim not found for case: {claim_id}")
     return ClaimDetail.model_validate(claim).model_dump(mode="json")
+
+
+@app.post(
+    "/v1/cases/{case_id}/evidence/assessments",
+    response_model=EvidenceAssessmentCreateResponse,
+)
+def create_case_evidence_assessment(
+    case_id: str,
+    request: ClaimEvidenceAssessmentRequest,
+    _body_size: None = Depends(EVIDENCE_ASSESSMENT_BODY_LIMIT),
+    auth: AuthContext = Depends(require_auth_context),
+) -> dict[str, object]:
+    with session_scope() as session:
+        repo = LegalWorkspaceRepository(session)
+        case_context = _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+        try:
+            assessment = repo.add_claim_evidence_assessment(
+                case_id=case_id,
+                assessment=request,
+                created_by_user_id=auth.user_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        repo.record_audit_event(
+            organization_id=case_context.organization_id,
+            case_id=case_id,
+            user_id=auth.user_id,
+            event_type="evidence.assessment.recorded",
+            entity_type="claim_evidence_assessment",
+            entity_id=str(assessment["assessment_id"]),
+            after_state=assessment,
+            metadata={
+                "claim_id": assessment["claim_id"],
+                "pack_id": assessment["pack_id"],
+                "pack_item_id": assessment["pack_item_id"],
+                "stance": assessment["stance"],
+                "citation_role": assessment["citation_role"],
+            },
+        )
+    return EvidenceAssessmentCreateResponse(case_id=case_id, assessment=assessment).model_dump(mode="json")
+
+
+@app.get(
+    "/v1/cases/{case_id}/evidence/assessments",
+    response_model=EvidenceAssessmentGroupedResponse,
+)
+def list_case_evidence_assessments(
+    case_id: str,
+    auth: AuthContext = Depends(require_auth_context),
+    claim_id: str | None = None,
+    pack_id: str | None = None,
+    stance: EvidenceStance | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, object]:
+    with session_scope() as session:
+        repo = LegalWorkspaceRepository(session)
+        _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+        grouped = repo.grouped_claim_evidence_assessments(
+            case_id=case_id,
+            claim_id=claim_id,
+            pack_id=pack_id,
+            stance=stance,
+            limit=limit,
+        )
+    return EvidenceAssessmentGroupedResponse.model_validate(grouped).model_dump(mode="json")
 
 
 @app.get("/v1/cases/{case_id}/audit/events", response_model=AuditEventListResponse)
