@@ -318,6 +318,26 @@ Exit criteria:
 - Actual GitHub asset upload remains explicit and auditable.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 11: Published Asset Verification
+
+Outcome: published GitHub release assets are independently verified against the approved local asset checksums and sizes.
+
+Deliverables:
+
+- Remote release asset verification script.
+- GitHub asset digest and size comparison against approved local release artifact files.
+- Deterministic release bundle generation so unchanged evidence rebuilds keep stable checksums.
+- Detached asset-verification gate.
+- Verification report with `verified`, `missing_remote`, and `mismatch` states.
+- Contract, runbook, and release documentation for post-publication provenance.
+
+Exit criteria:
+
+- Verification tests pass for match, mismatch, and saved remote asset payloads.
+- Published Phase 9 assets verify against local SHA-256 digests.
+- Verification report is generated without committing logs or bundles.
+- No V1 changes, no raw data upload, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -380,3 +400,4 @@ Every release candidate must pass:
 - Phase 8 must not mark production deployment ready when production-stack evidence is missing or failed.
 - Phase 9 must not commit release artifact tarballs, logs, or raw evidence outputs to normal Git.
 - Phase 10 must not upload release assets unless `--execute` is deliberately supplied.
+- Phase 11 must fail verification when GitHub asset digests or sizes do not match local approved artifacts.

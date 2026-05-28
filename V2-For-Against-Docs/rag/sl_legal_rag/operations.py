@@ -186,6 +186,70 @@ def build_release_publication_plan(
     }
 
 
+def normalize_release_asset_digest(value: str | None) -> str:
+    digest = str(value or "").strip()
+    return digest.removeprefix("sha256:")
+
+
+def build_release_asset_verification_report(
+    publication_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    remote_assets: list[dict[str, Any]],
+    target_tag: str | None = None,
+    repo: str | None = None,
+) -> dict[str, Any]:
+    plan = build_release_publication_plan(
+        publication_payload,
+        project_root=project_root,
+        target_tag=target_tag,
+        repo=repo,
+    )
+    remote_by_name = {str(item.get("name") or ""): item for item in remote_assets}
+    verified_assets: list[dict[str, Any]] = []
+    for item in plan["assets"]:
+        remote = remote_by_name.get(str(item["label"]))
+        if not remote:
+            status = "missing_remote"
+            remote_digest = ""
+            remote_size = None
+        else:
+            remote_digest = normalize_release_asset_digest(str(remote.get("digest") or ""))
+            remote_size = int(remote.get("size") or 0)
+            status = (
+                "verified"
+                if item.get("status") == "ready"
+                and item.get("sha256") == remote_digest
+                and int(item.get("size_bytes") or -1) == remote_size
+                else "mismatch"
+            )
+        verified_assets.append(
+            {
+                **item,
+                "remote_exists": remote is not None,
+                "remote_sha256": remote_digest,
+                "remote_size_bytes": remote_size,
+                "remote_url": remote.get("url") if remote else None,
+                "verification_status": status,
+            }
+        )
+    failures = [item for item in verified_assets if item["verification_status"] != "verified"]
+    return {
+        "schema_version": "phase11_release_asset_verification.v1",
+        "source_schema_version": publication_payload["schema_version"],
+        "target_release_tag": plan["target_release_tag"],
+        "repo": plan["repo"],
+        "status": "verified" if not failures else "failed",
+        "assets": verified_assets,
+        "failures": failures,
+        "summary": {
+            "total": len(verified_assets),
+            "verified": sum(1 for item in verified_assets if item["verification_status"] == "verified"),
+            "failed": len(failures),
+        },
+    }
+
+
 def load_release_artifact_manifest(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     schema_version = str(payload.get("schema_version") or "")

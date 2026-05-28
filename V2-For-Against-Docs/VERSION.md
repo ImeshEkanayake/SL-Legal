@@ -34,3 +34,6 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/v2_phase_10_release_asset_publication_contract.md`
 - `Docs/v2_phase_10_release_asset_publication_runbook.md`
 - `Docs/releases/v2_phase_10_release_asset_publication.md`
+- `Docs/v2_phase_11_published_asset_verification_contract.md`
+- `Docs/v2_phase_11_published_asset_verification_runbook.md`
+- `Docs/releases/v2_phase_11_published_asset_verification.md`

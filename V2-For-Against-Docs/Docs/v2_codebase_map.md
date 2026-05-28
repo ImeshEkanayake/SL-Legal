@@ -45,6 +45,7 @@ Important modules:
 - Phase 8 support in `operations.py`: readiness evidence requirements, detached log and JSON report evaluation, blocker classification, and deployment decision packs.
 - Phase 9 support in `operations.py`: release artifact manifests, file checksums, missing artifact classification, and artifact report generation.
 - Phase 10 support in `operations.py`: release publication manifests, allowed-path checks, publication plans, and asset SHA-256 verification.
+- Phase 11 support in `operations.py`: GitHub release asset digest normalization, remote/local asset comparison, and verification reports.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -108,6 +109,7 @@ Quality and safety:
 - `scripts/run_phase8_readiness_pack.py`: builds local or production-stack deployment readiness evidence packs.
 - `scripts/build_phase9_release_artifacts.py`: builds release artifact checksum reports and optional evidence bundles.
 - `scripts/publish_phase10_release_assets.py`: plans or executes approved GitHub release asset publication.
+- `scripts/verify_phase11_release_assets.py`: verifies published GitHub release assets against approved local checksums and sizes.
 
 Retrieval and index operations:
 
@@ -279,6 +281,19 @@ Phase 10 adds controlled GitHub release asset publication without changing the d
 - `tests/test_phase10_release_publication.py`: target release, ready asset, blocked asset, and script-output tests.
 - `Docs/v2_phase_10_release_asset_publication_contract.md`: publication contract.
 - `Docs/v2_phase_10_release_asset_publication_runbook.md`: publication workflow.
+
+## V2 Phase 11 Published Asset Verification Contract
+
+Phase 11 adds post-publication release asset verification without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/operations.py`: remote asset digest normalization, remote/local comparison, mismatch detection, and verification reports.
+- `scripts/build_phase9_release_artifacts.py`: deterministic release bundle writer used by the verification gate.
+- `scripts/verify_phase11_release_assets.py`: GitHub release asset verification runner.
+- `scripts/run_detached_quality_gate.sh`: `asset-verification` detached mode.
+- `tests/test_phase9_release_artifacts.py`: deterministic bundle regression coverage.
+- `tests/test_phase11_release_asset_verification.py`: verification, mismatch, saved payload, and manifest tests.
+- `Docs/v2_phase_11_published_asset_verification_contract.md`: verification contract.
+- `Docs/v2_phase_11_published_asset_verification_runbook.md`: verification workflow.
 
 ## Data Boundary
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import hashlib
 import sys
 from pathlib import Path
 
@@ -122,3 +123,47 @@ def test_phase9_script_writes_report_and_bundle(tmp_path):
     assert status == 0
     assert report["status"] == "complete"
     assert bundle.is_file()
+
+
+def test_phase9_bundle_is_deterministic_across_rebuilds(tmp_path):
+    module = load_script()
+    module.PROJECT_ROOT = tmp_path
+    manifest = tmp_path / "manifest.json"
+    evidence = tmp_path / "evidence.md"
+    output = tmp_path / "report.json"
+    bundle = tmp_path / "bundle.tar.gz"
+    evidence.write_text("release evidence\n", encoding="utf-8")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "phase9_release_artifacts.v1",
+                "artifacts": [
+                    {
+                        "id": "evidence",
+                        "title": "Evidence",
+                        "path": "evidence.md",
+                        "required": True,
+                        "include_in_bundle": True,
+                        "evidence_scope": "local_release",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = [
+        "--manifest",
+        str(manifest),
+        "--output",
+        str(output),
+        "--bundle",
+        str(bundle),
+        "--write-bundle",
+    ]
+
+    assert module.main(args) == 0
+    first = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    assert module.main(args) == 0
+    second = hashlib.sha256(bundle.read_bytes()).hexdigest()
+
+    assert first == second

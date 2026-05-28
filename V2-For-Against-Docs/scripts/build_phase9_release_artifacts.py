@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import sys
 import tarfile
@@ -22,6 +23,7 @@ from sl_legal_rag.operations import build_release_artifact_report, load_release_
 DEFAULT_MANIFEST = PROJECT_ROOT / "rag" / "evals" / "phase9_release_artifacts_manifest.json"
 DEFAULT_OUTPUT = PROJECT_ROOT / "logs" / "release-artifacts" / "phase9-artifact-report.json"
 DEFAULT_BUNDLE = PROJECT_ROOT / "logs" / "release-artifacts" / "phase9-release-evidence.tar.gz"
+DETERMINISTIC_ARCHIVE_MTIME = 0
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -40,15 +42,36 @@ def resolve_path(path_value: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def deterministic_arcname(path: Path) -> str:
+    return str(path.relative_to(PROJECT_ROOT)).replace("\\", "/")
+
+
+def add_deterministic_file(archive: tarfile.TarFile, source: Path, arcname: str) -> None:
+    info = archive.gettarinfo(str(source), arcname=arcname)
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    info.mtime = DETERMINISTIC_ARCHIVE_MTIME
+    if info.isfile():
+        info.mode = 0o644
+        with source.open("rb") as handle:
+            archive.addfile(info, handle)
+        return
+    archive.addfile(info)
+
+
 def write_bundle(report: dict[str, Any], output_path: Path, bundle_path: Path) -> None:
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(bundle_path, "w:gz") as archive:
-        archive.add(output_path, arcname=str(output_path.relative_to(PROJECT_ROOT)))
-        for item in report["artifacts"]:
-            if not item["include_in_bundle"] or not item["exists"]:
-                continue
-            source = resolve_path(str(item["path"]))
-            archive.add(source, arcname=str(source.relative_to(PROJECT_ROOT)))
+    with bundle_path.open("wb") as raw:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=DETERMINISTIC_ARCHIVE_MTIME) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w", format=tarfile.GNU_FORMAT) as archive:
+                add_deterministic_file(archive, output_path, deterministic_arcname(output_path))
+                for item in report["artifacts"]:
+                    if not item["include_in_bundle"] or not item["exists"]:
+                        continue
+                    source = resolve_path(str(item["path"]))
+                    add_deterministic_file(archive, source, deterministic_arcname(source))
 
 
 def main(argv: list[str]) -> int:
