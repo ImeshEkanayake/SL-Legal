@@ -42,6 +42,7 @@ Important modules:
 - `auth.py`: signed request authentication.
 - `metrics.py`: operational metric helpers.
 - `operations.py`: Phase 6 load scenario parsing, token substitution, percentile summaries, threshold evaluation, and Phase 7 operational plans.
+- Phase 8 support in `operations.py`: readiness evidence requirements, detached log and JSON report evaluation, blocker classification, and deployment decision packs.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -102,6 +103,7 @@ Quality and safety:
 - `scripts/run_phase6_load_tests.py`: signed concurrent API load runner for Phase 6 workspace, retrieval, strategy validation, source, and review paths.
 - `scripts/run_phase7_operational_plan.py`: renders the Phase 7 release, deployment, hosted-data, and monitoring command manifest.
 - `scripts/run_phase7_monitoring_snapshot.py`: writes or executes the Phase 7 recurring monitoring snapshot.
+- `scripts/run_phase8_readiness_pack.py`: builds local or production-stack deployment readiness evidence packs.
 
 Retrieval and index operations:
 
@@ -237,6 +239,18 @@ Phase 7 makes deployment readiness and corpus monitoring repeatable without chan
 - `tests/test_phase7_operations.py`: manifest coverage, production-stack flags, command rendering, plan rendering, and monitoring snapshot evidence tests.
 - `Docs/v2_phase_7_deployment_monitoring_contract.md`: deployment and monitoring contract.
 - `Docs/v2_phase_7_hosted_data_strategy.md`: hosted data strategy and no-raw-Git boundary.
+
+## V2 Phase 8 Deployment Readiness Evidence Contract
+
+Phase 8 adds an evidence-backed deployment decision layer without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase8_deployment_readiness_evidence.json`: required local-release and production-stack evidence manifest.
+- `rag/sl_legal_rag/operations.py`: evidence requirement validation, evidence evaluation, blocker detection, and readiness pack generation.
+- `scripts/run_phase8_readiness_pack.py`: command-line pack builder for local release and production-stack evidence.
+- `scripts/run_detached_quality_gate.sh`: `readiness-pack` and `readiness-pack-production` detached modes.
+- `tests/test_phase8_readiness_pack.py`: manifest coverage, ready decision, missing production evidence, and script-output tests.
+- `Docs/v2_phase_8_readiness_evidence_contract.md`: readiness evidence contract.
+- `Docs/v2_phase_8_readiness_runbook.md`: evidence collection and cutover review workflow.
 
 ## Data Boundary
 

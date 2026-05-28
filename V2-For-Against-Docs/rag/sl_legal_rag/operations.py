@@ -33,6 +33,17 @@ class OperationalCommand:
     env: dict[str, str] | None = None
 
 
+@dataclass(frozen=True)
+class EvidenceRequirement:
+    evidence_id: str
+    title: str
+    scope: str
+    evidence_type: str
+    path: str
+    required: bool = True
+    blocks_deployment: bool = True
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
@@ -50,6 +61,141 @@ def load_operational_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(sections, dict) or not sections:
         raise ValueError("operational manifest must contain non-empty sections")
     return payload
+
+
+def load_readiness_requirements(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase8_deployment_readiness_evidence.v1":
+        raise ValueError("readiness requirements schema_version must be phase8_deployment_readiness_evidence.v1")
+    items = payload.get("requirements")
+    if not isinstance(items, list) or not items:
+        raise ValueError("readiness requirements must contain a non-empty requirements array")
+    return payload
+
+
+def evidence_requirement_from_mapping(item: dict[str, Any]) -> EvidenceRequirement:
+    evidence_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    scope = str(item.get("scope") or "").strip()
+    evidence_type = str(item.get("type") or "").strip()
+    path = str(item.get("path") or "").strip()
+    if not evidence_id:
+        raise ValueError("evidence id is required")
+    if not title:
+        raise ValueError(f"{evidence_id} title is required")
+    if scope not in {"local_release", "production_stack"}:
+        raise ValueError(f"{evidence_id} scope must be local_release or production_stack")
+    if evidence_type not in {"detached_log", "json_status", "load_report", "searchability_audit"}:
+        raise ValueError(f"{evidence_id} has unsupported evidence type: {evidence_type}")
+    if not path:
+        raise ValueError(f"{evidence_id} path is required")
+    return EvidenceRequirement(
+        evidence_id=evidence_id,
+        title=title,
+        scope=scope,
+        evidence_type=evidence_type,
+        path=path,
+        required=bool(item.get("required", True)),
+        blocks_deployment=bool(item.get("blocks_deployment", True)),
+    )
+
+
+def readiness_requirements(payload: dict[str, Any], *, include_production: bool = False) -> list[EvidenceRequirement]:
+    requirements = [evidence_requirement_from_mapping(item) for item in payload["requirements"]]
+    if include_production:
+        return requirements
+    return [item for item in requirements if item.scope == "local_release"]
+
+
+def evaluate_evidence(requirement: EvidenceRequirement, project_root: Path) -> dict[str, Any]:
+    evidence_path = Path(requirement.path)
+    if not evidence_path.is_absolute():
+        evidence_path = project_root / evidence_path
+    base = {
+        "id": requirement.evidence_id,
+        "title": requirement.title,
+        "scope": requirement.scope,
+        "type": requirement.evidence_type,
+        "path": requirement.path,
+        "required": requirement.required,
+        "blocks_deployment": requirement.blocks_deployment,
+        "exists": evidence_path.is_file(),
+    }
+    if not evidence_path.is_file():
+        return {**base, "status": "missing", "summary": "evidence file is not present"}
+    if requirement.evidence_type == "detached_log":
+        text = evidence_path.read_text(encoding="utf-8", errors="replace")
+        passed = "exit_status=0" in text
+        return {
+            **base,
+            "status": "passed" if passed else "failed",
+            "summary": "detached run exited 0" if passed else "detached run did not exit 0",
+        }
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    status_value = str(payload.get("status") or "").lower()
+    if requirement.evidence_type == "load_report":
+        passed = status_value == "pass"
+        return {
+            **base,
+            "status": "passed" if passed else "failed",
+            "summary": f"load report status={payload.get('status')}",
+        }
+    if requirement.evidence_type == "searchability_audit":
+        incomplete = int(payload.get("incomplete_documents") or payload.get("incomplete_document_count") or 0)
+        passed = incomplete == 0 if "status" not in payload else status_value in {"passed", "pass"}
+        return {
+            **base,
+            "status": "passed" if passed else "failed",
+            "summary": f"incomplete_documents={incomplete}",
+        }
+    passed = status_value in {"passed", "pass"}
+    return {
+        **base,
+        "status": "passed" if passed else "failed",
+        "summary": f"json status={payload.get('status')}",
+    }
+
+
+def build_readiness_pack(
+    requirements_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    include_production: bool = False,
+) -> dict[str, Any]:
+    selected = readiness_requirements(requirements_payload, include_production=include_production)
+    evidence = [evaluate_evidence(requirement, project_root) for requirement in selected]
+    blockers = [
+        item
+        for item in evidence
+        if item["blocks_deployment"] and item["required"] and item["status"] != "passed"
+    ]
+    missing_production = [
+        item
+        for item in evidence
+        if item["scope"] == "production_stack" and item["status"] == "missing"
+    ]
+    if blockers:
+        decision = "blocked"
+    elif missing_production:
+        decision = "needs_production_evidence"
+    else:
+        decision = "ready"
+    return {
+        "schema_version": "phase8_readiness_pack.v1",
+        "source_schema_version": requirements_payload["schema_version"],
+        "include_production": include_production,
+        "decision": decision,
+        "evidence": evidence,
+        "blockers": blockers,
+        "missing_production_evidence": missing_production,
+        "summary": {
+            "total": len(evidence),
+            "passed": sum(1 for item in evidence if item["status"] == "passed"),
+            "failed": sum(1 for item in evidence if item["status"] == "failed"),
+            "missing": sum(1 for item in evidence if item["status"] == "missing"),
+        },
+    }
 
 
 def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:

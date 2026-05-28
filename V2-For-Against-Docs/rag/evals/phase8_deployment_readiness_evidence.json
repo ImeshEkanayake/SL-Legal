@@ -1,0 +1,87 @@
+{
+  "schema_version": "phase8_deployment_readiness_evidence.v1",
+  "description": "Required evidence for V2 deployment readiness decisions.",
+  "requirements": [
+    {
+      "id": "backend_tests",
+      "title": "Detached backend test gate",
+      "scope": "local_release",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase8-tests.log",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "frontend_quality",
+      "title": "Detached frontend quality gate",
+      "scope": "local_release",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase8-frontend.log",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "load_plan",
+      "title": "Detached load-plan gate",
+      "scope": "local_release",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase8-load-plan.log",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "schema_check",
+      "title": "Production-like schema check",
+      "scope": "production_stack",
+      "type": "json_status",
+      "path": "logs/readiness/schema-check.json",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "schema_smoke",
+      "title": "Rollback-only schema smoke",
+      "scope": "production_stack",
+      "type": "json_status",
+      "path": "logs/readiness/schema-smoke.json",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "rag_health",
+      "title": "RAG production health with search indexes",
+      "scope": "production_stack",
+      "type": "json_status",
+      "path": "logs/readiness/rag-health.json",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "index_consistency",
+      "title": "Postgres/OpenSearch/Qdrant index consistency",
+      "scope": "production_stack",
+      "type": "json_status",
+      "path": "logs/readiness/index-consistency.json",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "real_load",
+      "title": "Real signed load suite",
+      "scope": "production_stack",
+      "type": "load_report",
+      "path": "logs/load-tests/phase8-load-report.json",
+      "required": true,
+      "blocks_deployment": true
+    },
+    {
+      "id": "searchability_audit",
+      "title": "Full corpus searchability audit",
+      "scope": "production_stack",
+      "type": "searchability_audit",
+      "path": "logs/readiness/searchability-audit.json",
+      "required": true,
+      "blocks_deployment": true
+    }
+  ]
+}

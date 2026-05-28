@@ -31,9 +31,15 @@ case "${MODE}" in
   load-plan)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase6_load_tests.py --dry-run"
     ;;
+  readiness-pack)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase8_readiness_pack.py --output logs/readiness/phase8-readiness-pack.json"
+    ;;
+  readiness-pack-production)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase8_readiness_pack.py --include-production --allow-blockers --output logs/readiness/phase8-readiness-pack-production.json"
+    ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production] [run-id]" >&2
     exit 2
     ;;
 esac

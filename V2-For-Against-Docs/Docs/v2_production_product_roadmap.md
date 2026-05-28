@@ -258,6 +258,37 @@ Exit criteria:
 - Release docs separate local release evidence from production-like stack evidence.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 8: Deployment Readiness Evidence Pack
+
+Outcome: deployment decisions are backed by a structured evidence pack that separates local release evidence from production-stack evidence.
+
+Deliverables:
+
+- Evidence requirements manifest for local release and production-stack readiness.
+- Readiness pack builder that evaluates detached logs, JSON status reports, load reports, and searchability audits.
+- Deployment decision states for ready, blocked, and missing production evidence.
+- Detached readiness-pack gate mode.
+- Contract, runbook, and release documentation for evidence collection.
+
+Exit criteria:
+
+- Evidence manifest contract tests pass.
+- Local release evidence pack returns `ready` after detached Phase 8 gates pass.
+- Production evidence pack identifies missing production-stack reports until real service evidence is attached.
+- Release notes record local evidence and production deployment requirements separately.
+- No V1 changes, no raw data upload, and no database schema migration.
+
+## Phase 8 Production Evidence Requirements
+
+Before a production cutover, attach passing evidence for:
+
+- schema check
+- rollback-only schema smoke
+- RAG health with search indexes
+- Postgres/OpenSearch/Qdrant index consistency
+- real signed load suite
+- full corpus searchability audit
+
 ## Production Readiness Gates
 
 Every release candidate must pass:
@@ -306,3 +337,4 @@ Every release candidate must pass:
 - Phase 4 must not apply a database migration; structured reasoning output is stored in existing draft metadata until a reviewed schema migration is approved.
 - Phase 6 must not treat a dry-run load plan as production-like load evidence.
 - Phase 7 must not execute hosted-data mutation commands unless `--execute` and production environment variables are deliberately supplied.
+- Phase 8 must not mark production deployment ready when production-stack evidence is missing or failed.
