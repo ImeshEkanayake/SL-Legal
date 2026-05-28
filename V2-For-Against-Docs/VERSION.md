@@ -49,3 +49,4 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/v2_phase_15_release_signing_plan_contract.md`
 - `Docs/v2_phase_15_release_signing_plan_runbook.md`
 - `Docs/releases/v2_phase_15_release_signing_plan.md`
+- `Docs/releases/v2_phase_17_lawyer_review_pack_validation.md`

@@ -21,6 +21,16 @@ class FakeJsonClient:
         return self.payload
 
 
+class SequenceJsonClient:
+    def __init__(self, payloads):
+        self.payloads = list(payloads)
+        self.calls = []
+
+    def complete_json(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.payloads.pop(0)
+
+
 def reasoning_pack(*, missing_source_summary: str | None = None) -> LegalResearchPack:
     return LegalResearchPack.model_validate(
         {
@@ -375,7 +385,45 @@ def test_phase_4_generation_accepts_full_reasoning_pack_output():
 
     assert draft.reasoning_pack is not None
     assert draft.reasoning_pack.lawyer_review_pack.issue_matrix_ids == ["ISSUE_001"]
+
+
+def test_phase_4_generation_repairs_pack_boundary_validation_errors_once():
+    pack = reasoning_pack()
+    invalid = {
+        "pack_id": pack.pack_id,
+        "answer": "The retrieved authority may support the union. This sentence needs a citation.",
+        "claims": [
+            {
+                "claim": "The retrieved authority may support the union.",
+                "pack_item_ids": ["pack_reasoning_item_001"],
+            }
+        ],
+        "reasoning_pack": reasoning_pack_output(),
+        "counterarguments": [],
+        "risk_rankings": [],
+        "next_retrieval_questions": [],
+        "missing_authorities": [],
+        "warnings": [],
+    }
+    repaired = {
+        **invalid,
+        "answer": (
+            "The retrieved authority may support the union. [pack_reasoning_item_001] "
+            "This sentence now has a citation. [pack_reasoning_item_001]"
+        ),
+    }
+    client = SequenceJsonClient([invalid, repaired])
+
+    draft = generate_strategy_draft(
+        case_facts="The employer refused to bargain.",
+        pack=pack,
+        client=client,
+        requested_output="lawyer_review_pack",
+    )
+
     assert draft.citation_validation["valid"] is True
+    assert len(client.calls) == 2
+    assert "failed validation" in client.calls[1]["messages"][1]["content"]
 
 
 def test_phase_4_reasoning_pack_rejects_out_of_pack_citations():

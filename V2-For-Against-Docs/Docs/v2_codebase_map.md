@@ -347,6 +347,15 @@ Phase 15 adds a non-mutating release signing execution plan without changing the
 - `Docs/v2_phase_15_release_signing_plan_contract.md`: signing-plan contract.
 - `Docs/v2_phase_15_release_signing_plan_runbook.md`: signing-plan workflow.
 
+## V2 Phase 17 Lawyer Review Pack Validation
+
+Phase 17 validates the post-roadmap reasoning path for the first tuned scenario without changing the database schema. The active implementation uses:
+
+- `scripts/run_phase17_lawyer_review_pack_validation.py`: builds a bounded validation pack from the Phase 16 retrieval report and generates `requested_output="lawyer_review_pack"`.
+- `rag/sl_legal_rag/strategy.py`: retries once with a repair prompt when model output fails pack-boundary validation.
+- `tests/test_strategy_reasoning.py`: covers repair of uncited legal-claim sentences.
+- `Docs/releases/v2_phase_17_lawyer_review_pack_validation.md`: validation release note and local evidence summary.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

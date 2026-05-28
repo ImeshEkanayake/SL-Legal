@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Protocol
@@ -330,6 +331,41 @@ If the pack does not support a legal conclusion, put it in missing_authorities, 
     ]
 
 
+def build_strategy_repair_prompt(
+    *,
+    case_facts: str,
+    pack: LegalResearchPack,
+    requested_output: str,
+    draft_data: dict[str, object],
+    validation_errors: list[str],
+) -> list[dict[str, str]]:
+    user_content = f"""Requested output: {requested_output}
+
+The previous JSON draft failed validation. Repair only the validation errors below.
+
+Validation errors:
+{chr(10).join(f"- {error}" for error in validation_errors)}
+
+Rules:
+- Return the same JSON object shape requested in the original strategy prompt.
+- Do not add new legal propositions unless supported by the provided pack.
+- Every legal claim sentence in answer must include one or more exact allowed pack_item_id values in square brackets.
+- Use only these allowed pack_item_id values: {", ".join(sorted(pack.allowed_pack_item_ids))}
+- Keep cautious lawyer-review language.
+- If a proposition is not supported by the pack, move it to warnings, missing_authorities, or reasoning_pack missing_evidence_checklist.
+
+Case facts:
+{case_facts}
+
+Previous draft JSON:
+{json.dumps(draft_data, ensure_ascii=False)}
+"""
+    return [
+        {"role": "system", "content": SYSTEM_BOUNDARY + "\nReturn repaired JSON only."},
+        {"role": "user", "content": user_content},
+    ]
+
+
 def validate_strategy_response_against_pack(
     response: StrategyDraftResponse,
     pack: LegalResearchPack,
@@ -488,10 +524,28 @@ def generate_strategy_draft(
         max_completion_tokens=max_completion_tokens,
         temperature=None,
     )
-    data["pack_id"] = pack.pack_id
-    response = StrategyDraftResponse.model_validate(data)
-    errors = validate_strategy_response_against_pack(response, pack, requested_output=requested_output)
-    if errors:
+    response: StrategyDraftResponse | None = None
+    errors: list[str] = []
+    for attempt in range(2):
+        data["pack_id"] = pack.pack_id
+        response = StrategyDraftResponse.model_validate(data)
+        errors = validate_strategy_response_against_pack(response, pack, requested_output=requested_output)
+        if not errors:
+            break
+        if attempt == 1:
+            break
+        data = client.complete_json(
+            messages=build_strategy_repair_prompt(
+                case_facts=case_facts,
+                pack=pack,
+                requested_output=requested_output,
+                draft_data=data,
+                validation_errors=errors,
+            ),
+            max_completion_tokens=max_completion_tokens,
+            temperature=None,
+        )
+    if response is None or errors:
         raise ValueError("Strategy draft failed pack-boundary validation: " + "; ".join(errors))
     policy_evaluation = evaluate_strategy_output_policy(
         response=response,
