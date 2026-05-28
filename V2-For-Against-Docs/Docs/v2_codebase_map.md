@@ -41,7 +41,7 @@ Important modules:
 - `product_policy.py`: product safety policy checks.
 - `auth.py`: signed request authentication.
 - `metrics.py`: operational metric helpers.
-- `operations.py`: Phase 6 load scenario parsing, placeholder substitution, percentile summaries, and threshold evaluation.
+- `operations.py`: Phase 6 load scenario parsing, token substitution, percentile summaries, threshold evaluation, and Phase 7 operational plans.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -100,6 +100,8 @@ Quality and safety:
 - `scripts/check_rag_production_health.py`: RAG health check.
 - `scripts/run_detached_quality_gate.sh`: detached test and quality runner.
 - `scripts/run_phase6_load_tests.py`: signed concurrent API load runner for Phase 6 workspace, retrieval, strategy validation, source, and review paths.
+- `scripts/run_phase7_operational_plan.py`: renders the Phase 7 release, deployment, hosted-data, and monitoring command manifest.
+- `scripts/run_phase7_monitoring_snapshot.py`: writes or executes the Phase 7 recurring monitoring snapshot.
 
 Retrieval and index operations:
 
@@ -222,7 +224,19 @@ Phase 6 adds the production operations package without changing the database sch
 - `scripts/run_detached_quality_gate.sh`: `load-plan` and `load` detached modes with PID/log files.
 - `Docs/v2_phase_6_production_operations_contract.md`: service-level targets, observability, release gate, and safety boundaries.
 - `Docs/v2_phase_6_operations_runbook.md`: release, metrics, incident, rollback, corpus audit, and data hydration workflow.
-- `tests/test_phase6_operations.py`: contract coverage for scenario fixture, placeholder substitution, threshold enforcement, and fixture schema.
+- `tests/test_phase6_operations.py`: contract coverage for scenario fixture, token substitution, threshold enforcement, and fixture schema.
+
+## V2 Phase 7 Deployment And Monitoring Contract
+
+Phase 7 makes deployment readiness and corpus monitoring repeatable without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase7_deployment_monitoring_manifest.json`: reviewed command manifest for release gates, deployment readiness, hosted data, and recurring monitoring.
+- `rag/sl_legal_rag/operations.py`: operational manifest loading, command validation, rendered command lines, and plan output.
+- `scripts/run_phase7_operational_plan.py`: JSON, shell, and Markdown operational plan renderer.
+- `scripts/run_phase7_monitoring_snapshot.py`: monitoring snapshot planner and controlled executor.
+- `tests/test_phase7_operations.py`: manifest coverage, production-stack flags, command rendering, plan rendering, and monitoring snapshot evidence tests.
+- `Docs/v2_phase_7_deployment_monitoring_contract.md`: deployment and monitoring contract.
+- `Docs/v2_phase_7_hosted_data_strategy.md`: hosted data strategy and no-raw-Git boundary.
 
 ## Data Boundary
 

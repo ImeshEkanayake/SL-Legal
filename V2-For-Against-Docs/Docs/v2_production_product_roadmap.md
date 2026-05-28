@@ -238,6 +238,26 @@ Exit criteria:
 - E2E tests pass against a production-like local stack.
 - Documentation covers setup, operation, testing, data handling, and release.
 
+### Phase 7: Deployment Automation and Corpus Monitoring
+
+Outcome: production deployment, hosted data operations, and recurring corpus/index monitoring are repeatable from a reviewed command manifest.
+
+Deliverables:
+
+- Manifest-driven release, deployment-readiness, hosted-data, and recurring-monitoring command plan.
+- Operational plan renderer for JSON, shell, and Markdown evidence.
+- Monitoring snapshot runner with plan mode and controlled execution mode.
+- Hosted data strategy for object storage, manifests, digests, searchability audits, and no raw Git uploads.
+- Release contract and runbook updates for deployment cutover readiness.
+
+Exit criteria:
+
+- Manifest contract tests pass.
+- Operational plan renders release, deployment, hosted-data, and monitoring sections.
+- Monitoring snapshot plan writes machine-readable evidence without requiring production services.
+- Release docs separate local release evidence from production-like stack evidence.
+- No V1 changes, no raw data upload, and no database schema migration.
+
 ## Production Readiness Gates
 
 Every release candidate must pass:
@@ -285,3 +305,4 @@ Every release candidate must pass:
 - Long-running tests and quality gates must run detached with PID and log files.
 - Phase 4 must not apply a database migration; structured reasoning output is stored in existing draft metadata until a reviewed schema migration is approved.
 - Phase 6 must not treat a dry-run load plan as production-like load evidence.
+- Phase 7 must not execute hosted-data mutation commands unless `--execute` and production environment variables are deliberately supplied.

@@ -22,3 +22,6 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/v2_phase_6_production_operations_contract.md`
 - `Docs/v2_phase_6_operations_runbook.md`
 - `Docs/releases/v2_phase_6_production_operations.md`
+- `Docs/v2_phase_7_deployment_monitoring_contract.md`
+- `Docs/v2_phase_7_hosted_data_strategy.md`
+- `Docs/releases/v2_phase_7_deployment_monitoring.md`

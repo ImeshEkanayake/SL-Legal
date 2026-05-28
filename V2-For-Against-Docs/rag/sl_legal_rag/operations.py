@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,12 +21,101 @@ class LoadScenario:
     headers: dict[str, str] | None = None
 
 
+@dataclass(frozen=True)
+class OperationalCommand:
+    name: str
+    section: str
+    command: tuple[str, ...]
+    evidence: str
+    cadence: str | None = None
+    requires_production_stack: bool = False
+    required_for_release: bool = False
+    env: dict[str, str] | None = None
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("load scenario file must contain a non-empty scenarios array")
     return [scenario_from_mapping(item) for item in scenarios]
+
+
+def load_operational_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase7_deployment_monitoring.v1":
+        raise ValueError("operational manifest schema_version must be phase7_deployment_monitoring.v1")
+    sections = payload.get("sections")
+    if not isinstance(sections, dict) or not sections:
+        raise ValueError("operational manifest must contain non-empty sections")
+    return payload
+
+
+def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:
+    name = str(item.get("name") or "").strip()
+    command = item.get("command")
+    evidence = str(item.get("evidence") or "").strip()
+    if not name:
+        raise ValueError(f"{section} command name is required")
+    if not isinstance(command, list) or not command or not all(str(part).strip() for part in command):
+        raise ValueError(f"{section}.{name} command must be a non-empty string array")
+    if not evidence:
+        raise ValueError(f"{section}.{name} evidence is required")
+    env = item.get("env")
+    return OperationalCommand(
+        name=name,
+        section=section,
+        command=tuple(str(part) for part in command),
+        evidence=evidence,
+        cadence=str(item["cadence"]).strip() if item.get("cadence") else None,
+        requires_production_stack=bool(item.get("requires_production_stack", False)),
+        required_for_release=bool(item.get("required_for_release", False)),
+        env={str(key): str(value) for key, value in env.items()} if isinstance(env, dict) else None,
+    )
+
+
+def operational_commands(manifest: dict[str, Any], *, section: str | None = None) -> list[OperationalCommand]:
+    sections = manifest.get("sections")
+    if not isinstance(sections, dict):
+        raise ValueError("operational manifest sections must be an object")
+    selected_sections = [section] if section else list(sections)
+    commands: list[OperationalCommand] = []
+    for section_name in selected_sections:
+        items = sections.get(section_name)
+        if not isinstance(items, list) or not items:
+            raise ValueError(f"operational manifest section is missing or empty: {section_name}")
+        commands.extend(command_from_mapping(section_name, item) for item in items)
+    return commands
+
+
+def render_command(command: OperationalCommand) -> str:
+    prefix = ""
+    if command.env:
+        prefix = " ".join(f"{key}={shlex.quote(value)}" for key, value in sorted(command.env.items())) + " "
+    return prefix + " ".join(shlex.quote(part) for part in command.command)
+
+
+def operational_plan(manifest: dict[str, Any], *, section: str | None = None) -> dict[str, Any]:
+    commands = operational_commands(manifest, section=section)
+    return {
+        "schema_version": manifest["schema_version"],
+        "section": section or "all",
+        "status": "planned",
+        "commands": [
+            {
+                "name": command.name,
+                "section": command.section,
+                "command": list(command.command),
+                "command_line": render_command(command),
+                "evidence": command.evidence,
+                "cadence": command.cadence,
+                "requires_production_stack": command.requires_production_stack,
+                "required_for_release": command.required_for_release,
+            }
+            for command in commands
+        ],
+    }
 
 
 def scenario_from_mapping(item: dict[str, Any]) -> LoadScenario:

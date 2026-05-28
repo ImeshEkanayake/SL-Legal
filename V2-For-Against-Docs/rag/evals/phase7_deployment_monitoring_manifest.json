@@ -1,0 +1,118 @@
+{
+  "schema_version": "phase7_deployment_monitoring.v1",
+  "description": "Release, deployment, hosted-data, and monitoring command plan for V2 Phase 7.",
+  "sections": {
+    "release_gates": [
+      {
+        "name": "backend_tests",
+        "command": ["scripts/run_detached_quality_gate.sh", "tests", "phase7-tests"],
+        "evidence": "logs/test-runs/phase7-tests.log",
+        "required_for_release": true
+      },
+      {
+        "name": "frontend_quality",
+        "command": ["scripts/run_detached_quality_gate.sh", "frontend", "phase7-frontend"],
+        "evidence": "logs/test-runs/phase7-frontend.log",
+        "required_for_release": true
+      },
+      {
+        "name": "load_plan",
+        "command": ["scripts/run_detached_quality_gate.sh", "load-plan", "phase7-load-plan"],
+        "evidence": "logs/test-runs/phase7-load-plan.log",
+        "required_for_release": true
+      },
+      {
+        "name": "secret_scan",
+        "command": ["python", "scripts/check_no_plaintext_secrets.py"],
+        "evidence": "terminal output",
+        "required_for_release": true
+      }
+    ],
+    "deployment_readiness": [
+      {
+        "name": "schema_check",
+        "command": ["python", "scripts/check_postgres_schema.py"],
+        "evidence": "terminal output",
+        "requires_production_stack": true,
+        "required_for_release": true
+      },
+      {
+        "name": "schema_smoke",
+        "command": ["python", "scripts/smoke_test_postgres_schema.py"],
+        "evidence": "terminal output",
+        "requires_production_stack": true,
+        "required_for_release": true
+      },
+      {
+        "name": "rag_health",
+        "command": ["python", "scripts/check_rag_production_health.py", "--require-search-indexes"],
+        "evidence": "JSON health report",
+        "requires_production_stack": true,
+        "required_for_release": true
+      },
+      {
+        "name": "real_load_suite",
+        "command": ["scripts/run_detached_quality_gate.sh", "load", "phase7-load"],
+        "evidence": "logs/load-tests/phase6-load-report.json",
+        "requires_production_stack": true,
+        "required_for_release": true
+      }
+    ],
+    "hosted_data": [
+      {
+        "name": "object_storage_probe",
+        "command": [
+          "python",
+          "scripts/sync_corpus_assets_to_object_storage.py",
+          "--scope",
+          "manifest",
+          "--skip-existing-assets",
+          "--max-to-sync",
+          "500",
+          "--progress-every",
+          "100",
+          "--report-path",
+          "data/indexes/object_storage_probe.jsonl"
+        ],
+        "evidence": "data/indexes/object_storage_probe.jsonl",
+        "requires_production_stack": true
+      },
+      {
+        "name": "searchability_audit",
+        "command": ["python", "scripts/audit_full_corpus_searchability.py"],
+        "evidence": "data/tracking/rag_searchability/latest audit JSON",
+        "requires_production_stack": true,
+        "cadence": "weekly"
+      }
+    ],
+    "recurring_monitoring": [
+      {
+        "name": "daily_rag_health",
+        "command": ["python", "scripts/check_rag_production_health.py", "--skip-local-files", "--allow-failures"],
+        "evidence": "logs/monitoring/daily_rag_health.json",
+        "requires_production_stack": true,
+        "cadence": "daily"
+      },
+      {
+        "name": "daily_index_consistency",
+        "command": ["python", "scripts/check_rag_index_consistency.py", "--allow-mismatch"],
+        "evidence": "logs/monitoring/daily_index_consistency.json",
+        "requires_production_stack": true,
+        "cadence": "daily"
+      },
+      {
+        "name": "weekly_adverse_retrieval_eval",
+        "command": ["python", "scripts/run_v2_for_against_retrieval_eval.py"],
+        "evidence": "terminal output",
+        "cadence": "weekly"
+      },
+      {
+        "name": "weekly_benchmark_gate",
+        "command": ["python", "scripts/run_production_benchmark_gates.py"],
+        "evidence": "terminal output",
+        "requires_production_stack": true,
+        "cadence": "weekly"
+      }
+    ]
+  }
+}
