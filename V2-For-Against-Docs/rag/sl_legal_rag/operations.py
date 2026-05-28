@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 import statistics
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,16 @@ class EvidenceRequirement:
     blocks_deployment: bool = True
 
 
+@dataclass(frozen=True)
+class ReleaseArtifact:
+    artifact_id: str
+    title: str
+    path: str
+    required: bool = True
+    include_in_bundle: bool = True
+    evidence_scope: str = "local_release"
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
@@ -61,6 +72,99 @@ def load_operational_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(sections, dict) or not sections:
         raise ValueError("operational manifest must contain non-empty sections")
     return payload
+
+
+def load_release_artifact_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase9_release_artifacts.v1":
+        raise ValueError("release artifact manifest schema_version must be phase9_release_artifacts.v1")
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise ValueError("release artifact manifest must contain a non-empty artifacts array")
+    return payload
+
+
+def release_artifact_from_mapping(item: dict[str, Any]) -> ReleaseArtifact:
+    artifact_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    path = str(item.get("path") or "").strip()
+    evidence_scope = str(item.get("evidence_scope") or "local_release").strip()
+    if not artifact_id:
+        raise ValueError("artifact id is required")
+    if not title:
+        raise ValueError(f"{artifact_id} title is required")
+    if not path:
+        raise ValueError(f"{artifact_id} path is required")
+    if evidence_scope not in {"local_release", "production_stack"}:
+        raise ValueError(f"{artifact_id} evidence_scope must be local_release or production_stack")
+    return ReleaseArtifact(
+        artifact_id=artifact_id,
+        title=title,
+        path=path,
+        required=bool(item.get("required", True)),
+        include_in_bundle=bool(item.get("include_in_bundle", True)),
+        evidence_scope=evidence_scope,
+    )
+
+
+def release_artifacts(payload: dict[str, Any], *, include_production: bool = False) -> list[ReleaseArtifact]:
+    artifacts = [release_artifact_from_mapping(item) for item in payload["artifacts"]]
+    if include_production:
+        return artifacts
+    return [item for item in artifacts if item.evidence_scope == "local_release"]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def build_release_artifact_report(
+    artifact_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    include_production: bool = False,
+) -> dict[str, Any]:
+    selected = release_artifacts(artifact_payload, include_production=include_production)
+    items: list[dict[str, Any]] = []
+    for artifact in selected:
+        path = Path(artifact.path)
+        if not path.is_absolute():
+            path = project_root / path
+        exists = path.is_file()
+        item = {
+            "id": artifact.artifact_id,
+            "title": artifact.title,
+            "path": artifact.path,
+            "required": artifact.required,
+            "include_in_bundle": artifact.include_in_bundle,
+            "evidence_scope": artifact.evidence_scope,
+            "exists": exists,
+            "status": "present" if exists else "missing",
+        }
+        if exists:
+            item["size_bytes"] = path.stat().st_size
+            item["sha256"] = sha256_file(path)
+        items.append(item)
+    missing_required = [item for item in items if item["required"] and item["status"] != "present"]
+    return {
+        "schema_version": "phase9_release_artifact_report.v1",
+        "source_schema_version": artifact_payload["schema_version"],
+        "include_production": include_production,
+        "status": "complete" if not missing_required else "incomplete",
+        "artifacts": items,
+        "missing_required": missing_required,
+        "summary": {
+            "total": len(items),
+            "present": sum(1 for item in items if item["status"] == "present"),
+            "missing": sum(1 for item in items if item["status"] == "missing"),
+            "required_missing": len(missing_required),
+        },
+    }
 
 
 def load_readiness_requirements(path: Path) -> dict[str, Any]:

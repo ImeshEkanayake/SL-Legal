@@ -1,0 +1,94 @@
+{
+  "schema_version": "phase9_release_artifacts.v1",
+  "description": "Approved Phase 9 release evidence artifacts for checksum reporting and optional bundle creation.",
+  "artifacts": [
+    {
+      "id": "phase8_requirements",
+      "title": "Phase 8 readiness evidence requirements",
+      "path": "rag/evals/phase8_deployment_readiness_evidence.json",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "phase9_manifest",
+      "title": "Phase 9 release artifact manifest",
+      "path": "rag/evals/phase9_release_artifacts_manifest.json",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "phase8_contract",
+      "title": "Phase 8 readiness evidence contract",
+      "path": "Docs/v2_phase_8_readiness_evidence_contract.md",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "phase8_runbook",
+      "title": "Phase 8 readiness runbook",
+      "path": "Docs/v2_phase_8_readiness_runbook.md",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "phase9_contract",
+      "title": "Phase 9 release artifact contract",
+      "path": "Docs/v2_phase_9_release_artifact_contract.md",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "phase9_runbook",
+      "title": "Phase 9 release artifact runbook",
+      "path": "Docs/v2_phase_9_release_artifact_runbook.md",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "phase9_release_note",
+      "title": "Phase 9 release note",
+      "path": "Docs/releases/v2_phase_9_release_artifact_bundle.md",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "local_readiness_pack",
+      "title": "Local readiness pack",
+      "path": "logs/readiness/phase8-readiness-pack.json",
+      "required": false,
+      "include_in_bundle": true,
+      "evidence_scope": "local_release"
+    },
+    {
+      "id": "production_readiness_pack",
+      "title": "Production readiness pack",
+      "path": "logs/readiness/phase8-readiness-pack-production.json",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "production_stack"
+    },
+    {
+      "id": "real_load_report",
+      "title": "Real signed load report",
+      "path": "logs/load-tests/phase8-load-report.json",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "production_stack"
+    },
+    {
+      "id": "searchability_audit",
+      "title": "Full corpus searchability audit",
+      "path": "logs/readiness/searchability-audit.json",
+      "required": true,
+      "include_in_bundle": true,
+      "evidence_scope": "production_stack"
+    }
+  ]
+}

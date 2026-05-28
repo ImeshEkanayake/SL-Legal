@@ -278,6 +278,26 @@ Exit criteria:
 - Release notes record local evidence and production deployment requirements separately.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 9: Release Artifact Bundle
+
+Outcome: release evidence can be checksummed, bundled, and attached to GitHub releases without committing logs or raw data.
+
+Deliverables:
+
+- Release artifact manifest for approved local and production-stack evidence.
+- Artifact report builder with SHA-256 checksums and missing-evidence classification.
+- Optional tarball generation for release attachments.
+- Detached artifact-report gate modes for local and production evidence.
+- Contract, runbook, and release documentation for evidence artifact handling.
+
+Exit criteria:
+
+- Artifact manifest and packager tests pass.
+- Local artifact report is complete after required local release docs/manifests exist.
+- Production artifact report records missing production-stack files until real evidence exists.
+- Bundle excludes raw corpus data and normal runtime directories.
+- No V1 changes, no raw data upload, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -338,3 +358,4 @@ Every release candidate must pass:
 - Phase 6 must not treat a dry-run load plan as production-like load evidence.
 - Phase 7 must not execute hosted-data mutation commands unless `--execute` and production environment variables are deliberately supplied.
 - Phase 8 must not mark production deployment ready when production-stack evidence is missing or failed.
+- Phase 9 must not commit release artifact tarballs, logs, or raw evidence outputs to normal Git.

@@ -43,6 +43,7 @@ Important modules:
 - `metrics.py`: operational metric helpers.
 - `operations.py`: Phase 6 load scenario parsing, token substitution, percentile summaries, threshold evaluation, and Phase 7 operational plans.
 - Phase 8 support in `operations.py`: readiness evidence requirements, detached log and JSON report evaluation, blocker classification, and deployment decision packs.
+- Phase 9 support in `operations.py`: release artifact manifests, file checksums, missing artifact classification, and artifact report generation.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -104,6 +105,7 @@ Quality and safety:
 - `scripts/run_phase7_operational_plan.py`: renders the Phase 7 release, deployment, hosted-data, and monitoring command manifest.
 - `scripts/run_phase7_monitoring_snapshot.py`: writes or executes the Phase 7 recurring monitoring snapshot.
 - `scripts/run_phase8_readiness_pack.py`: builds local or production-stack deployment readiness evidence packs.
+- `scripts/build_phase9_release_artifacts.py`: builds release artifact checksum reports and optional evidence bundles.
 
 Retrieval and index operations:
 
@@ -251,6 +253,18 @@ Phase 8 adds an evidence-backed deployment decision layer without changing the d
 - `tests/test_phase8_readiness_pack.py`: manifest coverage, ready decision, missing production evidence, and script-output tests.
 - `Docs/v2_phase_8_readiness_evidence_contract.md`: readiness evidence contract.
 - `Docs/v2_phase_8_readiness_runbook.md`: evidence collection and cutover review workflow.
+
+## V2 Phase 9 Release Artifact Contract
+
+Phase 9 adds a release artifact packaging layer without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase9_release_artifacts_manifest.json`: approved local and production-stack artifact manifest.
+- `rag/sl_legal_rag/operations.py`: artifact manifest validation, SHA-256 checksums, missing-required detection, and artifact report generation.
+- `scripts/build_phase9_release_artifacts.py`: report writer and optional tarball builder.
+- `scripts/run_detached_quality_gate.sh`: `artifact-report` and `artifact-report-production` detached modes.
+- `tests/test_phase9_release_artifacts.py`: artifact manifest, checksum, missing-required, and bundle tests.
+- `Docs/v2_phase_9_release_artifact_contract.md`: artifact contract.
+- `Docs/v2_phase_9_release_artifact_runbook.md`: artifact generation and attachment workflow.
 
 ## Data Boundary
 
