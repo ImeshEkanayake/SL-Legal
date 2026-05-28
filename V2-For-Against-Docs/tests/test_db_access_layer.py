@@ -11,6 +11,98 @@ from sl_legal_rag.db.ids import new_id
 from sl_legal_rag.models import ClaimEvidenceAssessmentRequest, LegalResearchPack, StrategyDraftResponse
 
 
+def _reasoning_pack_output(pack_item_id: str) -> dict[str, object]:
+    return {
+        "schema_version": "reasoning_pack.v1",
+        "output_type": "lawyer_review_pack",
+        "authority_verifications": [
+            {
+                "authority_id": "AUTH_001",
+                "title": "Industrial Disputes Act",
+                "authority_type": "Act",
+                "citation": "Industrial Disputes Act s 1",
+                "pack_item_ids": [pack_item_id],
+                "verification_status": "requires_lawyer_review",
+                "notes": "Lawyer must verify current force and amendments.",
+            }
+        ],
+        "issue_matrix": [
+            {
+                "issue_id": "ISSUE_001",
+                "issue": "Whether refusal to bargain is prohibited.",
+                "legal_area": "Labour law",
+                "elements": [
+                    {
+                        "element_id": "ELEMENT_001",
+                        "element": "Qualifying trade union status.",
+                        "pack_item_ids": [pack_item_id],
+                        "missing_evidence": ["Union registration certificate."],
+                    }
+                ],
+                "facts_supporting": ["The employer refused to bargain."],
+                "facts_against": ["Union qualification is not yet proved."],
+                "missing_evidence": ["Worker representation evidence."],
+                "confidence": 0.55,
+            }
+        ],
+        "fact_to_law_mappings": [
+            {
+                "issue_id": "ISSUE_001",
+                "fact": "The employer refused to bargain.",
+                "legal_question": "Whether the refusal engages the statutory duty.",
+                "supporting_reasoning": "The pack suggests refusal to bargain may be prohibited if qualification is proven.",
+                "risk": "The qualification element requires further evidence.",
+                "missing_documents": ["Union registration certificate."],
+                "pack_item_ids": [pack_item_id],
+            }
+        ],
+        "for_against_brief": [
+            {
+                "issue_id": "ISSUE_001",
+                "issue": "Whether refusal to bargain is prohibited.",
+                "legal_basis": [
+                    {
+                        "authority": "Industrial Disputes Act",
+                        "proposition": "Refusal to bargain may be prohibited where statutory conditions are met.",
+                        "pack_item_ids": [pack_item_id],
+                    }
+                ],
+                "facts_relied_on": ["The employer refused to bargain."],
+                "client_argument": "The refusal supports the client's position if qualification is established.",
+                "opposing_argument": "The opposing party may argue the union was not qualifying.",
+                "rebuttal": "The client should collect registration and representation evidence.",
+                "missing_evidence": ["Union registration certificate."],
+                "strength": "medium",
+                "confidence": 0.55,
+            }
+        ],
+        "missing_evidence_checklist": ["Union registration certificate.", "Current Act verification."],
+        "preliminary_legal_opinion": {
+            "matter": "Trade union bargaining matter.",
+            "instructions": "Assess the refusal to bargain from the current pack.",
+            "important_qualification": "This is a preliminary lawyer-review draft requiring verification before reliance.",
+            "assumed_facts": ["The employer refused to bargain."],
+            "documents_reviewed": ["Industrial Disputes Act extract in the pack."],
+            "issues": ["Whether statutory refusal-to-bargain requirements are met."],
+            "applicable_law": ["Industrial Disputes Act s 1, subject to lawyer verification."],
+            "analysis": "On a preliminary basis, lawyer verification is required for current force, amendments, and qualification evidence.",
+            "preliminary_opinion": "The preliminary view is that the argument may be available, subject to lawyer verification and missing evidence.",
+            "risks": ["Union qualification evidence is incomplete."],
+            "recommended_next_steps": ["Verify the Act and collect union qualification documents."],
+            "conclusion": "The preliminary conclusion remains subject to lawyer verification and further evidence.",
+        },
+        "lawyer_review_pack": {
+            "one_page_case_summary": "Employer refusal to bargain requires review against statutory elements.",
+            "issue_matrix_ids": ["ISSUE_001"],
+            "authority_ids": ["AUTH_001"],
+            "missing_documents": ["Union registration certificate."],
+            "questions_for_client": ["When was the union registered?"],
+            "questions_for_lawyer": ["Is the cited section current and amended?"],
+        },
+        "lawyer_verification_required": True,
+    }
+
+
 def test_db_access_layer_vertical_workflow_rolls_back():
     engine = make_engine()
     with engine.connect() as connection:
@@ -460,6 +552,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                             "confidence": "needs_lawyer_review",
                         }
                     ],
+                    "reasoning_pack": _reasoning_pack_output(pack_model.items[0].pack_item_id),
                     "missing_authorities": ["Adverse authority search should be completed before final advice."],
                     "warnings": ["Lawyer review required."],
                 }
@@ -471,7 +564,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 agent_run_id=agent_run_id,
                 created_by_user_id=workspace.user_id,
                 assigned_review_user_id=workspace.user_id,
-                requested_output="strategy_report",
+                requested_output="lawyer_review_pack",
                 research_pack=pack_model,
                 strategy_response=strategy_response,
             )
@@ -480,6 +573,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert len(persisted_strategy.claim_ids) == 1
             assert persisted_strategy.draft_review_item_id.startswith("review_")
             assert len(persisted_strategy.claim_review_item_ids) == 1
+            assert len(persisted_strategy.reasoning_review_item_ids) == 2
 
             follow_up_message = repo.add_case_user_message(
                 organization_id=workspace.organization_id,
@@ -507,10 +601,20 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert workspace_snapshot["researchPackItems"][0]["packItemId"] == pack_model.items[0].pack_item_id
             assert workspace_snapshot["researchPackItems"][0]["anchors"][0]["quote"]
             assert workspace_snapshot["drafts"][0]["draftId"] == persisted_strategy.draft_id
-            assert {item["itemType"] for item in workspace_snapshot["reviewItems"]} == {"draft", "legal_claim"}
+            assert {item["itemType"] for item in workspace_snapshot["reviewItems"]} == {
+                "draft",
+                "legal_claim",
+                "adverse_evidence",
+                "missing_evidence",
+            }
 
             review_items = repo.list_review_items(case_id=workspace.case_id, status="pending")
-            assert {item["item_type"] for item in review_items} == {"draft", "legal_claim"}
+            assert {item["item_type"] for item in review_items} == {
+                "draft",
+                "legal_claim",
+                "adverse_evidence",
+                "missing_evidence",
+            }
             assert all(item["item_title"] for item in review_items)
 
             drafts = repo.list_case_drafts(case_id=workspace.case_id)
@@ -522,6 +626,8 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             draft_detail = repo.get_draft_detail(case_id=workspace.case_id, draft_id=persisted_strategy.draft_id)
             assert draft_detail is not None
             assert draft_detail["content_markdown"] == strategy_response.answer
+            assert draft_detail["metadata"]["requested_output"] == "lawyer_review_pack"
+            assert draft_detail["metadata"]["reasoning_pack"]["schema_version"] == "reasoning_pack.v1"
             assert len(draft_detail["claims"]) == 1
             assert draft_detail["review_items"][0]["review_item_id"] == persisted_strategy.draft_review_item_id
 
@@ -617,6 +723,28 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert changed_draft is not None
             assert changed_draft["status"] == "changes_requested"
             assert changed_draft["review_status"] == "changes_requested"
+
+            adverse_review = repo.apply_review_decision(
+                case_id=workspace.case_id,
+                review_item_id=persisted_strategy.reasoning_review_item_ids[0],
+                reviewer_user_id=workspace.user_id,
+                decision="approved",
+                comment="Adverse analysis reviewed.",
+            )
+            assert adverse_review is not None
+            assert adverse_review.review_item["item_type"] == "adverse_evidence"
+            assert adverse_review.review_item["status"] == "approved"
+
+            missing_evidence_review = repo.apply_review_decision(
+                case_id=workspace.case_id,
+                review_item_id=persisted_strategy.reasoning_review_item_ids[1],
+                reviewer_user_id=workspace.user_id,
+                decision="changes_requested",
+                comment="Missing evidence still requires follow-up.",
+            )
+            assert missing_evidence_review is not None
+            assert missing_evidence_review.review_item["item_type"] == "missing_evidence"
+            assert missing_evidence_review.review_item["status"] == "changes_requested"
             assert repo.list_review_items(case_id=workspace.case_id, status="pending") == []
 
             audit_count = session.execute(
@@ -630,12 +758,12 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 ),
                 {"case_id": workspace.case_id},
             ).scalar_one()
-            assert audit_count == 2
+            assert audit_count == 4
             audit_events = repo.list_case_audit_events(
                 case_id=workspace.case_id,
                 event_type="review.decision.recorded",
             )
-            assert len(audit_events) == 2
+            assert len(audit_events) == 4
             assert audit_events[0]["metadata"]["target_status"] in {"changes_requested", "lawyer_approved"}
             assert audit_events[0]["before_state"]["review_item"]["status"] == "pending"
 
@@ -645,7 +773,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert overview["thread_count"] == 1
             assert overview["pack_count"] == 1
             assert overview["claim_count"] == 2
-            assert overview["review_count"] == 2
+            assert overview["review_count"] == 4
         finally:
             session.close()
             transaction.rollback()

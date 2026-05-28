@@ -6,13 +6,15 @@ V2 is a production legal evidence intelligence system, not a prototype. The prod
 
 ## North Star
 
-For every matter, V2 produces a lawyer-review strategy memo that separates:
+For every matter, V2 produces a lawyer-review reasoning pack that separates:
 
 - Arguments for the client.
 - Adverse material against the client.
 - Mixed authorities that help on one issue and hurt on another.
 - Context-only material.
 - Missing authorities and next retrieval questions.
+- Missing client evidence, procedural evidence, and lawyer verification tasks.
+- A preliminary legal opinion draft with explicit lawyer-verification qualification.
 
 Every legal statement must trace to a sealed research pack item, source citation, page anchor, quality status, and reviewer decision.
 
@@ -59,22 +61,37 @@ Every legal statement must trace to a sealed research pack item, source citation
 - Group strategy output by claim, issue, and stance.
 - Require explanation when evidence is classified as mixed.
 
-### 4. Strategy Memo Generation
+### 4. Reasoning Pack and Preliminary Opinion Workflow
 
-- Generate a production-grade lawyer-review memo with:
+- Adopt the hybrid Phase 4 workflow from `/Users/imeshekanayake/Downloads/detailed.md` as the product reasoning specification:
+  - Retrieval Pack
+  - Authority Verification
+  - Issue Matrix
+  - Legal Element Matrix
+  - Fact-to-Law Mapping
+  - For/Against Brief
+  - Missing Evidence Checklist
+  - Preliminary Legal Opinion
+  - Lawyer Review Pack
+- Generate a production-grade lawyer-review reasoning pack with:
+  - authority verification status
   - issue framing
-  - facts relied on
-  - arguments for client
+  - legal element matrix
+  - fact-to-law mapping
+  - facts relied on and facts against each element
+  - arguments for the client
   - adverse material
   - counterarguments
-  - responses to counterarguments
+  - rebuttals
   - evidence strength ranking
-  - missing authorities
-  - next retrieval questions
+  - missing evidence and missing authorities
+  - preliminary opinion sections
+  - lawyer review questions
   - citation and source-quality warnings
-- Reject memo output when legal claim sentences lack citations.
-- Reject memo output when cited pack item IDs are outside the sealed pack.
-- Persist drafts, claims, counterarguments, risk rankings, and review items.
+- Reject reasoning output when legal claim sentences lack citations.
+- Reject reasoning output when cited pack item IDs are outside the sealed pack.
+- Reject outcome-guarantee wording and require cautious preliminary language.
+- Persist drafts, claims, counterarguments, risk rankings, structured reasoning metadata, and review items without applying a database migration.
 
 ### 5. Review, Audit, and Governance
 
@@ -86,7 +103,7 @@ Every legal statement must trace to a sealed research pack item, source citation
 
 ### 6. UI and Case Workspace
 
-- Add a strategy memo first view for V2 matters.
+- Add a reasoning pack and preliminary opinion first view for V2 matters.
 - Add an evidence stance panel grouped by issue and claim.
 - Add support/adverse/mixed/context badges derived from claim-level evidence assessments.
 - Add source viewer links from every cited claim and adverse item.
@@ -156,22 +173,28 @@ Exit criteria:
 - Blind evaluation cases include at least one adverse authority per legal domain where available.
 - Search results preserve exact citations and page anchors.
 
-### Phase 4: Strategy Memo and Review Workflow
+### Phase 4: Reasoning Pack and Preliminary Opinion Workflow
 
-Outcome: V2 outputs a lawyer-review memo that visibly handles adverse material.
+Outcome: V2 outputs a lawyer-review reasoning pack that converts retrieval evidence into an issue matrix, legal element matrix, fact-to-law mapping, for/against brief, missing evidence checklist, preliminary legal opinion, and lawyer review pack.
 
 Deliverables:
 
-- Updated strategy prompts requiring adverse evidence analysis.
-- Structured memo response schema with evidence groups.
-- Persistence of claims, counterarguments, risk rankings, and evidence assessments.
-- Review queue items for adverse and mixed evidence.
+- Roadmap update formally adopting the hybrid workstream from `detailed.md`.
+- Structured reasoning-pack response schema.
+- Authority verification, issue matrix, legal element, fact-to-law, for/against, missing evidence, preliminary opinion, and lawyer review models.
+- Updated strategy prompts for `for_against_brief`, `preliminary_legal_opinion`, and `lawyer_review_pack`.
+- Persistence of structured reasoning output in existing draft metadata.
+- Human-readable reasoning pack stored as draft markdown.
+- Review queue items for the draft, adverse reasoning, and missing evidence.
 
 Exit criteria:
 
 - Out-of-pack support, adverse, and mixed citations are rejected.
 - Uncited legal conclusions are rejected.
-- Draft detail API returns grouped evidence and review status.
+- Outcome-guarantee wording is rejected.
+- Unverified legal propositions are marked `requires_lawyer_verification`.
+- Missing evidence is listed when facts, documents, case law, procedure, or authority verification are incomplete.
+- Draft detail API returns structured reasoning metadata and review status.
 
 ### Phase 5: Production UI
 
@@ -179,7 +202,7 @@ Outcome: lawyers can inspect and review V2 evidence in the workspace.
 
 Deliverables:
 
-- Strategy memo first view.
+- Reasoning pack and preliminary opinion first view.
 - Evidence stance panel.
 - Claim detail with grouped citations.
 - Source viewer deep links from every evidence item.
@@ -253,3 +276,4 @@ Every release candidate must pass:
 - Database schema changes require a separate reviewed migration plan before execution.
 - Large corpus data is not committed to normal Git.
 - Long-running tests and quality gates must run detached with PID and log files.
+- Phase 4 must not apply a database migration; structured reasoning output is stored in existing draft metadata until a reviewed schema migration is approved.

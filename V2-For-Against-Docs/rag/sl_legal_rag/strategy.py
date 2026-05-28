@@ -13,6 +13,11 @@ LEGAL_SENTENCE_SIGNAL_RE = re.compile(
     r"\b(shall|must|may|cannot|can not|prohibited|entitled|liable|valid|invalid|court|tribunal|act|ordinance|section|article|regulation|appeal|petition|affidavit|jurisdiction|burden|standard)\b",
     re.IGNORECASE,
 )
+UNSAFE_FINAL_ADVICE_RE = re.compile(
+    r"\b(final legal advice|will win|guaranteed|strong case|definitely entitled|certainly liable)\b",
+    re.IGNORECASE,
+)
+REASONING_PACK_OUTPUTS = {"for_against_brief", "preliminary_legal_opinion", "lawyer_review_pack"}
 
 
 @dataclass(frozen=True)
@@ -38,7 +43,7 @@ Do not rely on hidden knowledge, memory, uncited authorities, or unsupported ass
 If the pack does not contain an authority needed for a conclusion, say that the authority is missing from the current pack.
 Treat source-quality metadata as part of the evidence: disclose unreviewed translations, OCR warnings, missing source text, or other quality flags when they affect confidence.
 Do not fabricate citations, hide adverse authority, tamper with facts, guarantee outcomes, or bypass lawyer review.
-Do not present output as final legal advice; it is a lawyer-review draft."""
+Do not present output as authoritative legal advice; it is a lawyer-review draft."""
 
 
 def _string_list(value: object) -> list[str]:
@@ -170,6 +175,7 @@ Return one JSON object with this exact shape:
       "confidence": "needs_lawyer_review"
     }}
   ],
+  "reasoning_pack": null,
   "counterarguments": [
     {{
       "counterargument": "best opposing argument supported by the current pack",
@@ -201,7 +207,122 @@ Return one JSON object with this exact shape:
   "citation_validation": {{}}
 }}
 
-If the pack does not support a legal conclusion, put it in missing_authorities or warnings instead of claiming it."""
+If requested_output is "for_against_brief", "preliminary_legal_opinion", or "lawyer_review_pack", reasoning_pack must be a JSON object with this exact structure:
+{{
+  "schema_version": "reasoning_pack.v1",
+  "output_type": "{requested_output if requested_output in REASONING_PACK_OUTPUTS else 'lawyer_review_pack'}",
+  "authority_verifications": [
+    {{
+      "authority_id": "AUTH_001",
+      "title": "authority title",
+      "authority_type": "Act",
+      "citation": "citation string",
+      "pack_item_ids": ["{example_pack_item_id}"],
+      "section": "to_be_verified",
+      "official_source_checked": false,
+      "amendment_checked": false,
+      "case_law_checked": false,
+      "procedural_rule_checked": false,
+      "verification_status": "requires_lawyer_review",
+      "notes": "what a lawyer must verify"
+    }}
+  ],
+  "issue_matrix": [
+    {{
+      "issue_id": "ISSUE_001",
+      "issue": "legal question being tested",
+      "legal_area": "Sri Lankan law area",
+      "elements": [
+        {{
+          "element_id": "ELEMENT_001",
+          "element": "legal element",
+          "supporting_facts": ["fact supporting this element"],
+          "opposing_facts": ["fact or risk against this element"],
+          "authority_ids": ["AUTH_001"],
+          "pack_item_ids": ["{example_pack_item_id}"],
+          "missing_evidence": ["document or fact needed"],
+          "verification_status": "requires_lawyer_review"
+        }}
+      ],
+      "authority_ids": ["AUTH_001"],
+      "facts_supporting": ["supporting fact"],
+      "facts_against": ["opposing fact or uncertainty"],
+      "missing_evidence": ["missing document or fact"],
+      "confidence": 0.5,
+      "verification_status": "requires_lawyer_review"
+    }}
+  ],
+  "fact_to_law_mappings": [
+    {{
+      "issue_id": "ISSUE_001",
+      "fact": "case fact",
+      "legal_question": "how the fact maps to law",
+      "authority_id": "AUTH_001",
+      "specific_section": "to_be_verified",
+      "supporting_reasoning": "pack-bounded reasoning with cautious language",
+      "risk": "risk or uncertainty",
+      "missing_documents": ["document needed"],
+      "pack_item_ids": ["{example_pack_item_id}"],
+      "verification_status": "requires_lawyer_review",
+      "lawyer_verification_required": true
+    }}
+  ],
+  "for_against_brief": [
+    {{
+      "issue_id": "ISSUE_001",
+      "issue": "legal question",
+      "legal_basis": [
+        {{
+          "authority_id": "AUTH_001",
+          "authority": "authority title",
+          "section": "to_be_verified",
+          "proposition": "legal proposition subject to verification",
+          "pack_item_ids": ["{example_pack_item_id}"],
+          "verification_status": "requires_lawyer_review"
+        }}
+      ],
+      "facts_relied_on": ["fact"],
+      "client_argument": "argument for the client",
+      "opposing_argument": "best argument against the client",
+      "rebuttal": "client response to the opposing argument",
+      "weaknesses": ["weakness"],
+      "missing_evidence": ["missing evidence"],
+      "strength": "unknown",
+      "confidence": 0.5,
+      "requires_lawyer_verification": true,
+      "pack_item_ids": ["{example_pack_item_id}"]
+    }}
+  ],
+  "missing_evidence_checklist": ["specific missing document, fact, case law, procedure, or authority verification task"],
+  "preliminary_legal_opinion": {{
+    "matter": "matter title",
+    "instructions": "question presented",
+    "important_qualification": "This is a preliminary lawyer-review draft subject to verification by a qualified Sri Lankan lawyer.",
+    "assumed_facts": ["assumed fact"],
+    "documents_reviewed": ["retrieved authority or client document"],
+    "issues": ["issue"],
+    "applicable_law": ["pack-bounded authority or requires verification"],
+    "analysis": "separate law, fact, application, risk, and opinion using cautious language.",
+    "preliminary_opinion": "On the retrieved materials and assumed facts, the matter appears to have an arguable basis subject to lawyer verification.",
+    "risks": ["risk"],
+    "recommended_next_steps": ["next step"],
+    "conclusion": "Preliminary conclusion subject to lawyer verification.",
+    "lawyer_verification_required": true
+  }},
+  "lawyer_review_pack": {{
+    "one_page_case_summary": "case summary",
+    "issue_matrix_ids": ["ISSUE_001"],
+    "authority_ids": ["AUTH_001"],
+    "missing_documents": ["missing document"],
+    "questions_for_client": ["question for client"],
+    "questions_for_lawyer": ["question for lawyer"],
+    "review_notes": ["lawyer review note"]
+  }},
+  "lawyer_verification_required": true,
+  "warnings": ["lawyer verification required before reliance"]
+}}
+
+If the pack does not support a legal conclusion, put it in missing_authorities, warnings, missing_evidence_checklist, or mark the structured item as requires_lawyer_review instead of claiming it."""
 
     return [
         {"role": "system", "content": SYSTEM_BOUNDARY + "\nReturn JSON only."},
@@ -209,8 +330,14 @@ If the pack does not support a legal conclusion, put it in missing_authorities o
     ]
 
 
-def validate_strategy_response_against_pack(response: StrategyDraftResponse, pack: LegalResearchPack) -> list[str]:
-    return [issue.message for issue in validate_strategy_citations(response, pack)]
+def validate_strategy_response_against_pack(
+    response: StrategyDraftResponse,
+    pack: LegalResearchPack,
+    requested_output: str = "strategy_report",
+) -> list[str]:
+    citation_issues = [issue.message for issue in validate_strategy_citations(response, pack)]
+    reasoning_issues = [issue.message for issue in validate_reasoning_pack_contract(response, requested_output)]
+    return citation_issues + reasoning_issues
 
 
 def extract_pack_item_references(text: str) -> set[str]:
@@ -273,6 +400,53 @@ def validate_strategy_citations(response: StrategyDraftResponse, pack: LegalRese
                     message=f"risk ranking {index} cites pack items not present in pack: {', '.join(unknown_ids)}",
                 )
             )
+    if response.reasoning_pack is not None:
+        unknown_ids = sorted(response.reasoning_pack.all_pack_item_ids().difference(allowed))
+        if unknown_ids:
+            issues.append(
+                CitationValidationIssue(
+                    code="reasoning_pack_out_of_pack",
+                    message=f"reasoning pack cites pack items not present in pack: {', '.join(unknown_ids)}",
+                )
+            )
+    return issues
+
+
+def validate_reasoning_pack_contract(
+    response: StrategyDraftResponse,
+    requested_output: str = "strategy_report",
+) -> list[CitationValidationIssue]:
+    issues: list[CitationValidationIssue] = []
+    if requested_output in REASONING_PACK_OUTPUTS and response.reasoning_pack is None:
+        issues.append(
+            CitationValidationIssue(
+                code="missing_reasoning_pack",
+                message=f"requested_output {requested_output!r} requires reasoning_pack",
+            )
+        )
+    if UNSAFE_FINAL_ADVICE_RE.search(response.answer):
+        issues.append(
+            CitationValidationIssue(
+                code="unsafe_final_advice_wording",
+                message="strategy answer contains unsafe final-advice wording",
+            )
+        )
+    if response.reasoning_pack is not None:
+        pack = response.reasoning_pack
+        if not pack.missing_evidence_checklist:
+            issues.append(
+                CitationValidationIssue(
+                    code="missing_evidence_checklist_required",
+                    message="reasoning pack must include a missing evidence checklist",
+                )
+            )
+        if not pack.lawyer_verification_required:
+            issues.append(
+                CitationValidationIssue(
+                    code="lawyer_verification_required",
+                    message="reasoning pack must require lawyer verification",
+                )
+            )
     return issues
 
 
@@ -316,7 +490,7 @@ def generate_strategy_draft(
     )
     data["pack_id"] = pack.pack_id
     response = StrategyDraftResponse.model_validate(data)
-    errors = validate_strategy_response_against_pack(response, pack)
+    errors = validate_strategy_response_against_pack(response, pack, requested_output=requested_output)
     if errors:
         raise ValueError("Strategy draft failed pack-boundary validation: " + "; ".join(errors))
     policy_evaluation = evaluate_strategy_output_policy(

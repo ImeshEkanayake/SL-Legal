@@ -28,8 +28,8 @@ rag/sl_legal_rag/
 Important modules:
 
 - `api.py`: FastAPI endpoints for research packs, strategy, cases, review, drafts, claims, audit, and workspace data.
-- `models.py`: Pydantic contracts for case structuring, research packs, strategy drafts, review queues, claims, and workspace responses.
-- `strategy.py`: pack-bounded strategy prompt construction, draft generation, and citation validation.
+- `models.py`: Pydantic contracts for case structuring, research packs, strategy drafts, reasoning packs, review queues, claims, and workspace responses.
+- `strategy.py`: pack-bounded strategy prompt construction, reasoning-pack draft generation, and citation validation.
 - `research_pack.py`: research pack sealing, hashing, token accounting, and contract validation.
 - `case_structure.py`: MECE case structuring prompts and validation.
 - `hybrid_retrieval.py`: OpenSearch and Qdrant hybrid retrieval orchestration.
@@ -86,7 +86,7 @@ Important files:
 - `web/src/lib/workspace-api.ts`: API client helpers.
 - `web/src/lib/ui-session*.ts`: UI session signing support.
 
-V2 UI work should add strategy memo first views, evidence stance grouping, and review actions beside support/adverse/mixed evidence.
+V2 UI work should add reasoning pack first views, evidence stance grouping, and review actions beside support/adverse/mixed evidence.
 
 ## Operational Scripts
 
@@ -143,7 +143,7 @@ Current coverage includes:
 - data registry
 - extraction quality
 
-V2 must add stance-specific tests for support, adverse, mixed, and context evidence.
+V2 must keep stance-specific tests for support, adverse, mixed, and context evidence and reasoning-pack tests for lawyer-review outputs.
 
 Frontend tests live beside frontend code:
 
@@ -159,7 +159,7 @@ Recommended additions:
 - `ClaimEvidenceAssessment` models in `rag/sl_legal_rag/models.py`.
 - Evidence assessment repository methods in `rag/sl_legal_rag/db/repositories.py`.
 - Evidence assessment API endpoints in `rag/sl_legal_rag/api.py`.
-- Strategy memo and evidence stance UI in `web/src/components`.
+- Reasoning pack and evidence stance UI in `web/src/components`.
 - Tests in `tests/test_evidence_assessments.py`, `tests/test_db_access_layer.py`, API tests, and future UI tests.
 
 ## V2 Phase 2 Evidence Assessment Contract
@@ -181,6 +181,19 @@ Phase 3 adds retrieval-layer for/against coverage without changing the database.
 - `rag/sl_legal_rag/retrieval_eval.py`: reports supportive and adverse recall separately and enforces adverse cases in blind fixtures.
 - `rag/evals/v2_for_against_retrieval_fixture.json`: CI-safe fixture for support/adverse recall behavior.
 - `Docs/v2_phase_3_adverse_retrieval_contract.md`: query intent, trace, scoring, evaluation, and release boundaries.
+
+## V2 Phase 4 Reasoning Pack Contract
+
+Phase 4 adds the production reasoning layer without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `AuthorityVerification`, `IssueMatrixItem`, `LegalElement`, `FactLawMapping`, `ForAgainstArgument`, `PreliminaryLegalOpinion`, `LawyerReviewPack`, and `ReasoningPackOutput`.
+- `rag/sl_legal_rag/strategy.py`: requested output support for `for_against_brief`, `preliminary_legal_opinion`, and `lawyer_review_pack`, plus reasoning-pack citation and cautious-language validation.
+- `rag/sl_legal_rag/db/repositories.py`: stores structured reasoning output in `drafts.metadata.reasoning_pack`, human-readable output in `drafts.content_markdown`, and review items for adverse reasoning and missing evidence.
+- `rag/sl_legal_rag/api.py`: returns `reasoning_review_item_ids` from strategy draft generation.
+- `tests/test_reasoning_pack_models.py`: schema and validator coverage.
+- `tests/test_strategy_reasoning.py`: generation and pack-bounded citation coverage.
+- `tests/test_db_access_layer.py`: integration coverage for persistence, draft detail metadata, review queue items, and audit.
+- `Docs/v2_phase_4_reasoning_pack_contract.md`: output structure, storage boundary, validation rules, and release scope.
 
 ## Data Boundary
 

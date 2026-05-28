@@ -1803,6 +1803,7 @@ def test_strategy_draft_endpoint_persists_reviewable_output(monkeypatch):
                 claim_ids=["claim_1"],
                 draft_review_item_id="review_draft_1",
                 claim_review_item_ids=["review_claim_1"],
+                reasoning_review_item_ids=[],
             )
 
         def update_agent_run_status(self, **kwargs):
@@ -1841,9 +1842,11 @@ def test_strategy_draft_endpoint_persists_reviewable_output(monkeypatch):
     assert data["claim_ids"] == ["claim_1"]
     assert data["draft_review_item_id"] == "review_draft_1"
     assert data["claim_review_item_ids"] == ["review_claim_1"]
+    assert data["reasoning_review_item_ids"] == []
     assert calls["persisted_case_id"] == "case_1"
     assert calls["agent_status"] == "complete"
     assert calls["rate_limit"]["route_key"] == "strategy.draft"
+    assert calls["agent_output"]["reasoning_pack_present"] is False
 
 
 def test_case_read_endpoints_return_reviewable_workflow(monkeypatch):

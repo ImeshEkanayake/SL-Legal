@@ -15,3 +15,5 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/releases/v2_phase_2_evidence_assessment_domain_model.md`
 - `Docs/v2_phase_3_adverse_retrieval_contract.md`
 - `Docs/releases/v2_phase_3_adverse_retrieval_pipeline.md`
+- `Docs/v2_phase_4_reasoning_pack_contract.md`
+- `Docs/releases/v2_phase_4_reasoning_pack_workflow.md`

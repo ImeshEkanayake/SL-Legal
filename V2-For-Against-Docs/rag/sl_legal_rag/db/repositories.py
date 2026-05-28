@@ -106,6 +106,7 @@ class PersistedStrategyDraft:
     claim_ids: list[str]
     draft_review_item_id: str
     claim_review_item_ids: list[str]
+    reasoning_review_item_ids: list[str]
 
 
 @dataclass(frozen=True)
@@ -3587,6 +3588,11 @@ class LegalWorkspaceRepository:
                     "risk_count": len(strategy_response.risk_rankings),
                     "next_retrieval_questions": [item.model_dump(mode="json") for item in strategy_response.next_retrieval_questions],
                     "citation_validation": strategy_response.citation_validation,
+                    "reasoning_pack": (
+                        strategy_response.reasoning_pack.model_dump(mode="json")
+                        if strategy_response.reasoning_pack is not None
+                        else None
+                    ),
                 },
             )
 
@@ -3601,6 +3607,7 @@ class LegalWorkspaceRepository:
             created_by_user_id=created_by_user_id,
             metadata={
                 "pack_hash": pack_hash,
+                "requested_output": requested_output,
                 "claim_count": len(strategy_response.claims),
                 "missing_authorities": strategy_response.missing_authorities,
                 "warnings": strategy_response.warnings,
@@ -3608,6 +3615,11 @@ class LegalWorkspaceRepository:
                 "risk_rankings": [item.model_dump(mode="json") for item in strategy_response.risk_rankings],
                 "next_retrieval_questions": [item.model_dump(mode="json") for item in strategy_response.next_retrieval_questions],
                 "citation_validation": strategy_response.citation_validation,
+                "reasoning_pack": (
+                    strategy_response.reasoning_pack.model_dump(mode="json")
+                    if strategy_response.reasoning_pack is not None
+                    else None
+                ),
             },
         )
         draft_review_item_id = self.create_review_item(
@@ -3652,6 +3664,29 @@ class LegalWorkspaceRepository:
             claim_ids.append(claim_id)
             claim_review_item_ids.append(review_id)
 
+        reasoning_review_item_ids: list[str] = []
+        if strategy_response.reasoning_pack is not None:
+            if strategy_response.reasoning_pack.for_against_brief:
+                reasoning_review_item_ids.append(
+                    self.create_review_item(
+                        case_id=case_id,
+                        item_type="adverse_evidence",
+                        item_id=draft_id,
+                        assigned_to_user_id=assigned_review_user_id,
+                        priority="high",
+                    )
+                )
+            if strategy_response.reasoning_pack.missing_evidence_checklist:
+                reasoning_review_item_ids.append(
+                    self.create_review_item(
+                        case_id=case_id,
+                        item_type="missing_evidence",
+                        item_id=draft_id,
+                        assigned_to_user_id=assigned_review_user_id,
+                        priority="normal",
+                    )
+                )
+
         self.session.flush()
         return PersistedStrategyDraft(
             draft_id=draft_id,
@@ -3660,6 +3695,7 @@ class LegalWorkspaceRepository:
             claim_ids=claim_ids,
             draft_review_item_id=draft_review_item_id,
             claim_review_item_ids=claim_review_item_ids,
+            reasoning_review_item_ids=reasoning_review_item_ids,
         )
 
     def list_review_items(
@@ -3704,13 +3740,21 @@ class LegalWorkspaceRepository:
                     ri.reviewed_at,
                     ri.created_at,
                     ri.updated_at,
-                    COALESCE(d.title, left(lc.claim_text, 160), ri.item_id) AS item_title,
+                    COALESCE(
+                        CASE
+                            WHEN ri.item_type = 'adverse_evidence' THEN 'Adverse evidence review'
+                            WHEN ri.item_type = 'missing_evidence' THEN 'Missing evidence review'
+                            ELSE d.title
+                        END,
+                        left(lc.claim_text, 160),
+                        ri.item_id
+                    ) AS item_title,
                     COALESCE(left(d.content_markdown, 500), left(lc.claim_text, 500), '') AS item_excerpt,
                     COALESCE(d.pack_id, lc.pack_id) AS pack_id,
                     COALESCE(d.thread_id, lc.thread_id) AS thread_id
                 FROM review_items ri
                 LEFT JOIN drafts d
-                    ON ri.item_type = 'draft'
+                    ON ri.item_type IN ('draft', 'adverse_evidence', 'missing_evidence')
                    AND d.draft_id = ri.item_id
                    AND d.case_id = ri.case_id
                 LEFT JOIN legal_claims lc
@@ -3821,6 +3865,8 @@ class LegalWorkspaceRepository:
                     "reviewer_user_id": reviewer_user_id,
                 },
             )
+        elif review_before["item_type"] in {"adverse_evidence", "missing_evidence"}:
+            pass
         else:
             raise ValueError(f"Unsupported review item type: {review_before['item_type']}")
 
@@ -4294,7 +4340,7 @@ class LegalWorkspaceRepository:
         return _plain_dict(row) if row is not None else None
 
     def _review_target_state(self, *, case_id: str, item_type: str, item_id: str) -> dict[str, Any] | None:
-        if item_type == "draft":
+        if item_type in {"draft", "adverse_evidence", "missing_evidence"}:
             row = self.session.execute(
                 text(
                     """
@@ -4816,7 +4862,7 @@ def _text_list(value: Any) -> list[str]:
 
 
 def _target_status_for_decision(item_type: str, decision: str) -> str:
-    if item_type == "draft":
+    if item_type in {"draft", "adverse_evidence", "missing_evidence"}:
         return {
             "approved": "approved",
             "rejected": "rejected",

@@ -61,4 +61,4 @@ Local validation completed on 2026-05-28:
 
 ## Next Phase
 
-Phase 4 builds the strategy memo and review workflow so generated lawyer-review drafts visibly handle support, adverse, mixed, and context evidence.
+Phase 4 builds the reasoning pack and preliminary opinion workflow so generated lawyer-review drafts visibly handle support, adverse, mixed, and context evidence.

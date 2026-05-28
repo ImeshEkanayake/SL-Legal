@@ -154,7 +154,7 @@ def test_phase_0_generation_rejects_policy_blocked_strategy_output():
         }
     )
 
-    with pytest.raises(ValueError, match="Product policy blocked output"):
+    with pytest.raises(ValueError, match="Product policy blocked output|unsafe final-advice wording"):
         generate_strategy_draft(
             case_facts="The employer refused to bargain.",
             pack=pack,

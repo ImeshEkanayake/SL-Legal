@@ -442,6 +442,217 @@ class StrategyRiskRanking(BaseModel):
     mitigation: str | None = None
 
 
+VerificationStatus = Literal[
+    "verified",
+    "partially_verified",
+    "assumed",
+    "missing_evidence",
+    "requires_case_law",
+    "requires_lawyer_review",
+]
+ReasoningOutputType = Literal["for_against_brief", "preliminary_legal_opinion", "lawyer_review_pack"]
+ArgumentStrength = Literal["high", "medium", "low", "unknown"]
+
+
+class AuthorityVerification(BaseModel):
+    authority_id: str
+    title: str = Field(min_length=1)
+    authority_type: str = Field(min_length=1)
+    citation: str = Field(min_length=1)
+    pack_item_ids: list[str] = Field(default_factory=list)
+    section: str = "to_be_verified"
+    official_source_checked: bool = False
+    amendment_checked: bool = False
+    case_law_checked: bool = False
+    procedural_rule_checked: bool = False
+    verification_status: VerificationStatus = "requires_lawyer_review"
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def require_verification_status_for_unchecked_authorities(self) -> "AuthorityVerification":
+        if self.verification_status == "verified" and not (
+            self.official_source_checked and self.amendment_checked
+        ):
+            raise ValueError("verified authorities require official source and amendment checks")
+        return self
+
+
+class LegalElement(BaseModel):
+    element_id: str
+    element: str = Field(min_length=1)
+    supporting_facts: list[str] = Field(default_factory=list)
+    opposing_facts: list[str] = Field(default_factory=list)
+    authority_ids: list[str] = Field(default_factory=list)
+    pack_item_ids: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    verification_status: VerificationStatus = "requires_lawyer_review"
+
+
+class IssueMatrixItem(BaseModel):
+    issue_id: str
+    issue: str = Field(min_length=1)
+    legal_area: str = Field(min_length=1)
+    elements: list[LegalElement] = Field(min_length=1)
+    authority_ids: list[str] = Field(default_factory=list)
+    facts_supporting: list[str] = Field(default_factory=list)
+    facts_against: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+    verification_status: VerificationStatus = "requires_lawyer_review"
+
+
+class FactLawMapping(BaseModel):
+    issue_id: str
+    fact: str = Field(min_length=1)
+    legal_question: str = Field(min_length=1)
+    authority_id: str | None = None
+    specific_section: str = "to_be_verified"
+    supporting_reasoning: str = Field(min_length=1)
+    risk: str = Field(min_length=1)
+    missing_documents: list[str] = Field(default_factory=list)
+    pack_item_ids: list[str] = Field(default_factory=list)
+    verification_status: VerificationStatus = "requires_lawyer_review"
+    lawyer_verification_required: bool = True
+
+    @model_validator(mode="after")
+    def require_grounding_or_verification(self) -> "FactLawMapping":
+        if not self.pack_item_ids and self.verification_status == "verified":
+            raise ValueError("verified fact-to-law mappings require at least one pack_item_id")
+        if not self.pack_item_ids and not self.lawyer_verification_required:
+            raise ValueError("ungrounded fact-to-law mappings require lawyer verification")
+        return self
+
+
+class ForAgainstLegalBasis(BaseModel):
+    authority_id: str | None = None
+    authority: str = Field(min_length=1)
+    section: str = "to_be_verified"
+    proposition: str = Field(min_length=1)
+    pack_item_ids: list[str] = Field(default_factory=list)
+    verification_status: VerificationStatus = "requires_lawyer_review"
+
+    @model_validator(mode="after")
+    def require_pack_citation_or_verification(self) -> "ForAgainstLegalBasis":
+        if not self.pack_item_ids and self.verification_status == "verified":
+            raise ValueError("verified legal basis entries require at least one pack_item_id")
+        return self
+
+
+class ForAgainstArgument(BaseModel):
+    issue_id: str
+    issue: str = Field(min_length=1)
+    legal_basis: list[ForAgainstLegalBasis] = Field(default_factory=list)
+    facts_relied_on: list[str] = Field(default_factory=list)
+    client_argument: str = Field(min_length=1)
+    opposing_argument: str = Field(min_length=1)
+    rebuttal: str = Field(min_length=1)
+    weaknesses: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    strength: ArgumentStrength = "unknown"
+    confidence: float = Field(ge=0, le=1)
+    requires_lawyer_verification: bool = True
+    pack_item_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_balanced_argument(self) -> "ForAgainstArgument":
+        basis_pack_ids = {item_id for basis in self.legal_basis for item_id in basis.pack_item_ids}
+        if not self.pack_item_ids and basis_pack_ids:
+            self.pack_item_ids = sorted(basis_pack_ids)
+        if not self.requires_lawyer_verification:
+            raise ValueError("for/against arguments must require lawyer verification")
+        return self
+
+
+class PreliminaryLegalOpinion(BaseModel):
+    matter: str = Field(min_length=1)
+    instructions: str = Field(min_length=1)
+    important_qualification: str = Field(min_length=1)
+    assumed_facts: list[str] = Field(min_length=1)
+    documents_reviewed: list[str] = Field(min_length=1)
+    issues: list[str] = Field(min_length=1)
+    applicable_law: list[str] = Field(min_length=1)
+    analysis: str = Field(min_length=1)
+    preliminary_opinion: str = Field(min_length=1)
+    risks: list[str] = Field(min_length=1)
+    recommended_next_steps: list[str] = Field(min_length=1)
+    conclusion: str = Field(min_length=1)
+    lawyer_verification_required: bool = True
+
+    @model_validator(mode="after")
+    def enforce_preliminary_cautious_language(self) -> "PreliminaryLegalOpinion":
+        combined = " ".join(
+            [
+                self.important_qualification,
+                self.analysis,
+                self.preliminary_opinion,
+                self.conclusion,
+            ]
+        ).lower()
+        banned = ["final legal advice", "will win", "guaranteed", "strong case"]
+        if any(term in combined for term in banned):
+            raise ValueError("preliminary legal opinion contains unsafe final-advice wording")
+        required = ["preliminary", "lawyer", "verification"]
+        if not all(term in combined for term in required):
+            raise ValueError("preliminary legal opinion must use cautious lawyer-verification language")
+        if not self.lawyer_verification_required:
+            raise ValueError("preliminary legal opinion must require lawyer verification")
+        return self
+
+
+class LawyerReviewPack(BaseModel):
+    one_page_case_summary: str = Field(min_length=1)
+    issue_matrix_ids: list[str] = Field(min_length=1)
+    authority_ids: list[str] = Field(default_factory=list)
+    missing_documents: list[str] = Field(min_length=1)
+    questions_for_client: list[str] = Field(min_length=1)
+    questions_for_lawyer: list[str] = Field(min_length=1)
+    review_notes: list[str] = Field(default_factory=list)
+
+
+class ReasoningPackOutput(BaseModel):
+    schema_version: str = "reasoning_pack.v1"
+    output_type: ReasoningOutputType = "lawyer_review_pack"
+    authority_verifications: list[AuthorityVerification] = Field(min_length=1)
+    issue_matrix: list[IssueMatrixItem] = Field(min_length=1)
+    fact_to_law_mappings: list[FactLawMapping] = Field(min_length=1)
+    for_against_brief: list[ForAgainstArgument] = Field(min_length=1)
+    missing_evidence_checklist: list[str] = Field(min_length=1)
+    preliminary_legal_opinion: PreliminaryLegalOpinion
+    lawyer_review_pack: LawyerReviewPack
+    lawyer_verification_required: bool = True
+    warnings: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_reasoning_pack_contract(self) -> "ReasoningPackOutput":
+        issue_ids = {item.issue_id for item in self.issue_matrix}
+        mapped_issue_ids = {item.issue_id for item in self.fact_to_law_mappings}
+        argument_issue_ids = {item.issue_id for item in self.for_against_brief}
+        unknown_mappings = sorted(mapped_issue_ids.difference(issue_ids))
+        unknown_arguments = sorted(argument_issue_ids.difference(issue_ids))
+        if unknown_mappings:
+            raise ValueError(f"fact-to-law mappings reference unknown issues: {', '.join(unknown_mappings)}")
+        if unknown_arguments:
+            raise ValueError(f"for/against arguments reference unknown issues: {', '.join(unknown_arguments)}")
+        if not self.lawyer_verification_required:
+            raise ValueError("reasoning packs must require lawyer verification")
+        if not any(item.opposing_argument.strip() for item in self.for_against_brief):
+            raise ValueError("reasoning packs require adverse or opposing analysis")
+        return self
+
+    def all_pack_item_ids(self) -> set[str]:
+        item_ids = {item_id for authority in self.authority_verifications for item_id in authority.pack_item_ids}
+        for issue in self.issue_matrix:
+            for element in issue.elements:
+                item_ids.update(element.pack_item_ids)
+        for mapping in self.fact_to_law_mappings:
+            item_ids.update(mapping.pack_item_ids)
+        for argument in self.for_against_brief:
+            item_ids.update(argument.pack_item_ids)
+            for basis in argument.legal_basis:
+                item_ids.update(basis.pack_item_ids)
+        return item_ids
+
+
 class StrategyDraftRequest(BaseModel):
     case_facts: str = Field(min_length=10)
     pack_id: str = Field(min_length=1)
@@ -458,6 +669,7 @@ class StrategyDraftResponse(BaseModel):
     pack_id: str
     answer: str
     claims: list[CitedClaim]
+    reasoning_pack: ReasoningPackOutput | None = None
     counterarguments: list[CounterargumentSimulation] = Field(default_factory=list)
     risk_rankings: list[StrategyRiskRanking] = Field(default_factory=list)
     next_retrieval_questions: list[RetrievalQueryVariant] = Field(default_factory=list)
@@ -478,6 +690,8 @@ class StrategyDraftResponse(BaseModel):
             item_ids.update(counterargument.response_pack_item_ids)
         for risk in self.risk_rankings:
             item_ids.update(risk.pack_item_ids)
+        if self.reasoning_pack is not None:
+            item_ids.update(self.reasoning_pack.all_pack_item_ids())
         return item_ids
 
 
@@ -490,6 +704,7 @@ class PersistedStrategyDraftResponse(StrategyDraftResponse):
     claim_ids: list[str]
     draft_review_item_id: str
     claim_review_item_ids: list[str]
+    reasoning_review_item_ids: list[str] = Field(default_factory=list)
 
 
 class ReviewQueueItem(BaseModel):

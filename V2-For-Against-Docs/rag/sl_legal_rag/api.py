@@ -1484,12 +1484,14 @@ def create_strategy_draft_endpoint(
                     "claim_ids": persisted.claim_ids,
                     "draft_review_item_id": persisted.draft_review_item_id,
                     "claim_review_item_ids": persisted.claim_review_item_ids,
+                    "reasoning_review_item_ids": persisted.reasoning_review_item_ids,
                     "counterargument_count": len(draft.counterarguments),
                     "risk_count": len(draft.risk_rankings),
                     "next_retrieval_question_count": len(draft.next_retrieval_questions),
                     "citation_validation": draft.citation_validation,
                     "missing_authorities": draft.missing_authorities,
                     "warnings": draft.warnings,
+                    "reasoning_pack_present": draft.reasoning_pack is not None,
                 },
             )
     except ValueError as exc:
@@ -1509,6 +1511,7 @@ def create_strategy_draft_endpoint(
         claim_ids=persisted.claim_ids,
         draft_review_item_id=persisted.draft_review_item_id,
         claim_review_item_ids=persisted.claim_review_item_ids,
+        reasoning_review_item_ids=persisted.reasoning_review_item_ids,
     ).model_dump(mode="json")
 
 
