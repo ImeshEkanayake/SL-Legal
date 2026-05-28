@@ -1,0 +1,190 @@
+{
+  "description": "Previously tuned two-stage retrieval cases. Keep expected authorities here, not in production retrieval code.",
+  "cases": [
+    {
+      "case_id": "industrial_disputes_union_bargaining",
+      "title": "Industrial dispute and union bargaining refusal",
+      "case_facts": "A registered union alleges that an employer refused collective bargaining, threatened transfers, and punished workers after they demanded negotiations.",
+      "query": "Industrial Disputes collective agreement trade union bargaining employer refusal disciplinary transfer workmen termination labour tribunal arbitration",
+      "document_types": ["Act", "Extraordinary Gazette", "Supreme Court Judgment", "Court of Appeal Judgment", "Sri Lanka Law Report"],
+      "expected_count": 10,
+      "expected_documents": [
+        "gov_extra_gazette_1862_08_e_b5e7eebf3c",
+        "gov_extra_gazette_1862_09_e_919d5b87a9",
+        "gov_extra_gazette_1862_10_e_9239e2fd77",
+        "gov_extra_gazette_1833_02_e_6f3f1cf4a4",
+        "gov_extra_gazette_1877_31_e_a55463aef1",
+        "gov_extra_gazette_1871_45_e_597f57d176",
+        "gov_extra_gazette_2089_52_e_d2e07d11c4",
+        "gov_extra_gazette_1873_40_e_c76a308f29",
+        "gov_extra_gazette_2043_08_e_0064e0600b",
+        "gov_extra_gazette_1846_37_e_bdf4cf60ff"
+      ]
+    },
+    {
+      "case_id": "fundamental_rights_arrest_detention",
+      "title": "Fundamental-rights arrest and detention",
+      "case_facts": "Police arrested a person without giving reasons, detained him overnight, and did not produce him promptly before a Magistrate.",
+      "query": "fundamental rights arbitrary arrest detention Article 13 reasons for arrest produce before Magistrate police custody Article 11 12 Supreme Court",
+      "document_types": ["Constitution", "Supreme Court Judgment", "Court of Appeal Judgment", "Sri Lanka Law Report", "New Law Report"],
+      "expected_count": 10,
+      "expected_selectors": [
+        {
+          "label": "SC/CA fundamental-rights arrest material",
+          "document_types": ["Supreme Court Judgment", "Court of Appeal Judgment", "Sri Lanka Law Report"],
+          "source_ids": ["SC_OFFICIAL", "CA_OFFICIAL", "LANKALAW_NET"],
+          "text_query": "Article 13 arrest detention police Magistrate",
+          "limit": 10
+        }
+      ]
+    },
+    {
+      "case_id": "land_acquisition_compensation",
+      "title": "Land acquisition compensation for road project",
+      "case_facts": "A land owner challenges a government acquisition notice for a road project and says compensation ignores market value, improvements, and business disruption.",
+      "query": "Land Acquisition compensation market value acquisition notice road widening preliminary plan assessment objection appeal allotment",
+      "document_types": ["Act", "Extraordinary Gazette", "Ordinary Gazette", "Supreme Court Judgment", "Court of Appeal Judgment"],
+      "expected_count": 10,
+      "expected_documents": [
+        "gov_extra_gazette_1809_26_e_4f3f2b937f",
+        "gov_extra_gazette_1837_47_e_0fb6adfce5",
+        "gov_extra_gazette_1853_19_e_11704c7047",
+        "gov_extra_gazette_1886_43_e_9279e5f00a",
+        "gov_extra_gazette_2009_42_e_a2a5a6d6ac",
+        "gov_extra_gazette_1823_71_e_2f81afda0b",
+        "gov_extra_gazette_1876_29_e_d19b822ce2",
+        "gov_extra_gazette_1930_45_e_82a17a1b7d",
+        "gov_extra_gazette_2259_20_e_966d752a69",
+        "gov_extra_gazette_2020_02_e_29d936766c"
+      ]
+    },
+    {
+      "case_id": "inland_revenue_tax_assessment",
+      "title": "Income tax assessment appeal",
+      "case_facts": "A company receives an additional income tax assessment and penalty after audit and needs objection, appeal, and assessment authorities.",
+      "query": "Inland Revenue income tax assessment appeal objection notice of assessment penalty audit company Commissioner General tax tribunal",
+      "document_types": ["Act", "Government Bill", "Extraordinary Gazette", "Supreme Court Judgment", "Court of Appeal Judgment"],
+      "expected_count": 10,
+      "expected_selectors": [
+        {
+          "label": "Inland Revenue Acts",
+          "title_like": "%Inland Revenue%",
+          "document_types": ["Act", "Government Bill"],
+          "limit": 10
+        }
+      ]
+    },
+    {
+      "case_id": "local_authority_trade_licence_nuisance",
+      "title": "Local authority trade licence and nuisance",
+      "case_facts": "A small shop is told its local authority trade licence may be refused because of public nuisance and alleged by-law violations.",
+      "query": "local authority trade licence public nuisance by laws municipal council urban council Pradeshiya Sabha business premises offensive trade",
+      "document_types": ["Act", "Extraordinary Gazette", "Ordinary Gazette", "Provincial Legal Framework", "Provincial Statute"],
+      "expected_count": 10,
+      "expected_documents": [
+        "gov_extra_gazette_2070_11_e_ca654b33bd",
+        "parl_act_1987_015_g3392",
+        "gov_extra_gazette_1816_42_e_cb57d142c7",
+        "gov_extra_gazette_1778_45_e_844af05f13",
+        "gov_extra_gazette_1907_50_e_aa18814a4b",
+        "gov_extra_gazette_1877_32_e_ee49186cdf",
+        "gov_extra_gazette_2058_28_e_18a9c1e6d6",
+        "gov_extra_gazette_2061_04_e_f62f9b4b79",
+        "gov_extra_gazette_1933_40_e_43437d8d53",
+        "gov_extra_gazette_1838_56_e_e683e39945"
+      ]
+    },
+    {
+      "case_id": "companies_minority_shareholder_oppression",
+      "title": "Minority shareholder oppression and company records",
+      "case_facts": "Minority shareholders allege exclusion from company records, oppressive conduct, secret share transfers, and improper beneficial ownership disclosures.",
+      "query": "Companies Act minority shareholder oppression company records share transfer beneficial ownership director duties registrar winding up",
+      "document_types": ["Act", "Extraordinary Gazette", "Supreme Court Judgment", "Court of Appeal Judgment", "Sri Lanka Law Report"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_2007_007_g3776",
+        "parl_act_2025_012_g6389",
+        "parl_act_1988_078_g3911",
+        "gov_extra_gazette_2480_48_e_a1c9675a78",
+        "gov_extra_gazette_1760_17_e_5f5fdf4081",
+        "parl_act_1964_015_g5220",
+        "parl_act_1979_027_g2745",
+        "parl_act_1991_023_g3496",
+        "parl_act_1982_017_g3035",
+        "gov_extra_gazette_2354_12_e_c1a897099b"
+      ]
+    },
+    {
+      "case_id": "criminal_assault_evidence_procedure",
+      "title": "Criminal assault, evidence, and procedure",
+      "case_facts": "An accused person faces assault charges. The lawyer needs Penal Code offences, evidence rules, and criminal procedure materials for charge and trial strategy.",
+      "query": "Penal Code assault grievous hurt criminal liability Evidence Ordinance burden proof Criminal Procedure Code trial charge witness",
+      "document_types": ["Act", "Core Legislation", "Sri Lanka Law Report", "Supreme Court Judgment", "Court of Appeal Judgment"],
+      "expected_count": 10,
+      "expected_documents": [
+        "lankalaw_17365_penal_code__pdf_001_penal_code_no_02_of_1883_e",
+        "lankalaw_17365_penal_code__pdf_001_001_penal_code_no_02_of_1883_e",
+        "lankalaw_17368_evidence_ordinance__pdf_001_evidence_ordinance",
+        "lankalaw_17368_evidence_ordinance__pdf_001_001_evidence_ordinance",
+        "lankalaw_17365_penal_code",
+        "lankalaw_17368_evidence_ordinance",
+        "parl_act_1972_009_g3966",
+        "parl_act_1969_037_g5693",
+        "parl_act_1963_010_g5203",
+        "parl_act_1995_022_g3136"
+      ]
+    },
+    {
+      "case_id": "customs_import_duty_forfeiture",
+      "title": "Customs import duty and forfeiture dispute",
+      "case_facts": "An importer disputes customs valuation, import duty, seizure, forfeiture, and a penalty imposed after clearance.",
+      "query": "Customs Ordinance import duty valuation forfeiture seizure penalty customs declaration revenue protection order Director General",
+      "document_types": ["Act", "Extraordinary Gazette", "Ordinary Gazette", "Parliament Paper Presented", "Supreme Court Judgment"],
+      "expected_count": 10,
+      "expected_documents": [
+        "gov_extra_gazette_1992_26_e_38966a06c9",
+        "gov_extra_gazette_2006_42_e_4ad2d86945",
+        "parl_act_1988_083_g3916",
+        "parl_act_1962_019_g4843",
+        "gov_extra_gazette_2202_05_e_d86eaf8662",
+        "gov_extra_gazette_1941_42_e_85fc5f5ea1",
+        "gov_extra_gazette_2478_03_e_d855c3745a",
+        "gov_extra_gazette_1821_18_e_9f5fa8d18f",
+        "gov_extra_gazette_1903_40_e_e528507e5f",
+        "gov_extra_gazette_2031_39_e_1f045429ec"
+      ]
+    },
+    {
+      "case_id": "immigration_visa_overstay_removal",
+      "title": "Immigration visa overstay and removal",
+      "case_facts": "A foreign national faces visa cancellation, overstay consequences, removal, and passport-control issues under Sri Lankan immigration law.",
+      "query": "Immigrants and Emigrants visa overstay removal deportation passport entry permit residence regulations controller immigration",
+      "document_types": ["Act", "Government Bill", "Extraordinary Gazette", "Supreme Court Judgment", "Court of Appeal Judgment"],
+      "expected_count": 10,
+      "expected_selectors": [
+        {
+          "label": "Immigrants and Emigrants laws and regulations",
+          "title_like": "%Immigrants and Emigrants%",
+          "document_types": ["Act", "Government Bill", "Extraordinary Gazette"],
+          "limit": 10
+        }
+      ]
+    },
+    {
+      "case_id": "intellectual_property_trademark_infringement",
+      "title": "Trademark infringement and IP registration",
+      "case_facts": "A business alleges trademark infringement and passing off, and needs authorities on registration, ownership, remedies, and IP regulations.",
+      "query": "Intellectual Property trademark infringement passing off registration ownership remedies copyright patent industrial designs regulations",
+      "document_types": ["Act", "Extraordinary Gazette", "Core Legislation", "Sri Lanka Law Report", "Supreme Court Judgment", "Court of Appeal Judgment"],
+      "expected_count": 10,
+      "expected_selectors": [
+        {
+          "label": "Intellectual Property Acts and regulations",
+          "title_like": "%Intellectual Property%",
+          "document_types": ["Act", "Extraordinary Gazette", "Core Legislation"],
+          "limit": 10
+        }
+      ]
+    }
+  ]
+}

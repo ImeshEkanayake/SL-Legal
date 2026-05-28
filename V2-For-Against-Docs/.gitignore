@@ -1,0 +1,20 @@
+.DS_Store
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Local secrets. Keep examples committed, never real keys.
+.env
+.env.*
+!.env.example
+
+# Large/generated corpus artifacts.
+data/indexes/*.json
+data/indexes/*.jsonl
+logs/*.log
+
+# Frontend generated artifacts.
+web/node_modules/
+web/.next/
+web/out/
+web/coverage/

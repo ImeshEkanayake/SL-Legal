@@ -1,0 +1,43 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Start database
+        run: docker compose -f docker-compose.rag.yml up -d rag-postgres
+
+      - name: Apply schema
+        run: python3 scripts/apply_postgres_schema.py --no-start
+
+      - name: Run backend quality gate
+        run: >
+          uv run
+          --with sqlalchemy
+          --with 'psycopg[binary]'
+          --with pydantic
+          --with pydantic-settings
+          --with fastapi
+          --with pytest
+          --with httpx
+          --with eval-type-backport
+          python scripts/run_quality_checks.py

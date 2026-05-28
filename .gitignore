@@ -1,0 +1,21 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Large/generated corpus and runtime artifacts.
+data/
+logs/
+*.log
+
+# Frontend generated artifacts.
+web/node_modules/
+web/.next/
+web/out/
+web/coverage/
+
+# Local Codex/runtime caches.
+.codex_deps/

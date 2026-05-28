@@ -1,0 +1,205 @@
+{
+  "description": "Blind two-stage retrieval cases created after the tuned suite. Do not tune the retrieval code after looking at this file's first run results.",
+  "cases": [
+    {
+      "case_id": "blind_motor_traffic_collision_licensing",
+      "title": "Motor traffic collision, licensing, and road offences",
+      "case_facts": "A driver is accused of careless driving after a collision and the lawyer needs licensing, registration, insurance, and road offence authorities.",
+      "query": "Motor Traffic careless driving collision driving licence vehicle registration insurance road traffic offence accident penalty",
+      "document_types": ["Act", "Extraordinary Gazette", "Supreme Court Judgment", "Court of Appeal Judgment"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1951_014_g5327",
+        "parl_act_1952_001_g5352",
+        "parl_act_1956_001_g2758",
+        "parl_act_1958_043_g3810",
+        "parl_act_1961_063_g4032",
+        "parl_act_1962_035_g5131",
+        "parl_act_1964_040_g5086",
+        "parl_act_1964_039_g5085",
+        "parl_act_1966_003_g5603",
+        "parl_act_1968_020_g5627"
+      ]
+    },
+    {
+      "case_id": "blind_bribery_assets_public_official",
+      "title": "Bribery allegation and asset declaration duties",
+      "case_facts": "A public officer is accused of taking a benefit for an official act and failing to disclose assets under anti-corruption rules.",
+      "query": "Bribery corruption public officer gratification asset declaration liabilities anti-corruption commission investigation offence",
+      "document_types": ["Act", "Government Bill", "Extraordinary Gazette", "Case Digest", "Parliament Paper Presented"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1954_011_g5496",
+        "parl_act_1956_017_g2990",
+        "parl_act_1958_040_g3802",
+        "parl_act_1965_002_g5258",
+        "parl_act_1980_009_g2819",
+        "parl_act_1994_019_g2840",
+        "parl_act_2018_022_g6105",
+        "lankalaw_16883_bribery_and_corruption",
+        "gov_extra_gazette_2437_07_e_013b121446",
+        "gov_extra_gazette_2470_18_e_772237f697"
+      ]
+    },
+    {
+      "case_id": "blind_banking_microfinance_license_resolution",
+      "title": "Bank resolution and microfinance licensing",
+      "case_facts": "A lender faces Central Bank action over licensing, microfinance compliance, deposit protection, and special resolution measures.",
+      "query": "Banking Special Provisions Central Bank licensed bank microfinance licence renewal credit regulatory authority resolution order",
+      "document_types": ["Act", "Government Bill", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1988_030_g3454",
+        "parl_act_1990_039_g3068",
+        "parl_act_1995_033_g3200",
+        "parl_act_2005_002_g4917",
+        "parl_act_2006_015_g5718",
+        "parl_act_2006_046_g5743",
+        "parl_act_2023_017_g6300",
+        "parl_act_2016_006_g6001",
+        "gov_extra_gazette_1990_29_e_bd7bfa8ee5",
+        "gov_extra_gazette_2157_28_e_deebe6861c"
+      ]
+    },
+    {
+      "case_id": "blind_urban_development_area_land_use",
+      "title": "Urban development area declaration and land-use control",
+      "case_facts": "A property owner challenges an urban development area declaration and land-use restrictions for a local planning scheme.",
+      "query": "Urban Development Authority development area declaration land acquisition planning scheme approval restrictions regulation",
+      "document_types": ["Act", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1982_004_g3008",
+        "parl_act_1984_044_g3236",
+        "parl_act_1987_049_g3424",
+        "parl_act_1988_041_g3464",
+        "parl_act_2007_036_g46",
+        "gov_extra_gazette_1635_26_e_a31a8b93b8",
+        "gov_extra_gazette_1637_12_e_9ab8e6d4c9",
+        "gov_extra_gazette_1641_41_e_c0db58e4ad",
+        "gov_extra_gazette_1641_42_e_31aac2816d",
+        "gov_extra_gazette_1641_43_e_c024a54178"
+      ]
+    },
+    {
+      "case_id": "blind_parliamentary_election_nomination_vote",
+      "title": "Parliamentary election nomination and poll dispute",
+      "case_facts": "A candidate wants to challenge nomination rejection, polling irregularities, and election propaganda restrictions.",
+      "query": "Parliamentary Elections nomination poll ballot election petition propaganda returning officer candidate voting",
+      "document_types": ["Act", "Extraordinary Gazette", "Court of Appeal Judgment", "Supreme Court Judgment"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1950_038_g5298",
+        "parl_act_1952_007_g5358",
+        "parl_act_1956_016_g5579",
+        "parl_act_1959_026_g3868",
+        "parl_act_1959_011_g3848",
+        "parl_act_1960_002_g3872",
+        "parl_act_1961_072_g4064",
+        "parl_act_1961_011_g3917",
+        "parl_act_1964_008_g5214",
+        "parl_act_1964_010_g5618"
+      ]
+    },
+    {
+      "case_id": "blind_shop_office_wages_overtime",
+      "title": "Shop and office wages, overtime, and termination",
+      "case_facts": "An office employee claims unpaid overtime, unlawful working hours, and improper termination from a retail business.",
+      "query": "Shop and Office Employees wages remuneration working hours overtime employment termination women young persons regulation",
+      "document_types": ["Act", "Government Bill", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1954_019_g5497",
+        "parl_act_1957_060_g3707",
+        "parl_act_1962_028_g5120",
+        "parl_act_1966_005_g5605",
+        "parl_act_1966_026_g5281",
+        "parl_act_1978_012_g2702",
+        "parl_act_1981_053_g2968",
+        "parl_act_1982_036_g3071",
+        "parl_act_1984_032_g3568",
+        "parl_act_1985_044_g3292"
+      ]
+    },
+    {
+      "case_id": "blind_consumer_affairs_price_order",
+      "title": "Consumer maximum retail price and unfair trade practice",
+      "case_facts": "A trader is investigated for violating a consumer maximum retail price order and misleading customers about goods.",
+      "query": "Consumer Affairs Authority maximum retail price order unfair trade practice goods services direction investigation",
+      "document_types": ["Act", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_2003_009_g5802",
+        "parl_act_2021_020_g6225",
+        "gov_extra_gazette_1641_48_e_1b0d3843db",
+        "gov_extra_gazette_1642_10_e_5f79722138",
+        "gov_extra_gazette_1645_06_e_14ed861a77",
+        "gov_extra_gazette_1658_39_e_77c50f4a42",
+        "gov_extra_gazette_1687_45_e_15e4b82605",
+        "gov_extra_gazette_1688_04_e_4f537fc28a",
+        "gov_extra_gazette_1690_08_e_96a2d40c78",
+        "gov_extra_gazette_1698_08_e_5890627835"
+      ]
+    },
+    {
+      "case_id": "blind_insurance_industry_claim_regulation",
+      "title": "Insurance claim, insurer regulation, and policy control",
+      "case_facts": "A policyholder disputes claim refusal and asks about insurer licensing, industry regulation, and special insurance provisions.",
+      "query": "Insurance industry insurer claim policy regulation control licence special provisions trust fund compensation",
+      "document_types": ["Act", "Government Bill", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1961_013_g3920",
+        "parl_act_1961_002_g3895",
+        "parl_act_1962_025_g5116",
+        "parl_act_1966_006_g5606",
+        "parl_act_1967_009_g5318",
+        "parl_act_1978_015_g2707",
+        "parl_act_1979_055_g2781",
+        "parl_act_1979_022_g2741",
+        "parl_act_1986_042_g3374",
+        "parl_act_1986_043_g3375"
+      ]
+    },
+    {
+      "case_id": "blind_notarial_deed_execution",
+      "title": "Notarial deed execution and appointment status",
+      "case_facts": "A party challenges a deed because the notary's appointment, district authority, and registration formalities are disputed.",
+      "query": "Notaries Ordinance notary appointment deed execution attestation registrar general list notaries district authority",
+      "document_types": ["Act", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1951_006_g5307",
+        "parl_act_2011_047_g5856",
+        "parl_act_2013_013_g5890",
+        "parl_act_2022_031_g6270",
+        "gov_extra_gazette_1697_06_e_a7c0fb1525",
+        "gov_extra_gazette_1797_15_e_6f1bc28812",
+        "gov_extra_gazette_1905_34_e_8f530d5e92",
+        "gov_extra_gazette_1957_03_e_e79eed2138",
+        "gov_extra_gazette_1977_16_e_4de6393316",
+        "gov_extra_gazette_2088_60_e_3b1f19005b"
+      ]
+    },
+    {
+      "case_id": "blind_securities_exchange_unit_trust",
+      "title": "Securities market conduct and unit trust compliance",
+      "case_facts": "An investment adviser is questioned about securities market registration, stock transfer rules, and unit trust compliance.",
+      "query": "Securities Exchange Commission registered stock securities market unit trust investment adviser registration transfer compliance",
+      "document_types": ["Act", "Extraordinary Gazette"],
+      "expected_count": 10,
+      "expected_documents": [
+        "parl_act_1950_035_g5254",
+        "parl_act_1983_051_g3178",
+        "parl_act_1985_003_g3246",
+        "parl_act_1987_036_g3413",
+        "parl_act_1991_026_g3501",
+        "parl_act_1995_032_g3197",
+        "parl_act_2003_018_g3584",
+        "parl_act_2004_002_g4740",
+        "parl_act_2009_047_g2659",
+        "parl_act_2021_019_g6221"
+      ]
+    }
+  ]
+}

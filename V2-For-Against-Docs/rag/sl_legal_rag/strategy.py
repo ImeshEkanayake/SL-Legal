@@ -1,0 +1,341 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Protocol
+
+from .models import LegalResearchPack, PackItem, StrategyDraftResponse, validate_claims_against_pack
+from .product_policy import evaluate_strategy_output_policy, evaluate_text_policy, require_policy_allowance
+
+
+PACK_ITEM_REFERENCE_RE = re.compile(r"\b[A-Za-z0-9][A-Za-z0-9_-]*_item_\d{3}\b")
+LEGAL_SENTENCE_SIGNAL_RE = re.compile(
+    r"\b(shall|must|may|cannot|can not|prohibited|entitled|liable|valid|invalid|court|tribunal|act|ordinance|section|article|regulation|appeal|petition|affidavit|jurisdiction|burden|standard)\b",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class CitationValidationIssue:
+    code: str
+    message: str
+
+
+class JsonChatClient(Protocol):
+    def complete_json(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        max_completion_tokens: int = 2048,
+        temperature: float | None = None,
+    ) -> dict[str, object]: ...
+
+
+SYSTEM_BOUNDARY = """You are a Sri Lankan legal research assistant for lawyers.
+You must use only the provided Legal Research Pack.
+Every legal claim must cite one or more pack_item_id values.
+Do not rely on hidden knowledge, memory, uncited authorities, or unsupported assumptions.
+If the pack does not contain an authority needed for a conclusion, say that the authority is missing from the current pack.
+Treat source-quality metadata as part of the evidence: disclose unreviewed translations, OCR warnings, missing source text, or other quality flags when they affect confidence.
+Do not fabricate citations, hide adverse authority, tamper with facts, guarantee outcomes, or bypass lawyer review.
+Do not present output as final legal advice; it is a lawyer-review draft."""
+
+
+def _string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item]
+    return [str(value)] if value else []
+
+
+def pack_item_quality_lines(item: PackItem) -> list[str]:
+    metadata = item.metadata or {}
+    scoring = item.scoring_breakdown or {}
+    quality_flags = sorted(
+        {
+            str(flag)
+            for flag in [
+                *_string_list(metadata.get("quality_flags")),
+                *_string_list(scoring.get("source_quality_flags")),
+            ]
+            if flag
+        }
+    )
+    text_origin = metadata.get("text_origin") or "source"
+    source_language = metadata.get("source_language") or metadata.get("language")
+    translated_from_language = metadata.get("translated_from_language")
+    translation_review_status = metadata.get("translation_review_status")
+    legal_quality_multiplier = metadata.get("legal_quality_multiplier") or scoring.get("legal_quality_multiplier")
+    lines = [
+        f"page_start: {item.page_start}",
+        f"page_end: {item.page_end}",
+        f"text_origin: {text_origin}",
+        f"source_language: {source_language or 'unknown'}",
+        f"quality_flags: {', '.join(quality_flags) if quality_flags else 'none'}",
+    ]
+    if translated_from_language:
+        lines.append(f"translated_from_language: {translated_from_language}")
+    if translation_review_status:
+        lines.append(f"translation_review_status: {translation_review_status}")
+    if legal_quality_multiplier is not None:
+        lines.append(f"legal_quality_multiplier: {legal_quality_multiplier}")
+    if text_origin == "translation" or quality_flags or translation_review_status:
+        lines.append("source_quality_notice: explicitly account for this source-quality status in confidence, risks, and missing-authority notes")
+    return lines
+
+
+def build_strategy_prompt(case_facts: str, pack: LegalResearchPack) -> list[dict[str, str]]:
+    pack_lines = []
+    for item in pack.items:
+        pack_lines.append(
+            "\n".join(
+                [
+                    f"pack_item_id: {item.pack_item_id}",
+                    f"citation: {item.citation}",
+                    f"authority_level: {item.authority_level}",
+                    f"document_type: {item.document_type}",
+                    *pack_item_quality_lines(item),
+                    f"text: {item.text}",
+                ]
+            )
+        )
+
+    user_content = f"""Case facts:
+{case_facts}
+
+Legal Research Pack ID: {pack.pack_id}
+Source warnings:
+{chr(10).join(f"- {warning}" for warning in pack.source_warnings) if pack.source_warnings else "- none"}
+
+Legal Research Pack Items:
+{chr(10).join(pack_lines)}
+
+Return a lawyer-review draft with:
+1. Issues
+2. Relevant law
+3. Arguments for the client
+4. Counterarguments
+5. Counterarguments and answer to each
+6. Risk ranking
+7. Weaknesses and missing authorities
+8. Next retrieval questions
+
+Each legal claim must include pack_item_id citations."""
+
+    return [
+        {"role": "system", "content": SYSTEM_BOUNDARY},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def build_strategy_json_prompt(case_facts: str, pack: LegalResearchPack, requested_output: str = "strategy_report") -> list[dict[str, str]]:
+    pack_lines = []
+    example_pack_item_id = sorted(pack.allowed_pack_item_ids)[0] if pack.allowed_pack_item_ids else ""
+    for item in pack.items:
+        pack_lines.append(
+            "\n".join(
+                [
+                    f"pack_item_id: {item.pack_item_id}",
+                    f"citation: {item.citation}",
+                    f"authority_level: {item.authority_level}",
+                    f"document_type: {item.document_type}",
+                    *pack_item_quality_lines(item),
+                    f"text: {item.text}",
+                ]
+            )
+        )
+
+    user_content = f"""Requested output: {requested_output}
+
+Case facts:
+{case_facts}
+
+Legal Research Pack ID: {pack.pack_id}
+Allowed pack_item_id values: {", ".join(sorted(pack.allowed_pack_item_ids))}
+Source warnings:
+{chr(10).join(f"- {warning}" for warning in pack.source_warnings) if pack.source_warnings else "- none"}
+
+Legal Research Pack Items:
+{chr(10).join(pack_lines)}
+
+Return one JSON object with this exact shape:
+{{
+  "pack_id": "{pack.pack_id}",
+  "answer": "Draft text for lawyer review. Every legal claim sentence must cite the exact supporting pack_item_id strings from the allowed list in square brackets.",
+  "claims": [
+    {{
+      "claim": "single legal claim stated in the answer",
+      "pack_item_ids": ["{example_pack_item_id}"],
+      "confidence": "needs_lawyer_review"
+    }}
+  ],
+  "counterarguments": [
+    {{
+      "counterargument": "best opposing argument supported by the current pack",
+      "supporting_pack_item_ids": ["{example_pack_item_id}"],
+      "response": "client-side response supported by the current pack",
+      "response_pack_item_ids": ["{example_pack_item_id}"],
+      "risk_level": "medium"
+    }}
+  ],
+  "risk_rankings": [
+    {{
+      "risk": "legal or evidentiary weakness",
+      "severity": "medium",
+      "rationale": "why this risk matters, citing only the pack where legal",
+      "pack_item_ids": ["{example_pack_item_id}"],
+      "mitigation": "source-bounded mitigation or missing-source next step"
+    }}
+  ],
+  "next_retrieval_questions": [
+    {{
+      "query": "specific next legal search needed",
+      "query_class": "general_research",
+      "purpose": "why this search is needed",
+      "filters": {{}}
+    }}
+  ],
+  "missing_authorities": ["authority or source still needed before stronger advice can be given"],
+  "warnings": ["pack-bounded limitations and lawyer-review warnings"],
+  "citation_validation": {{}}
+}}
+
+If the pack does not support a legal conclusion, put it in missing_authorities or warnings instead of claiming it."""
+
+    return [
+        {"role": "system", "content": SYSTEM_BOUNDARY + "\nReturn JSON only."},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def validate_strategy_response_against_pack(response: StrategyDraftResponse, pack: LegalResearchPack) -> list[str]:
+    return [issue.message for issue in validate_strategy_citations(response, pack)]
+
+
+def extract_pack_item_references(text: str) -> set[str]:
+    return set(PACK_ITEM_REFERENCE_RE.findall(text or ""))
+
+
+def validate_strategy_citations(response: StrategyDraftResponse, pack: LegalResearchPack) -> list[CitationValidationIssue]:
+    issues: list[CitationValidationIssue] = []
+    errors = validate_claims_against_pack(response.claims, pack)
+    issues.extend(CitationValidationIssue(code="claim_out_of_pack", message=error) for error in errors)
+    allowed = pack.allowed_pack_item_ids
+    cited_in_answer = extract_pack_item_references(response.answer)
+    unknown_in_answer = sorted(cited_in_answer.difference(allowed))
+    if unknown_in_answer:
+        issues.append(
+            CitationValidationIssue(
+                code="answer_out_of_pack",
+                message=f"answer cites pack items not present in pack: {', '.join(unknown_in_answer)}",
+            )
+        )
+    if response.pack_id != pack.pack_id:
+        issues.append(
+            CitationValidationIssue(
+                code="pack_id_mismatch",
+                message=f"response pack_id {response.pack_id!r} does not match requested pack_id {pack.pack_id!r}",
+            )
+        )
+    for index, sentence in enumerate(_answer_sentences(response.answer), start=1):
+        if LEGAL_SENTENCE_SIGNAL_RE.search(sentence) and not extract_pack_item_references(sentence):
+            issues.append(
+                CitationValidationIssue(
+                    code="uncited_legal_sentence",
+                    message=f"answer sentence {index} appears to make a legal claim without a pack citation",
+                )
+            )
+    for index, counterargument in enumerate(response.counterarguments, start=1):
+        ids = set(counterargument.supporting_pack_item_ids).union(counterargument.response_pack_item_ids)
+        unknown_ids = sorted(ids.difference(allowed))
+        if unknown_ids:
+            issues.append(
+                CitationValidationIssue(
+                    code="counterargument_out_of_pack",
+                    message=f"counterargument {index} cites pack items not present in pack: {', '.join(unknown_ids)}",
+                )
+            )
+        combined_text = f"{counterargument.counterargument} {counterargument.response}"
+        if LEGAL_SENTENCE_SIGNAL_RE.search(combined_text) and not ids:
+            issues.append(
+                CitationValidationIssue(
+                    code="uncited_counterargument",
+                    message=f"counterargument {index} needs pack citations for legal assertions",
+                )
+            )
+    for index, risk in enumerate(response.risk_rankings, start=1):
+        unknown_ids = sorted(set(risk.pack_item_ids).difference(allowed))
+        if unknown_ids:
+            issues.append(
+                CitationValidationIssue(
+                    code="risk_out_of_pack",
+                    message=f"risk ranking {index} cites pack items not present in pack: {', '.join(unknown_ids)}",
+                )
+            )
+    return issues
+
+
+def build_citation_validation_summary(response: StrategyDraftResponse, pack: LegalResearchPack) -> dict[str, object]:
+    issues = validate_strategy_citations(response, pack)
+    return {
+        "valid": not issues,
+        "issue_count": len(issues),
+        "issues": [{"code": issue.code, "message": issue.message} for issue in issues],
+        "allowed_pack_item_ids": sorted(pack.allowed_pack_item_ids),
+        "cited_pack_item_ids": sorted(response.all_pack_item_ids().union(extract_pack_item_references(response.answer))),
+    }
+
+
+def validate_strategy_response_policy(
+    response: StrategyDraftResponse,
+    pack: LegalResearchPack,
+    requested_output: str = "strategy_report",
+) -> list[str]:
+    evaluation = evaluate_strategy_output_policy(
+        response=response,
+        pack=pack,
+        requested_output=requested_output,
+    )
+    return [violation.message for violation in evaluation.violations]
+
+
+def generate_strategy_draft(
+    *,
+    case_facts: str,
+    pack: LegalResearchPack,
+    client: JsonChatClient,
+    requested_output: str = "strategy_report",
+    max_completion_tokens: int = 4096,
+) -> StrategyDraftResponse:
+    require_policy_allowance(evaluate_text_policy(case_facts))
+    data = client.complete_json(
+        messages=build_strategy_json_prompt(case_facts, pack, requested_output),
+        max_completion_tokens=max_completion_tokens,
+        temperature=None,
+    )
+    data["pack_id"] = pack.pack_id
+    response = StrategyDraftResponse.model_validate(data)
+    errors = validate_strategy_response_against_pack(response, pack)
+    if errors:
+        raise ValueError("Strategy draft failed pack-boundary validation: " + "; ".join(errors))
+    policy_evaluation = evaluate_strategy_output_policy(
+        response=response,
+        pack=pack,
+        requested_output=requested_output,
+    )
+    require_policy_allowance(policy_evaluation)
+    validation_summary = build_citation_validation_summary(response, pack)
+    warnings = sorted(set(response.warnings).union(policy_evaluation.warnings))
+    return response.model_copy(update={"citation_validation": validation_summary, "warnings": warnings})
+
+
+def _answer_sentences(answer: str) -> list[str]:
+    raw_sentences = [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", answer or "") if sentence.strip()]
+    merged: list[str] = []
+    for sentence in raw_sentences:
+        if merged and extract_pack_item_references(sentence) and not LEGAL_SENTENCE_SIGNAL_RE.search(sentence):
+            merged[-1] = f"{merged[-1]} {sentence}"
+        else:
+            merged.append(sentence)
+    return merged

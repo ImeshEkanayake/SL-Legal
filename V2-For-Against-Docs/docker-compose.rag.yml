@@ -1,0 +1,85 @@
+services:
+  rag-postgres:
+    image: postgres:16
+    container_name: sl-legal-rag-postgres
+    environment:
+      POSTGRES_DB: ${SL_LEGAL_POSTGRES_DB:-sl_legal_assist}
+      POSTGRES_USER: ${SL_LEGAL_POSTGRES_USER:-sl_legal}
+      POSTGRES_PASSWORD: ${SL_LEGAL_POSTGRES_PASSWORD:-sl_legal_dev}
+    ports:
+      - "5433:5432"
+    volumes:
+      - rag_postgres_data:/var/lib/postgresql/data
+      - ./rag/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sl_legal -d sl_legal_assist"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rag-opensearch:
+    image: opensearchproject/opensearch:2.19.4
+    container_name: sl-legal-rag-opensearch
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${SL_LEGAL_OPENSEARCH_INITIAL_ADMIN_PASSWORD:-SlLegalDev2026!}
+      OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g"
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - rag_opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  rag-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: sl-legal-rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - rag_qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  rag-redis:
+    image: redis:7
+    container_name: sl-legal-rag-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - rag_redis_data:/data
+
+  rag-minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: sl-legal-rag-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${SL_LEGAL_MINIO_ROOT_USER:-sl_legal_minio}
+      MINIO_ROOT_PASSWORD: ${SL_LEGAL_MINIO_ROOT_PASSWORD:-sl_legal_minio_dev}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rag_minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  rag_postgres_data:
+  rag_opensearch_data:
+  rag_qdrant_data:
+  rag_redis_data:
+  rag_minio_data:
