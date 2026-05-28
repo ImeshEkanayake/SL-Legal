@@ -1,0 +1,28 @@
+{
+  "schema_version": "v2_for_against_retrieval_fixture.v1",
+  "description": "Phase 3 fixture proving supportive and adverse recall are measured separately. Chunk IDs are deterministic fixture IDs for unit and CI checks; live corpus benchmark fixtures can reuse the same schema.",
+  "blind_cases_require_adverse": true,
+  "cases": [
+    {
+      "query_id": "industrial_disputes_supportive_001",
+      "domain": "industrial_disputes",
+      "evidence_label": "supportive",
+      "expected_chunk_ids": ["chunk_support_bargaining_duty"],
+      "ranked_chunk_ids": ["chunk_support_bargaining_duty", "chunk_context_trade_union"]
+    },
+    {
+      "query_id": "industrial_disputes_adverse_001",
+      "domain": "industrial_disputes",
+      "evidence_label": "adverse",
+      "expected_chunk_ids": ["chunk_adverse_qualification_threshold"],
+      "ranked_chunk_ids": ["chunk_context_trade_union", "chunk_adverse_qualification_threshold"]
+    },
+    {
+      "query_id": "procedure_adverse_001",
+      "domain": "procedure",
+      "evidence_label": "adverse",
+      "expected_chunk_ids": ["chunk_adverse_limitation_jurisdiction"],
+      "ranked_chunk_ids": ["chunk_adverse_limitation_jurisdiction", "chunk_support_bargaining_duty"]
+    }
+  ]
+}

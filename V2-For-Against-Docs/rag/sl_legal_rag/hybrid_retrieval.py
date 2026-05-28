@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import text
 
 from .config import RagSettings, settings
+from .adverse_retrieval import expand_for_against_queries, query_intent_trace, tag_hits_for_query_intent
 from .db import session_scope
 from .exact_citation import parse_exact_citation_signals, resolve_exact_citation_hits
 from .models import LegalResearchPack, QueryClass, ResearchQueryRequest, RetrievalFilters
@@ -336,9 +337,25 @@ def create_research_pack(
     if exact_signals.has_signals:
         with session_scope() as session:
             exact_hits = resolve_exact_citation_hits(query=request.query, filters=request.filters, session=session)
-    keyword_hits = opensearch_query(query=request.query, filters=request.filters, config=runtime_config, size=candidate_size)
-    vector_hits = qdrant_query(query=request.query, filters=request.filters, config=runtime_config, size=candidate_size)
-    result_sets = [exact_hits, keyword_hits, vector_hits]
+    query_variants = expand_for_against_queries(request.query)
+    keyword_result_sets: list[list[SearchHit]] = []
+    vector_result_sets: list[list[SearchHit]] = []
+    for variant in query_variants:
+        keyword_result_sets.append(
+            tag_hits_for_query_intent(
+                opensearch_query(query=variant.query, filters=request.filters, config=runtime_config, size=candidate_size),
+                variant,
+            )
+        )
+        vector_result_sets.append(
+            tag_hits_for_query_intent(
+                qdrant_query(query=variant.query, filters=request.filters, config=runtime_config, size=candidate_size),
+                variant,
+            )
+        )
+    keyword_hits = [hit for result_set in keyword_result_sets for hit in result_set]
+    vector_hits = [hit for result_set in vector_result_sets for hit in result_set]
+    result_sets = [exact_hits, *keyword_result_sets, *vector_result_sets]
     fused = reciprocal_rank_fusion(result_sets)
     reranked = rerank_with_legal_quality(fused)
     missing_source_summary = None
@@ -362,15 +379,57 @@ def create_research_pack(
             "embedding_model": runtime_config.embedding_model,
             "embedding_dimensions": runtime_config.embedding_dimensions,
             "candidate_size": candidate_size,
-            "reranker": "legal_quality_multiplier",
+            "query_expansion": "supportive_adverse_limitation_exception_procedural_risk",
+            "reranker": "legal_quality_plus_query_intent_multiplier",
+            "query_variants": [
+                {
+                    "query_variant_id": variant.query_id,
+                    "query_intent": variant.intent.value,
+                    "query": variant.query,
+                    "purpose": variant.purpose,
+                    "expansion_terms": list(variant.expansion_terms),
+                }
+                for variant in query_variants
+            ],
             "retriever_counts": {
                 "exact_citation_provision": len(exact_hits),
                 "opensearch_bm25_phrase_fuzzy": len(keyword_hits),
                 "qdrant_dense_vector": len(vector_hits),
+            },
+            "query_intent_counts": {
+                variant.intent.value: sum(
+                    1
+                    for hit in [*keyword_hits, *vector_hits]
+                    if (hit.metadata or {}).get("query_intent") == variant.intent.value
+                )
+                for variant in query_variants
             },
         }
     )
     return seal_research_pack(
         pack.model_copy(update={"retrieval_config": retrieval_config}),
         parent_pack_id=request.parent_pack_id,
+        retrieval_trace=[
+            {
+                "stage": "request",
+                "query": request.query,
+                "query_class": (request.query_class or QueryClass.GENERAL_RESEARCH).value,
+                "purpose": request.purpose,
+                "filters": request.filters.model_dump(mode="json"),
+                "max_items": request.max_pack_items,
+                "max_tokens": request.max_pack_tokens,
+            },
+            *query_intent_trace(query_variants),
+            {
+                "stage": "candidate_retrieval",
+                "retriever_counts": retrieval_config["retriever_counts"],
+                "query_intent_counts": retrieval_config["query_intent_counts"],
+            },
+            {
+                "stage": "fusion",
+                "method": retrieval_config["fusion"],
+                "selected_items": len(pack.items),
+                "reranker": retrieval_config["reranker"],
+            },
+        ],
     )

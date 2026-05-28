@@ -33,6 +33,7 @@ Important modules:
 - `research_pack.py`: research pack sealing, hashing, token accounting, and contract validation.
 - `case_structure.py`: MECE case structuring prompts and validation.
 - `hybrid_retrieval.py`: OpenSearch and Qdrant hybrid retrieval orchestration.
+- `adverse_retrieval.py`: V2 supportive/adverse query expansion, query-intent tagging, and adverse retrieval scoring.
 - `two_stage_retrieval.py`: two-stage recall and precision flow.
 - `retrieval.py`: local and generic retrieval support.
 - `exact_citation.py`: exact citation and provision resolution.
@@ -108,6 +109,7 @@ Retrieval and index operations:
 - `scripts/query_hybrid_retrieval.py`
 - `scripts/run_two_stage_recall_precision_checks.py`
 - `scripts/run_production_benchmark_gates.py`
+- `scripts/run_v2_for_against_retrieval_eval.py`
 
 Data and corpus operations:
 
@@ -168,6 +170,17 @@ Phase 2 adds a claim-level evidence assessment contract without applying a datab
 - `rag/sl_legal_rag/db/repositories.py`: create, list, and grouped retrieval methods backed by `legal_claims`, `legal_claim_citations`, `research_pack_items`, and `retrieval_chunks`.
 - `rag/sl_legal_rag/api.py`: signed create/list endpoints at `/v1/cases/{case_id}/evidence/assessments`.
 - `Docs/v2_phase_2_evidence_assessment_contract.md`: API, validation, persistence, review, and future migration contract.
+
+## V2 Phase 3 Adverse Retrieval Contract
+
+Phase 3 adds retrieval-layer for/against coverage without changing the database. The active implementation uses:
+
+- `rag/sl_legal_rag/adverse_retrieval.py`: deterministic query variants for supportive, adverse, limitation, exception, and procedural-risk intents.
+- `rag/sl_legal_rag/hybrid_retrieval.py`: executes intent-tagged OpenSearch and Qdrant searches for each query variant.
+- `rag/sl_legal_rag/retrieval.py`: preserves query intents and query variant IDs through fusion, selected pack item traces, metadata, and scoring breakdowns.
+- `rag/sl_legal_rag/retrieval_eval.py`: reports supportive and adverse recall separately and enforces adverse cases in blind fixtures.
+- `rag/evals/v2_for_against_retrieval_fixture.json`: CI-safe fixture for support/adverse recall behavior.
+- `Docs/v2_phase_3_adverse_retrieval_contract.md`: query intent, trace, scoring, evaluation, and release boundaries.
 
 ## Data Boundary
 

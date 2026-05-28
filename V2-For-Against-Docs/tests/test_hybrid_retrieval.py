@@ -118,6 +118,23 @@ def test_create_research_pack_fuses_stubbed_retrievers(monkeypatch):
     assert pack.items[0].pack_item_id.endswith("_item_001")
     assert pack.items[0].citation == "Industrial Disputes Act"
     assert pack.retrieval_config["fusion"] == "reciprocal_rank_fusion"
+    assert pack.retrieval_config["query_expansion"] == "supportive_adverse_limitation_exception_procedural_risk"
+    assert set(pack.retrieval_config["query_intent_counts"]) == {
+        "supportive",
+        "adverse",
+        "limitation",
+        "exception",
+        "procedural_risk",
+    }
+    assert {entry["query_intent"] for entry in pack.retrieval_trace if entry["stage"] == "query_expansion"} == {
+        "supportive",
+        "adverse",
+        "limitation",
+        "exception",
+        "procedural_risk",
+    }
+    assert pack.items[0].metadata["query_intents"]
+    assert pack.items[0].scoring_breakdown["adverse_relevance_score"] is not None
 
 
 def test_embedding_run_compatibility_rejects_model_drift(monkeypatch):
@@ -197,6 +214,51 @@ def test_create_research_pack_applies_legal_quality_reranking(monkeypatch):
 
     assert pack.items[0].chunk_id == "chunk_clean"
     assert pack.items[1].scoring_breakdown["legal_quality_multiplier"] < 1
+
+
+def test_create_research_pack_preserves_intent_evidence_page_anchors_and_scores(monkeypatch):
+    adverse_hit = hit_from_payload(
+        {
+            "chunk_id": "chunk_adverse",
+            "document_id": "doc_adverse",
+            "title": "Limitation and Jurisdiction Authority",
+            "document_type": "Act",
+            "source_id": "PARL_ACTS",
+            "authority_level": 2,
+            "citation": "Limitation Act",
+            "chunk_text": "The claim is barred unless jurisdiction and limitation thresholds are met.",
+            "page_start": 7,
+            "page_end": 8,
+        },
+        retriever="opensearch_bm25_phrase_fuzzy",
+        score=9.0,
+        rank=1,
+    )
+
+    monkeypatch.setattr("sl_legal_rag.hybrid_retrieval.opensearch_query", lambda **_kwargs: [adverse_hit])
+    monkeypatch.setattr("sl_legal_rag.hybrid_retrieval.qdrant_query", lambda **_kwargs: [])
+
+    pack = create_research_pack(
+        ResearchQueryRequest(query="trade union bargaining", max_pack_items=1, max_pack_tokens=2000),
+        config=HybridRetrievalConfig(
+            opensearch_url="http://test",
+            opensearch_index="chunks",
+            qdrant_url="http://test",
+            qdrant_collection="chunks",
+            embedding_provider="sentence-transformers",
+            embedding_model="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            embedding_dimensions=384,
+            candidate_size=10,
+        ),
+    )
+
+    item = pack.items[0]
+    assert item.page_start == 7
+    assert item.page_end == 8
+    assert "limitation" in item.metadata["query_intents"]
+    assert any("opensearch_bm25_phrase_fuzzy:limitation" in evidence for evidence in item.metadata["retrieval_evidence"])
+    assert item.scoring_breakdown["authority_score"] > 0
+    assert item.scoring_breakdown["adverse_relevance_score"] > 0
 
 
 def test_rrf_preserves_all_retrieval_evidence_and_boosts_exact_match():

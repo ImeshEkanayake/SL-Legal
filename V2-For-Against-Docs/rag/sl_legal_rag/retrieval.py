@@ -50,6 +50,8 @@ def reciprocal_rank_fusion(result_sets: Iterable[list[SearchHit]], *, k: int = 6
 
     scores: dict[str, float] = defaultdict(float)
     evidence: dict[str, list[str]] = defaultdict(list)
+    query_intents: dict[str, set[str]] = defaultdict(set)
+    query_variants: dict[str, set[str]] = defaultdict(set)
     best_hit: dict[str, SearchHit] = {}
 
     for result_set in result_sets:
@@ -58,6 +60,11 @@ def reciprocal_rank_fusion(result_sets: Iterable[list[SearchHit]], *, k: int = 6
             if hit.metadata.get("exact_citation_match") if hit.metadata else False:
                 scores[hit.chunk_id] += EXACT_CITATION_RRF_BOOST / rank
             evidence[hit.chunk_id].append(f"{hit.retriever} rank {rank}")
+            if hit.metadata:
+                if hit.metadata.get("query_intent"):
+                    query_intents[hit.chunk_id].add(str(hit.metadata["query_intent"]))
+                if hit.metadata.get("query_variant_id"):
+                    query_variants[hit.chunk_id].add(str(hit.metadata["query_variant_id"]))
             previous = best_hit.get(hit.chunk_id)
             if previous is None or hit.score > previous.score:
                 best_hit[hit.chunk_id] = hit
@@ -69,6 +76,10 @@ def reciprocal_rank_fusion(result_sets: Iterable[list[SearchHit]], *, k: int = 6
         hit.score = score * authority_boost
         hit.metadata = dict(hit.metadata or {})
         hit.metadata["retrieval_evidence"] = sorted(set(evidence[chunk_id]))
+        if query_intents[chunk_id]:
+            hit.metadata["query_intents"] = sorted(query_intents[chunk_id])
+        if query_variants[chunk_id]:
+            hit.metadata["query_variant_ids"] = sorted(query_variants[chunk_id])
         fused.append(hit)
 
     return sorted(fused, key=lambda item: item.score, reverse=True)
@@ -103,6 +114,9 @@ def select_pack_items(
                 "rank": len(selected) + 1,
                 "retriever": hit.retriever,
                 "retrieval_evidence": evidence,
+                "query_intent": hit.metadata.get("query_intent") if hit.metadata else None,
+                "query_intents": hit.metadata.get("query_intents", []) if hit.metadata else [],
+                "query_variant_ids": hit.metadata.get("query_variant_ids", []) if hit.metadata else [],
                 "chunk_id": hit.chunk_id,
                 "document_id": hit.document_id,
             }
@@ -132,6 +146,14 @@ def select_pack_items(
                     "source_quality_flags": list(hit.metadata.get("quality_flags", [])) if hit.metadata else [],
                     "retrieval_evidence": evidence,
                     "legal_quality_multiplier": hit.metadata.get("legal_quality_multiplier") if hit.metadata else None,
+                    "authority_score": hit.metadata.get("authority_score") if hit.metadata else None,
+                    "recency_score": hit.metadata.get("recency_score") if hit.metadata else None,
+                    "exactness_score": hit.metadata.get("exactness_score") if hit.metadata else None,
+                    "adverse_relevance_score": hit.metadata.get("adverse_relevance_score") if hit.metadata else None,
+                    "intent_score_multiplier": hit.metadata.get("intent_score_multiplier") if hit.metadata else None,
+                    "query_intent": hit.metadata.get("query_intent") if hit.metadata else None,
+                    "query_intents": hit.metadata.get("query_intents", []) if hit.metadata else [],
+                    "query_variant_ids": hit.metadata.get("query_variant_ids", []) if hit.metadata else [],
                 },
                 retrieval_trace=item_trace,
                 metadata=hit.metadata,

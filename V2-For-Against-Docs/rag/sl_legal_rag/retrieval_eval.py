@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Literal
+
+
+EvidenceRecallLabel = Literal["supportive", "adverse", "mixed", "context"]
 
 
 @dataclass(frozen=True)
@@ -9,6 +13,7 @@ class RetrievalEvalCase:
     query_id: str
     expected_chunk_ids: tuple[str, ...]
     ranked_chunk_ids: tuple[str, ...]
+    evidence_label: EvidenceRecallLabel = "supportive"
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,8 @@ class RetrievalEvalResult:
     mrr: float
     ndcg_at_k: float
     missing_query_ids: tuple[str, ...]
+    recall_by_label: dict[str, float] | None = None
+    case_count_by_label: dict[str, int] | None = None
 
     @property
     def passes_minimum_bar(self) -> bool:
@@ -65,16 +72,20 @@ def evaluate_retrieval_cases(cases: list[RetrievalEvalCase], *, k: int = 20) -> 
             mrr=0.0,
             ndcg_at_k=0.0,
             missing_query_ids=(),
+            recall_by_label={},
+            case_count_by_label={},
         )
     recall_values: list[float] = []
     reciprocal_rank_values: list[float] = []
     ndcg_values: list[float] = []
     missing_query_ids: list[str] = []
+    label_recalls: dict[str, list[float]] = {}
     for case in cases:
         expected = set(case.expected_chunk_ids)
         ranked = list(case.ranked_chunk_ids)
         recall_value = recall_at_k(expected, ranked, k)
         recall_values.append(recall_value)
+        label_recalls.setdefault(case.evidence_label, []).append(recall_value)
         reciprocal_rank_values.append(reciprocal_rank(expected, ranked))
         ndcg_values.append(ndcg_at_k(expected, ranked, k))
         if expected and not expected.intersection(set(ranked[:k])):
@@ -86,4 +97,14 @@ def evaluate_retrieval_cases(cases: list[RetrievalEvalCase], *, k: int = 20) -> 
         mrr=round(sum(reciprocal_rank_values) / count, 6),
         ndcg_at_k=round(sum(ndcg_values) / count, 6),
         missing_query_ids=tuple(missing_query_ids),
+        recall_by_label={
+            label: round(sum(values) / len(values), 6)
+            for label, values in sorted(label_recalls.items())
+        },
+        case_count_by_label={label: len(values) for label, values in sorted(label_recalls.items())},
     )
+
+
+def assert_blind_cases_include_adverse(cases: list[RetrievalEvalCase]) -> None:
+    if not any(case.evidence_label == "adverse" for case in cases):
+        raise ValueError("blind retrieval evaluation must include at least one adverse authority case")

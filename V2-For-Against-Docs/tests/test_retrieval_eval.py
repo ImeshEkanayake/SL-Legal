@@ -4,6 +4,7 @@ import pytest
 
 from sl_legal_rag.retrieval_eval import (
     RetrievalEvalCase,
+    assert_blind_cases_include_adverse,
     evaluate_retrieval_cases,
     ndcg_at_k,
     recall_at_k,
@@ -42,6 +43,53 @@ def test_evaluate_retrieval_cases_reports_missing_queries():
     assert result.mrr == 0.5
     assert result.missing_query_ids == ("q2",)
     assert not result.passes_minimum_bar
+
+
+def test_evaluate_retrieval_cases_reports_supportive_and_adverse_recall():
+    result = evaluate_retrieval_cases(
+        [
+            RetrievalEvalCase(
+                query_id="supportive_1",
+                expected_chunk_ids=("chunk_support",),
+                ranked_chunk_ids=("chunk_support",),
+                evidence_label="supportive",
+            ),
+            RetrievalEvalCase(
+                query_id="adverse_1",
+                expected_chunk_ids=("chunk_adverse",),
+                ranked_chunk_ids=("chunk_other", "chunk_adverse"),
+                evidence_label="adverse",
+            ),
+        ],
+        k=1,
+    )
+
+    assert result.recall_by_label == {"adverse": 0.0, "supportive": 1.0}
+    assert result.case_count_by_label == {"adverse": 1, "supportive": 1}
+
+
+def test_blind_retrieval_eval_requires_adverse_authority_case():
+    assert_blind_cases_include_adverse(
+        [
+            RetrievalEvalCase(
+                query_id="adverse_1",
+                expected_chunk_ids=("chunk_adverse",),
+                ranked_chunk_ids=("chunk_adverse",),
+                evidence_label="adverse",
+            )
+        ]
+    )
+    with pytest.raises(ValueError, match="adverse authority"):
+        assert_blind_cases_include_adverse(
+            [
+                RetrievalEvalCase(
+                    query_id="supportive_1",
+                    expected_chunk_ids=("chunk_support",),
+                    ranked_chunk_ids=("chunk_support",),
+                    evidence_label="supportive",
+                )
+            ]
+        )
 
 
 def test_evaluate_retrieval_cases_empty_and_invalid_k():
