@@ -480,6 +480,8 @@ def redownload_one(row: dict[str, Any], args: argparse.Namespace) -> RedownloadR
     local_path_value = str(row.get("local_path") or "")
     local_path = resolve_local_path(local_path_value)
     url = choose_download_url(row)
+    range_connections = int(getattr(args, "range_connections", 1))
+    range_min_bytes = int(getattr(args, "range_min_bytes", 0))
     if not url:
         return RedownloadResult(document_id, source_id, local_path_value, "", "failed", error_code="missing_url", error_message="missing source/download URL")
     if not local_path_value:
@@ -517,8 +519,8 @@ def redownload_one(row: dict[str, Any], args: argparse.Namespace) -> RedownloadR
             resume=args.resume_from_local,
             min_speed_bytes=args.min_speed_bytes,
             min_speed_time=args.min_speed_time,
-            range_connections=args.range_connections,
-            range_min_bytes=args.range_min_bytes,
+            range_connections=range_connections,
+            range_min_bytes=range_min_bytes,
         )
         validate_download(tmp_path, local_path.suffix, validate_pdf_pages=args.validate_pdf_pages)
         new_size = tmp_path.stat().st_size

@@ -44,6 +44,7 @@ PYTHON_DEPENDENCIES = (
     "psycopg[binary]",
     "boto3",
     "pillow",
+    "pypdfium2",
     "pytest",
 )
 

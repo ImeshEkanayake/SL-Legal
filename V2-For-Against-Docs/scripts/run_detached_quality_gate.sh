@@ -7,21 +7,23 @@ RUN_ID="${2:-$(date -u +%Y%m%dT%H%M%SZ)-${MODE}}"
 LOG_DIR="${ROOT_DIR}/logs/test-runs"
 LOG_FILE="${LOG_DIR}/${RUN_ID}.log"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
+RUN_SCRIPT="${LOG_DIR}/${RUN_ID}.sh"
+SESSION_NAME="v2_${RUN_ID//[^A-Za-z0-9_]/_}"
 
 mkdir -p "${LOG_DIR}"
 
 case "${MODE}" in
   full)
-    COMMAND=(bash -lc "PYTHONPATH=rag uv run --with sqlalchemy --with 'psycopg[binary]' --with pydantic --with pydantic-settings --with fastapi --with pytest --with httpx --with eval-type-backport python scripts/run_quality_checks.py")
+    COMMAND="if [ ! -d web/node_modules ]; then npm --prefix web ci; fi; PYTHONPATH=rag uv run --with sqlalchemy --with 'psycopg[binary]' --with pydantic --with pydantic-settings --with fastapi --with pytest --with httpx --with pypdfium2 --with eval-type-backport python scripts/run_quality_checks.py"
     ;;
   backend)
-    COMMAND=(bash -lc "PYTHONPATH=rag uv run --with sqlalchemy --with 'psycopg[binary]' --with pydantic --with pydantic-settings --with fastapi --with pytest --with httpx --with eval-type-backport python scripts/run_quality_checks.py --skip-rag-health")
+    COMMAND="PYTHONPATH=rag uv run --with sqlalchemy --with 'psycopg[binary]' --with pydantic --with pydantic-settings --with fastapi --with pytest --with httpx --with pypdfium2 --with eval-type-backport python scripts/run_quality_checks.py --skip-rag-health"
     ;;
   tests)
-    COMMAND=(bash -lc "PYTHONPATH=rag uv run --with pytest --with sqlalchemy --with 'psycopg[binary]' --with pydantic --with eval-type-backport python -m pytest tests -q")
+    COMMAND="PYTHONPATH=rag uv run --with pytest --with sqlalchemy --with 'psycopg[binary]' --with pydantic --with pydantic-settings --with fastapi --with httpx --with pypdfium2 --with eval-type-backport python -m pytest tests -q"
     ;;
   frontend)
-    COMMAND=(bash -lc "npm --prefix web run quality")
+    COMMAND="if [ ! -d web/node_modules ]; then npm --prefix web ci; fi; npm --prefix web run quality"
     ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
@@ -38,27 +40,42 @@ if [[ -f "${PID_FILE}" ]]; then
   fi
 fi
 
-(
-  cd "${ROOT_DIR}"
-  echo "run_id=${RUN_ID}"
-  echo "mode=${MODE}"
-  echo "started_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "root=${ROOT_DIR}"
-  echo "command=${COMMAND[*]}"
-  echo
-  "${COMMAND[@]}"
-  STATUS=$?
-  echo
-  echo "finished_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "exit_status=${STATUS}"
-  exit "${STATUS}"
-) >"${LOG_FILE}" 2>&1 &
+cat >"${RUN_SCRIPT}" <<EOF
+#!/usr/bin/env bash
+set +e
+cd "${ROOT_DIR}"
+echo "run_id=${RUN_ID}"
+echo "mode=${MODE}"
+echo "started_at_utc=\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "root=${ROOT_DIR}"
+echo "command=${COMMAND}"
+echo
+${COMMAND}
+STATUS=\$?
+echo
+echo "finished_at_utc=\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "exit_status=\${STATUS}"
+exit "\${STATUS}"
+EOF
+chmod +x "${RUN_SCRIPT}"
 
-PID=$!
+if command -v tmux >/dev/null 2>&1; then
+  if tmux has-session -t "${SESSION_NAME}" >/dev/null 2>&1; then
+    echo "tmux session already active: ${SESSION_NAME}" >&2
+    exit 1
+  fi
+  tmux new-session -d -s "${SESSION_NAME}" "bash '${RUN_SCRIPT}' > '${LOG_FILE}' 2>&1"
+  PID="$(tmux display-message -p -t "${SESSION_NAME}" "#{pane_pid}")"
+else
+  nohup bash "${RUN_SCRIPT}" >"${LOG_FILE}" 2>&1 &
+  PID=$!
+fi
 echo "${PID}" >"${PID_FILE}"
 
 echo "Started ${MODE} quality run."
 echo "PID: ${PID}"
 echo "PID file: ${PID_FILE}"
 echo "Log file: ${LOG_FILE}"
+echo "Run script: ${RUN_SCRIPT}"
+echo "tmux session: ${SESSION_NAME}"
 echo "Follow log: tail -f '${LOG_FILE}'"

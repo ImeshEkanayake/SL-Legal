@@ -14,6 +14,7 @@ data/indexes/*.jsonl
 logs/*.log
 logs/**/*.log
 logs/**/*.pid
+logs/**/*.sh
 
 # Frontend generated artifacts.
 web/node_modules/
