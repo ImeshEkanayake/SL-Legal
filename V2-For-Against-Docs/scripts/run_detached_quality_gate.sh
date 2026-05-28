@@ -55,9 +55,12 @@ case "${MODE}" in
   release-attestation)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase13_release_attestation.py --output logs/release-artifacts/phase13-release-attestation.json"
     ;;
+  signing-readiness)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase14_signing_readiness.py --output logs/release-artifacts/phase14-signing-readiness.json"
+    ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance|release-attestation] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance|release-attestation|signing-readiness] [run-id]" >&2
     exit 2
     ;;
 esac

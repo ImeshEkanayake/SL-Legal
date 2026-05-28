@@ -48,6 +48,7 @@ Important modules:
 - Phase 11 support in `operations.py`: GitHub release asset digest normalization, remote/local asset comparison, and verification reports.
 - Phase 12 support in `operations.py`: release provenance manifests, GitHub release checks, tag commit checks, evidence checksums, and ledger generation.
 - Phase 13 support in `operations.py`: release attestation manifests, subject digest evaluation, in-toto-style statements, and deterministic attestation digests.
+- Phase 14 support in `operations.py`: signing readiness manifests, approved signing mode validation, forbidden private-key scans, and signing-readiness reports.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -320,6 +321,18 @@ Phase 13 adds checksum-backed release attestation envelopes without changing the
 - `tests/test_phase13_release_attestation.py`: verified, deterministic digest, failed-ledger, saved-metadata, and manifest tests.
 - `Docs/v2_phase_13_release_attestation_contract.md`: attestation contract.
 - `Docs/v2_phase_13_release_attestation_runbook.md`: attestation workflow.
+
+## V2 Phase 14 Release Signing Readiness Contract
+
+Phase 14 adds a release signing readiness gate without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase14_release_signing_readiness.json`: approved signing modes, forbidden private-key globs, execution requirements, and required evidence.
+- `rag/sl_legal_rag/operations.py`: signing-readiness manifest validation, release metadata checks, tag commit checks, attestation evidence checksums, approved-mode validation, and forbidden-key scans.
+- `scripts/build_phase14_signing_readiness.py`: GitHub/git metadata collector and signing-readiness report writer.
+- `scripts/run_detached_quality_gate.sh`: `signing-readiness` detached mode.
+- `tests/test_phase14_signing_readiness.py`: ready report, forbidden-key, unsupported-mode, saved-metadata, and manifest tests.
+- `Docs/v2_phase_14_release_signing_readiness_contract.md`: signing-readiness contract.
+- `Docs/v2_phase_14_release_signing_readiness_runbook.md`: signing-readiness workflow.
 
 ## Data Boundary
 

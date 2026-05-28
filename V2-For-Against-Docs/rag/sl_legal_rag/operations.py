@@ -85,12 +85,207 @@ class ReleaseAttestationSubject:
     expected_status: str | None = None
 
 
+@dataclass(frozen=True)
+class SigningReadinessEvidence:
+    evidence_id: str
+    title: str
+    path: str
+    evidence_type: str
+    required: bool = True
+    expected_status: str | None = None
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("load scenario file must contain a non-empty scenarios array")
     return [scenario_from_mapping(item) for item in scenarios]
+
+
+def load_release_signing_readiness_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase14_release_signing_readiness.v1":
+        raise ValueError("release signing readiness manifest schema_version must be phase14_release_signing_readiness.v1")
+    modes = payload.get("approved_signing_modes")
+    if not isinstance(modes, list) or not modes:
+        raise ValueError("release signing readiness manifest must contain approved_signing_modes")
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        raise ValueError("release signing readiness manifest must contain a non-empty evidence array")
+    return payload
+
+
+def signing_readiness_evidence_from_mapping(item: dict[str, Any]) -> SigningReadinessEvidence:
+    evidence_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    path = str(item.get("path") or "").strip()
+    evidence_type = str(item.get("type") or "").strip()
+    expected_status = str(item["expected_status"]).strip() if item.get("expected_status") else None
+    if not evidence_id:
+        raise ValueError("signing readiness evidence id is required")
+    if not title:
+        raise ValueError(f"{evidence_id} title is required")
+    if not path:
+        raise ValueError(f"{evidence_id} path is required")
+    if evidence_type not in {"document", "json_status"}:
+        raise ValueError(f"{evidence_id} has unsupported signing readiness evidence type: {evidence_type}")
+    return SigningReadinessEvidence(
+        evidence_id=evidence_id,
+        title=title,
+        path=path,
+        evidence_type=evidence_type,
+        required=bool(item.get("required", True)),
+        expected_status=expected_status,
+    )
+
+
+def signing_readiness_evidence(payload: dict[str, Any]) -> list[SigningReadinessEvidence]:
+    return [signing_readiness_evidence_from_mapping(item) for item in payload["evidence"]]
+
+
+def evaluate_signing_readiness_evidence(item: SigningReadinessEvidence, project_root: Path) -> dict[str, Any]:
+    path = Path(item.path)
+    if not path.is_absolute():
+        path = project_root / path
+    base = {
+        "id": item.evidence_id,
+        "title": item.title,
+        "path": item.path,
+        "type": item.evidence_type,
+        "required": item.required,
+        "expected_status": item.expected_status,
+        "exists": path.is_file(),
+    }
+    if not path.is_file():
+        return {**base, "status": "missing", "summary": "signing readiness evidence is not present"}
+    result = {
+        **base,
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+    }
+    if item.evidence_type == "document":
+        return {**result, "status": "verified", "summary": "document present"}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    actual_status = str(payload.get("status") or payload.get("decision") or "").strip()
+    matches = actual_status == item.expected_status if item.expected_status else bool(actual_status)
+    return {
+        **result,
+        "status": "verified" if matches else "failed",
+        "actual_status": actual_status,
+        "summary": f"json status={actual_status}",
+    }
+
+
+def forbidden_signing_paths(project_root: Path, patterns: list[str]) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for pattern in patterns:
+        for path in sorted(project_root.glob(pattern)):
+            if not path.is_file():
+                continue
+            try:
+                relative = str(path.relative_to(project_root))
+            except ValueError:
+                relative = str(path)
+            matches.append(
+                {
+                    "pattern": pattern,
+                    "path": relative,
+                    "size_bytes": path.stat().st_size,
+                    "sha256": sha256_file(path),
+                }
+            )
+    return matches
+
+
+def build_release_signing_readiness_report(
+    readiness_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    release_metadata: dict[str, Any],
+    git_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    target_tag = str(readiness_payload.get("target_release_tag") or "").strip()
+    repo = str(readiness_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    modes = [str(item).strip() for item in readiness_payload.get("approved_signing_modes", []) if str(item).strip()]
+    invalid_modes = [item for item in modes if item not in {"sigstore_keyless", "kms_hsm"}]
+    evidence = [
+        evaluate_signing_readiness_evidence(item, project_root)
+        for item in signing_readiness_evidence(readiness_payload)
+    ]
+    release_status = (
+        "verified"
+        if str(release_metadata.get("tagName") or "") == target_tag
+        and not bool(release_metadata.get("isDraft"))
+        and not bool(release_metadata.get("isPrerelease"))
+        and bool(release_metadata.get("url"))
+        else "failed"
+    )
+    tag_commit = str(git_metadata.get("tag_commit") or "").strip()
+    remote_tag_commit = str(git_metadata.get("remote_tag_commit") or "").strip()
+    commit_status = "verified" if tag_commit and remote_tag_commit and tag_commit == remote_tag_commit else "failed"
+    forbidden_patterns = [str(item) for item in readiness_payload.get("forbidden_secret_file_globs", [])]
+    forbidden_matches = forbidden_signing_paths(project_root, forbidden_patterns)
+    environment_requirements = readiness_payload.get("environment_requirements") or {}
+    required_for_execution = [
+        str(item)
+        for item in environment_requirements.get("required_for_execution", [])
+        if str(item).strip()
+    ] if isinstance(environment_requirements, dict) else []
+    signing_execution_approved = bool(readiness_payload.get("signing_execution_approved", False))
+    signing_execution_enabled = signing_execution_approved and bool(required_for_execution)
+    blockers = [item for item in evidence if item["required"] and item["status"] != "verified"]
+    if release_status != "verified":
+        blockers.append({"id": "github_release", "status": release_status, "summary": "release metadata failed"})
+    if commit_status != "verified":
+        blockers.append({"id": "release_tag_commit", "status": commit_status, "summary": "local and remote tag commits differ"})
+    for mode in invalid_modes:
+        blockers.append({"id": "approved_signing_mode", "status": "failed", "summary": f"unsupported signing mode: {mode}"})
+    if forbidden_matches:
+        blockers.append({"id": "forbidden_secret_files", "status": "failed", "summary": "forbidden signing secret files are present"})
+    return {
+        "schema_version": "phase14_release_signing_readiness_report.v1",
+        "source_schema_version": readiness_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": "ready_for_signing_review" if not blockers else "blocked",
+        "release": {
+            "status": release_status,
+            "tagName": release_metadata.get("tagName"),
+            "name": release_metadata.get("name"),
+            "url": release_metadata.get("url"),
+            "isDraft": bool(release_metadata.get("isDraft")),
+            "isPrerelease": bool(release_metadata.get("isPrerelease")),
+        },
+        "git": {
+            "status": commit_status,
+            "tag_commit": tag_commit,
+            "remote_tag_commit": remote_tag_commit,
+        },
+        "approved_signing_modes": modes,
+        "environment_requirements": {
+            "required_for_execution": required_for_execution,
+            "execution_enabled": signing_execution_enabled,
+            "execution_approved": signing_execution_approved,
+            "summary": "Signing execution is intentionally disabled until reviewed environment variables are supplied.",
+        },
+        "forbidden_secret_file_globs": forbidden_patterns,
+        "forbidden_secret_file_matches": forbidden_matches,
+        "evidence": evidence,
+        "blockers": blockers,
+        "summary": {
+            "total_evidence": len(evidence),
+            "verified_evidence": sum(1 for item in evidence if item["status"] == "verified"),
+            "failed_evidence": sum(1 for item in evidence if item["status"] == "failed"),
+            "missing_evidence": sum(1 for item in evidence if item["status"] == "missing"),
+            "forbidden_secret_file_matches": len(forbidden_matches),
+        },
+    }
 
 
 def canonical_json_bytes(payload: dict[str, Any]) -> bytes:

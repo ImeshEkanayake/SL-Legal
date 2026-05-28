@@ -1,0 +1,64 @@
+{
+  "schema_version": "phase14_release_signing_readiness.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-13-release-attestation-envelope",
+  "phase_name": "V2 Phase 13: Release Attestation Envelope",
+  "approved_signing_modes": [
+    "sigstore_keyless",
+    "kms_hsm"
+  ],
+  "signing_execution_approved": false,
+  "environment_requirements": {
+    "required_for_execution": [
+      "SL_LEGAL_SIGNING_MODE",
+      "SL_LEGAL_SIGNING_IDENTITY",
+      "SL_LEGAL_SIGNING_ISSUER",
+      "SL_LEGAL_SIGNING_REKOR_URL"
+    ]
+  },
+  "forbidden_secret_file_globs": [
+    "**/cosign.key",
+    "**/release-signing.key",
+    "**/release-signing.pem",
+    "**/private-release-key.pem",
+    "**/id_rsa"
+  ],
+  "evidence": [
+    {
+      "id": "phase13_attestation",
+      "title": "Phase 13 release attestation envelope",
+      "type": "json_status",
+      "path": "logs/release-artifacts/phase13-release-attestation.json",
+      "expected_status": "verified",
+      "required": true
+    },
+    {
+      "id": "phase13_release_note",
+      "title": "Phase 13 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_13_release_attestation_envelope.md",
+      "required": true
+    },
+    {
+      "id": "phase13_contract",
+      "title": "Phase 13 attestation contract",
+      "type": "document",
+      "path": "Docs/v2_phase_13_release_attestation_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase13_runbook",
+      "title": "Phase 13 attestation runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_13_release_attestation_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase13_manifest",
+      "title": "Phase 13 attestation manifest",
+      "type": "document",
+      "path": "rag/evals/phase13_release_attestation.json",
+      "required": true
+    }
+  ]
+}

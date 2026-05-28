@@ -378,6 +378,26 @@ Exit criteria:
 - Attestation envelope is generated without committing logs or release bundles.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 14: Release Signing Readiness Gate
+
+Outcome: release signing is governed by an explicit readiness gate that verifies the prior release, required attestation evidence, approved signing modes, and absence of forbidden private-key files before any signing workflow can be considered.
+
+Deliverables:
+
+- Release signing readiness manifest for the latest completed phase.
+- Signing readiness report for release metadata, tag commit identity, attestation evidence, approved signing modes, and forbidden secret-file scans.
+- Detached signing-readiness gate.
+- Explicit disabled-by-default signing execution policy.
+- Contract, runbook, and release documentation for future keyless or KMS/HSM signing.
+
+Exit criteria:
+
+- Signing readiness tests pass for ready reports, forbidden key files, unsupported signing modes, and saved metadata payloads.
+- Live signing readiness verifies the Phase 13 GitHub release and remote tag commit.
+- Required Phase 13 attestation envelope, release docs, and attestation manifest are checksummed.
+- Signing execution remains disabled unless a reviewed approval flag and environment plan are supplied.
+- No V1 changes, no raw data upload, no private signing keys, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -443,3 +463,4 @@ Every release candidate must pass:
 - Phase 11 must fail verification when GitHub asset digests or sizes do not match local approved artifacts.
 - Phase 12 must fail provenance verification when release metadata, tag commits, required docs, detached logs, or JSON evidence statuses are missing or mismatched.
 - Phase 13 must fail attestation generation when release metadata, tag commits, provenance ledger status, or required subject digests are missing or mismatched.
+- Phase 14 must fail signing readiness when release metadata, tag commits, required attestation evidence, approved signing modes, or forbidden private-key file scans fail.
