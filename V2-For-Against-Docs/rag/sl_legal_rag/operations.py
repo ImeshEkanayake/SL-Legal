@@ -55,6 +55,16 @@ class ReleaseArtifact:
     evidence_scope: str = "local_release"
 
 
+@dataclass(frozen=True)
+class ReleasePublicationAsset:
+    asset_id: str
+    title: str
+    path: str
+    label: str
+    required: bool = True
+    content_type: str = "application/octet-stream"
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
@@ -72,6 +82,108 @@ def load_operational_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(sections, dict) or not sections:
         raise ValueError("operational manifest must contain non-empty sections")
     return payload
+
+
+def load_release_publication_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase10_release_asset_publication.v1":
+        raise ValueError("publication manifest schema_version must be phase10_release_asset_publication.v1")
+    assets = payload.get("assets")
+    if not isinstance(assets, list) or not assets:
+        raise ValueError("publication manifest must contain a non-empty assets array")
+    return payload
+
+
+def release_publication_asset_from_mapping(item: dict[str, Any]) -> ReleasePublicationAsset:
+    asset_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    path = str(item.get("path") or "").strip()
+    label = str(item.get("label") or "").strip()
+    content_type = str(item.get("content_type") or "application/octet-stream").strip()
+    if not asset_id:
+        raise ValueError("publication asset id is required")
+    if not title:
+        raise ValueError(f"{asset_id} title is required")
+    if not path:
+        raise ValueError(f"{asset_id} path is required")
+    if not label:
+        raise ValueError(f"{asset_id} label is required")
+    return ReleasePublicationAsset(
+        asset_id=asset_id,
+        title=title,
+        path=path,
+        label=label,
+        required=bool(item.get("required", True)),
+        content_type=content_type,
+    )
+
+
+def release_publication_assets(payload: dict[str, Any]) -> list[ReleasePublicationAsset]:
+    return [release_publication_asset_from_mapping(item) for item in payload["assets"]]
+
+
+def is_allowed_publication_path(path: str) -> bool:
+    parts = Path(path).parts
+    blocked_parts = {"data", "node_modules", ".next", ".git"}
+    if any(part in blocked_parts for part in parts):
+        return False
+    if Path(path).name.startswith(".env"):
+        return False
+    return path.startswith("logs/release-artifacts/")
+
+
+def build_release_publication_plan(
+    publication_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    target_tag: str | None = None,
+    repo: str | None = None,
+) -> dict[str, Any]:
+    assets = release_publication_assets(publication_payload)
+    target = target_tag or str(publication_payload.get("target_release_tag") or "")
+    repository = repo or str(publication_payload.get("repo") or "")
+    if not target:
+        raise ValueError("target release tag is required")
+    if not repository:
+        raise ValueError("repository is required")
+    items: list[dict[str, Any]] = []
+    for asset in assets:
+        path = Path(asset.path)
+        if not path.is_absolute():
+            path = project_root / path
+        allowed = is_allowed_publication_path(asset.path)
+        exists = path.is_file()
+        item = {
+            "id": asset.asset_id,
+            "title": asset.title,
+            "path": asset.path,
+            "label": asset.label,
+            "required": asset.required,
+            "content_type": asset.content_type,
+            "exists": exists,
+            "allowed_path": allowed,
+            "status": "ready" if exists and allowed else "blocked",
+        }
+        if exists:
+            item["size_bytes"] = path.stat().st_size
+            item["sha256"] = sha256_file(path)
+        items.append(item)
+    blockers = [item for item in items if item["required"] and item["status"] != "ready"]
+    return {
+        "schema_version": "phase10_release_publication_plan.v1",
+        "source_schema_version": publication_payload["schema_version"],
+        "target_release_tag": target,
+        "repo": repository,
+        "status": "ready" if not blockers else "blocked",
+        "assets": items,
+        "blockers": blockers,
+        "summary": {
+            "total": len(items),
+            "ready": sum(1 for item in items if item["status"] == "ready"),
+            "blocked": sum(1 for item in items if item["status"] == "blocked"),
+        },
+    }
 
 
 def load_release_artifact_manifest(path: Path) -> dict[str, Any]:

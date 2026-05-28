@@ -298,6 +298,26 @@ Exit criteria:
 - Bundle excludes raw corpus data and normal runtime directories.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 10: Release Asset Publication Workflow
+
+Outcome: approved evidence bundles can be safely planned for GitHub release upload with explicit execution controls.
+
+Deliverables:
+
+- Publication manifest for approved release assets.
+- Publication plan builder that verifies asset existence, allowed paths, sizes, and SHA-256 digests.
+- GitHub release upload script with plan mode by default and explicit `--execute` for mutation.
+- Detached asset-publication-plan gate.
+- Contract, runbook, and release documentation for release asset publication.
+
+Exit criteria:
+
+- Publication manifest and plan tests pass.
+- Publication plan is `ready` only for approved release-artifact paths.
+- Raw data, `.env`, `node_modules`, `.next`, and Git internals are blocked from publication.
+- Actual GitHub asset upload remains explicit and auditable.
+- No V1 changes, no raw data upload, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -359,3 +379,4 @@ Every release candidate must pass:
 - Phase 7 must not execute hosted-data mutation commands unless `--execute` and production environment variables are deliberately supplied.
 - Phase 8 must not mark production deployment ready when production-stack evidence is missing or failed.
 - Phase 9 must not commit release artifact tarballs, logs, or raw evidence outputs to normal Git.
+- Phase 10 must not upload release assets unless `--execute` is deliberately supplied.

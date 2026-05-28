@@ -44,6 +44,7 @@ Important modules:
 - `operations.py`: Phase 6 load scenario parsing, token substitution, percentile summaries, threshold evaluation, and Phase 7 operational plans.
 - Phase 8 support in `operations.py`: readiness evidence requirements, detached log and JSON report evaluation, blocker classification, and deployment decision packs.
 - Phase 9 support in `operations.py`: release artifact manifests, file checksums, missing artifact classification, and artifact report generation.
+- Phase 10 support in `operations.py`: release publication manifests, allowed-path checks, publication plans, and asset SHA-256 verification.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -106,6 +107,7 @@ Quality and safety:
 - `scripts/run_phase7_monitoring_snapshot.py`: writes or executes the Phase 7 recurring monitoring snapshot.
 - `scripts/run_phase8_readiness_pack.py`: builds local or production-stack deployment readiness evidence packs.
 - `scripts/build_phase9_release_artifacts.py`: builds release artifact checksum reports and optional evidence bundles.
+- `scripts/publish_phase10_release_assets.py`: plans or executes approved GitHub release asset publication.
 
 Retrieval and index operations:
 
@@ -265,6 +267,18 @@ Phase 9 adds a release artifact packaging layer without changing the database sc
 - `tests/test_phase9_release_artifacts.py`: artifact manifest, checksum, missing-required, and bundle tests.
 - `Docs/v2_phase_9_release_artifact_contract.md`: artifact contract.
 - `Docs/v2_phase_9_release_artifact_runbook.md`: artifact generation and attachment workflow.
+
+## V2 Phase 10 Release Asset Publication Contract
+
+Phase 10 adds controlled GitHub release asset publication without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase10_release_asset_publication.json`: approved asset publication manifest.
+- `rag/sl_legal_rag/operations.py`: publication manifest validation, allowed-path enforcement, SHA-256 checksums, and plan generation.
+- `scripts/publish_phase10_release_assets.py`: dry-run publication planner and explicit `--execute` uploader.
+- `scripts/run_detached_quality_gate.sh`: `asset-publication-plan` detached mode.
+- `tests/test_phase10_release_publication.py`: target release, ready asset, blocked asset, and script-output tests.
+- `Docs/v2_phase_10_release_asset_publication_contract.md`: publication contract.
+- `Docs/v2_phase_10_release_asset_publication_runbook.md`: publication workflow.
 
 ## Data Boundary
 

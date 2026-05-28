@@ -31,3 +31,6 @@ This folder is the V2 development copy for claim-level for/against document anal
 - `Docs/v2_phase_9_release_artifact_contract.md`
 - `Docs/v2_phase_9_release_artifact_runbook.md`
 - `Docs/releases/v2_phase_9_release_artifact_bundle.md`
+- `Docs/v2_phase_10_release_asset_publication_contract.md`
+- `Docs/v2_phase_10_release_asset_publication_runbook.md`
+- `Docs/releases/v2_phase_10_release_asset_publication.md`

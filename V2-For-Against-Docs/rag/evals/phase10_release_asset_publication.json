@@ -1,0 +1,24 @@
+{
+  "schema_version": "phase10_release_asset_publication.v1",
+  "description": "Approved release assets for controlled publication through GitHub releases.",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-9-release-artifacts",
+  "assets": [
+    {
+      "id": "phase9_local_evidence_bundle",
+      "title": "Phase 9 local release evidence bundle",
+      "path": "logs/release-artifacts/phase9-release-evidence.tar.gz",
+      "label": "phase9-release-evidence.tar.gz",
+      "required": true,
+      "content_type": "application/gzip"
+    },
+    {
+      "id": "phase9_artifact_report",
+      "title": "Phase 9 artifact checksum report",
+      "path": "logs/release-artifacts/phase9-artifact-report.json",
+      "label": "phase9-artifact-report.json",
+      "required": true,
+      "content_type": "application/json"
+    }
+  ]
+}

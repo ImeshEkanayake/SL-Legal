@@ -43,9 +43,12 @@ case "${MODE}" in
   artifact-report-production)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase9_release_artifacts.py --include-production --allow-missing --output logs/release-artifacts/phase9-artifact-report-production.json --write-bundle --bundle logs/release-artifacts/phase9-release-evidence-production.tar.gz"
     ;;
+  asset-publication-plan)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/publish_phase10_release_assets.py --output logs/release-artifacts/phase10-publication-plan.json"
+    ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan] [run-id]" >&2
     exit 2
     ;;
 esac
