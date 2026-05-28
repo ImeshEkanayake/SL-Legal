@@ -1,0 +1,72 @@
+{
+  "schema_version": "phase12_release_provenance.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-11-published-asset-verification",
+  "phase_name": "V2 Phase 11: Published Asset Verification",
+  "evidence": [
+    {
+      "id": "phase11_release_note",
+      "title": "Phase 11 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_11_published_asset_verification.md",
+      "required": true
+    },
+    {
+      "id": "phase11_contract",
+      "title": "Phase 11 verification contract",
+      "type": "document",
+      "path": "Docs/v2_phase_11_published_asset_verification_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase11_runbook",
+      "title": "Phase 11 verification runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_11_published_asset_verification_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase11_asset_verification",
+      "title": "Phase 11 live asset verification report",
+      "type": "json_status",
+      "path": "logs/release-artifacts/phase11-asset-verification.json",
+      "expected_status": "verified",
+      "required": true
+    },
+    {
+      "id": "phase11_backend_tests",
+      "title": "Phase 11 backend detached tests",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase11-tests-rerun.log",
+      "required": true
+    },
+    {
+      "id": "phase11_frontend_quality",
+      "title": "Phase 11 frontend detached quality gate",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase11-frontend-rerun.log",
+      "required": true
+    },
+    {
+      "id": "phase11_load_plan",
+      "title": "Phase 11 load-plan detached gate",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase11-load-plan-rerun.log",
+      "required": true
+    },
+    {
+      "id": "phase11_artifact_report",
+      "title": "Phase 11 artifact-report detached gate",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase11-artifact-report-rerun.log",
+      "required": true
+    },
+    {
+      "id": "phase11_asset_verification_gate",
+      "title": "Phase 11 asset-verification detached gate",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase11-asset-verification-rerun.log",
+      "required": true
+    }
+  ]
+}

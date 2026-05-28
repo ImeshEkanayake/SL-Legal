@@ -49,9 +49,12 @@ case "${MODE}" in
   asset-verification)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/verify_phase11_release_assets.py --output logs/release-artifacts/phase11-asset-verification.json"
     ;;
+  release-provenance)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase12_release_provenance.py --output logs/release-artifacts/phase12-release-provenance-ledger.json"
+    ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance] [run-id]" >&2
     exit 2
     ;;
 esac

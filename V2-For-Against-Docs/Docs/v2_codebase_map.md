@@ -46,6 +46,7 @@ Important modules:
 - Phase 9 support in `operations.py`: release artifact manifests, file checksums, missing artifact classification, and artifact report generation.
 - Phase 10 support in `operations.py`: release publication manifests, allowed-path checks, publication plans, and asset SHA-256 verification.
 - Phase 11 support in `operations.py`: GitHub release asset digest normalization, remote/local asset comparison, and verification reports.
+- Phase 12 support in `operations.py`: release provenance manifests, GitHub release checks, tag commit checks, evidence checksums, and ledger generation.
 - `db/repositories.py`: persistence layer for cases, packs, documents, drafts, claims, review, audit, and source context.
 - `db/session.py`: database session setup.
 - `llm/azure_openai.py`: Azure OpenAI provider integration.
@@ -294,6 +295,18 @@ Phase 11 adds post-publication release asset verification without changing the d
 - `tests/test_phase11_release_asset_verification.py`: verification, mismatch, saved payload, and manifest tests.
 - `Docs/v2_phase_11_published_asset_verification_contract.md`: verification contract.
 - `Docs/v2_phase_11_published_asset_verification_runbook.md`: verification workflow.
+
+## V2 Phase 12 Release Provenance Ledger Contract
+
+Phase 12 adds a release provenance ledger without changing the database schema. The active implementation uses:
+
+- `rag/evals/phase12_release_provenance.json`: required provenance evidence for the latest completed release.
+- `rag/sl_legal_rag/operations.py`: provenance manifest validation, release metadata checks, tag commit comparison, evidence checksums, and ledger construction.
+- `scripts/build_phase12_release_provenance.py`: GitHub/git metadata collector and ledger writer.
+- `scripts/run_detached_quality_gate.sh`: `release-provenance` detached mode.
+- `tests/test_phase12_release_provenance.py`: verified, missing, draft-release, saved-metadata, and manifest tests.
+- `Docs/v2_phase_12_release_provenance_contract.md`: provenance contract.
+- `Docs/v2_phase_12_release_provenance_runbook.md`: provenance workflow.
 
 ## Data Boundary
 

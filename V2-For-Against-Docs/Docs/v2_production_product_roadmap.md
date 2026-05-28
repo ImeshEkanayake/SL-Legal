@@ -338,6 +338,26 @@ Exit criteria:
 - Verification report is generated without committing logs or bundles.
 - No V1 changes, no raw data upload, and no database schema migration.
 
+### Phase 12: Release Provenance Ledger
+
+Outcome: each completed phase can be represented as a machine-readable provenance ledger tying the GitHub release, tag commit, release docs, validation logs, and verification reports into one auditable record.
+
+Deliverables:
+
+- Release provenance manifest for the latest completed phase.
+- Provenance ledger builder for GitHub release metadata, tag commit verification, required docs, detached logs, and JSON status reports.
+- Detached release-provenance gate.
+- Ledger statuses for verified, failed, and missing provenance evidence.
+- Contract, runbook, and release documentation for release audit provenance.
+
+Exit criteria:
+
+- Provenance tests pass for verified evidence, missing evidence, draft releases, and saved metadata payloads.
+- Live provenance ledger verifies the Phase 11 GitHub release and remote tag commit.
+- Required Phase 11 evidence docs, detached logs, and asset verification report are checksummed.
+- Provenance ledger is generated without committing logs or release bundles.
+- No V1 changes, no raw data upload, and no database schema migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
@@ -401,3 +421,4 @@ Every release candidate must pass:
 - Phase 9 must not commit release artifact tarballs, logs, or raw evidence outputs to normal Git.
 - Phase 10 must not upload release assets unless `--execute` is deliberately supplied.
 - Phase 11 must fail verification when GitHub asset digests or sizes do not match local approved artifacts.
+- Phase 12 must fail provenance verification when release metadata, tag commits, required docs, detached logs, or JSON evidence statuses are missing or mismatched.

@@ -65,12 +65,164 @@ class ReleasePublicationAsset:
     content_type: str = "application/octet-stream"
 
 
+@dataclass(frozen=True)
+class ProvenanceEvidence:
+    evidence_id: str
+    title: str
+    path: str
+    evidence_type: str
+    required: bool = True
+    expected_status: str | None = None
+
+
 def load_scenarios(path: Path) -> list[LoadScenario]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     scenarios = payload.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("load scenario file must contain a non-empty scenarios array")
     return [scenario_from_mapping(item) for item in scenarios]
+
+
+def load_release_provenance_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase12_release_provenance.v1":
+        raise ValueError("release provenance manifest schema_version must be phase12_release_provenance.v1")
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        raise ValueError("release provenance manifest must contain a non-empty evidence array")
+    return payload
+
+
+def provenance_evidence_from_mapping(item: dict[str, Any]) -> ProvenanceEvidence:
+    evidence_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    path = str(item.get("path") or "").strip()
+    evidence_type = str(item.get("type") or "").strip()
+    expected_status = str(item["expected_status"]).strip() if item.get("expected_status") else None
+    if not evidence_id:
+        raise ValueError("provenance evidence id is required")
+    if not title:
+        raise ValueError(f"{evidence_id} title is required")
+    if not path:
+        raise ValueError(f"{evidence_id} path is required")
+    if evidence_type not in {"document", "detached_log", "json_status"}:
+        raise ValueError(f"{evidence_id} has unsupported provenance evidence type: {evidence_type}")
+    return ProvenanceEvidence(
+        evidence_id=evidence_id,
+        title=title,
+        path=path,
+        evidence_type=evidence_type,
+        required=bool(item.get("required", True)),
+        expected_status=expected_status,
+    )
+
+
+def provenance_evidence(payload: dict[str, Any]) -> list[ProvenanceEvidence]:
+    return [provenance_evidence_from_mapping(item) for item in payload["evidence"]]
+
+
+def evaluate_provenance_evidence(item: ProvenanceEvidence, project_root: Path) -> dict[str, Any]:
+    path = Path(item.path)
+    if not path.is_absolute():
+        path = project_root / path
+    base = {
+        "id": item.evidence_id,
+        "title": item.title,
+        "path": item.path,
+        "type": item.evidence_type,
+        "required": item.required,
+        "expected_status": item.expected_status,
+        "exists": path.is_file(),
+    }
+    if not path.is_file():
+        return {**base, "status": "missing", "summary": "evidence file is not present"}
+    result = {
+        **base,
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+    }
+    if item.evidence_type == "document":
+        return {**result, "status": "verified", "summary": "document present"}
+    if item.evidence_type == "detached_log":
+        text = path.read_text(encoding="utf-8", errors="replace")
+        passed = "exit_status=0" in text
+        return {
+            **result,
+            "status": "verified" if passed else "failed",
+            "summary": "detached run exited 0" if passed else "detached run did not exit 0",
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    actual_status = str(payload.get("status") or payload.get("decision") or "").strip()
+    matches = actual_status == item.expected_status if item.expected_status else bool(actual_status)
+    return {
+        **result,
+        "status": "verified" if matches else "failed",
+        "actual_status": actual_status,
+        "summary": f"json status={actual_status}",
+    }
+
+
+def build_release_provenance_ledger(
+    provenance_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    git_metadata: dict[str, Any],
+    release_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    target_tag = str(provenance_payload.get("target_release_tag") or "").strip()
+    repo = str(provenance_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    evidence = [evaluate_provenance_evidence(item, project_root) for item in provenance_evidence(provenance_payload)]
+    release_status = (
+        "verified"
+        if str(release_metadata.get("tagName") or "") == target_tag
+        and not bool(release_metadata.get("isDraft"))
+        and not bool(release_metadata.get("isPrerelease"))
+        and bool(release_metadata.get("url"))
+        else "failed"
+    )
+    tag_commit = str(git_metadata.get("tag_commit") or "").strip()
+    remote_tag_commit = str(git_metadata.get("remote_tag_commit") or "").strip()
+    commit_status = "verified" if tag_commit and remote_tag_commit and tag_commit == remote_tag_commit else "failed"
+    failures = [
+        item for item in evidence if item["required"] and item["status"] != "verified"
+    ]
+    if release_status != "verified":
+        failures.append({"id": "github_release", "status": release_status, "summary": "release metadata failed"})
+    if commit_status != "verified":
+        failures.append({"id": "release_tag_commit", "status": commit_status, "summary": "local and remote tag commits differ"})
+    return {
+        "schema_version": "phase12_release_provenance_ledger.v1",
+        "source_schema_version": provenance_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": "verified" if not failures else "failed",
+        "release": {
+            "status": release_status,
+            "tagName": release_metadata.get("tagName"),
+            "name": release_metadata.get("name"),
+            "url": release_metadata.get("url"),
+            "isDraft": bool(release_metadata.get("isDraft")),
+            "isPrerelease": bool(release_metadata.get("isPrerelease")),
+        },
+        "git": {
+            "status": commit_status,
+            "tag_commit": tag_commit,
+            "remote_tag_commit": remote_tag_commit,
+        },
+        "evidence": evidence,
+        "failures": failures,
+        "summary": {
+            "total_evidence": len(evidence),
+            "verified_evidence": sum(1 for item in evidence if item["status"] == "verified"),
+            "failed_evidence": sum(1 for item in evidence if item["status"] == "failed"),
+            "missing_evidence": sum(1 for item in evidence if item["status"] == "missing"),
+        },
+    }
 
 
 def load_operational_manifest(path: Path) -> dict[str, Any]:
