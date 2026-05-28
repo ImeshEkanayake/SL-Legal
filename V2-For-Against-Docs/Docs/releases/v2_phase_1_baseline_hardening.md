@@ -24,7 +24,7 @@ Phase 1 is releasable when:
 - Shell syntax validation passes for the detached runner.
 - Secret scan passes.
 - New docs do not trip the repository quality marker scan.
-- GitHub repository has an active V2 quality workflow at root.
+- V2 quality workflow specification is prepared for GitHub activation.
 - A detached backend or test quality run has a PID file, log file, and auditable result.
 
 ## Validation Results
@@ -42,6 +42,14 @@ Local validation completed on 2026-05-28:
   - Exit status: `0`
 - Secret scan: passed.
 - Detached runner shell syntax check: passed.
+
+## Known Follow-up
+
+GitHub Actions activation is pending because the current GitHub OAuth token does not include the `workflow` scope. GitHub rejected the root workflow push with:
+
+`refusing to allow an OAuth App to create or update workflow '.github/workflows/v2-quality.yml' without 'workflow' scope`
+
+After re-authenticating GitHub CLI with workflow scope, add the prepared root-level V2 quality workflow so pull requests and releases run the same backend and frontend gates automatically.
 
 ## Out of Scope
 
