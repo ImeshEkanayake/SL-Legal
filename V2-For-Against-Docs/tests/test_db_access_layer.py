@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from sl_legal_rag.agentic_research import build_agentic_research_bundle
 from sl_legal_rag.db import LegalWorkspaceRepository, make_engine
 from sl_legal_rag.db.ids import new_id
 from sl_legal_rag.models import ClaimEvidenceAssessmentRequest, LegalResearchPack, StrategyDraftResponse
@@ -557,6 +558,13 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                     "warnings": ["Lawyer review required."],
                 }
             )
+            agentic_bundle = build_agentic_research_bundle(
+                case_facts="We act for the union in a 2024 refusal to bargain matter.",
+                research_pack=pack_model,
+                requested_output="lawyer_review_pack",
+                strategy_response=strategy_response,
+                matter_id=workspace.case_id,
+            )
             persisted_strategy = repo.persist_strategy_draft(
                 case_id=workspace.case_id,
                 thread_id=chat.thread_id,
@@ -567,6 +575,8 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 requested_output="lawyer_review_pack",
                 research_pack=pack_model,
                 strategy_response=strategy_response,
+                agentic_research_plan=agentic_bundle.plan,
+                matter_memory=agentic_bundle.matter_memory,
             )
             assert persisted_strategy.draft_id.startswith("draft_")
             assert persisted_strategy.message_id is not None
@@ -630,6 +640,9 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert draft_detail["content_markdown"] == strategy_response.answer
             assert draft_detail["metadata"]["requested_output"] == "lawyer_review_pack"
             assert draft_detail["metadata"]["reasoning_pack"]["schema_version"] == "reasoning_pack.v1"
+            assert draft_detail["metadata"]["agentic_research_plan"]["schema_version"] == "agent_research_plan.v1"
+            assert draft_detail["metadata"]["matter_memory"]["schema_version"] == "matter_memory.v1"
+            assert draft_detail["metadata"]["matter_memory"]["sealed_pack_ids"] == [pack_model.pack_id]
             assert len(draft_detail["claims"]) == 1
             assert draft_detail["review_items"][0]["review_item_id"] == persisted_strategy.draft_review_item_id
 

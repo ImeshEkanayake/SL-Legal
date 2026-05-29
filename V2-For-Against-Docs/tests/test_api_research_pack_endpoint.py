@@ -1796,6 +1796,8 @@ def test_strategy_draft_endpoint_persists_reviewable_output(monkeypatch):
         def persist_strategy_draft(self, **kwargs):
             calls["persisted_case_id"] = kwargs["case_id"]
             assert kwargs["strategy_response"].claims[0].pack_item_ids == ["pack_api_test_item_001"]
+            assert kwargs["agentic_research_plan"].schema_version == "agent_research_plan.v1"
+            assert kwargs["matter_memory"].schema_version == "matter_memory.v1"
             return SimpleNamespace(
                 draft_id="draft_1",
                 message_id=None,
@@ -1847,6 +1849,8 @@ def test_strategy_draft_endpoint_persists_reviewable_output(monkeypatch):
     assert calls["agent_status"] == "complete"
     assert calls["rate_limit"]["route_key"] == "strategy.draft"
     assert calls["agent_output"]["reasoning_pack_present"] is False
+    assert calls["agent_output"]["agentic_research_plan"]["schema_version"] == "agent_research_plan.v1"
+    assert calls["agent_output"]["matter_memory"]["schema_version"] == "matter_memory.v1"
 
 
 def test_case_read_endpoints_return_reviewable_workflow(monkeypatch):

@@ -365,6 +365,19 @@ Phase 17 validates the post-roadmap reasoning path for the first tuned scenario 
 - `tests/test_strategy_reasoning.py`: covers repair of uncited legal-claim sentences.
 - `Docs/releases/v2_phase_17_lawyer_review_pack_validation.md`: validation release note and local evidence summary.
 
+## V2 Phase 18 Agentic Backend Metadata Integration
+
+Phase 18 connects the agentic research foundation to the existing strategy-draft backend without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/agentic_research.py`: deterministic `AgentResearchPlan` and `MatterMemory` bundle builder.
+- `rag/sl_legal_rag/api.py`: `/v1/strategy/draft` creates the agentic bundle after pack-bounded draft validation.
+- `rag/sl_legal_rag/db/repositories.py`: `persist_strategy_draft` stores `agentic_research_plan` and `matter_memory` in existing draft and chat-message metadata.
+- `tests/test_agentic_research_service.py`: service-level route, candidate, matter-memory, and clarification coverage.
+- `tests/test_api_research_pack_endpoint.py`: API handoff coverage for agentic metadata.
+- `tests/test_db_access_layer.py`: draft detail metadata coverage.
+- `Docs/v2_phase_18_agentic_backend_metadata_contract.md`: backend metadata contract and boundaries.
+- `Docs/releases/v2_phase_18_agentic_backend_metadata.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

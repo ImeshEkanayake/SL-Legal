@@ -24,6 +24,7 @@ from .auth import (
     optional_auth_context,
     require_auth_context,
 )
+from .agentic_research import build_agentic_research_bundle
 from .case_structure import generate_case_structure
 from .db import LegalWorkspaceRepository, session_scope
 from .db.repositories import RateLimitResult, research_pack_hash
@@ -1454,6 +1455,13 @@ def create_strategy_draft_endpoint(
             requested_output=request.requested_output,
             client=client,
         )
+        agentic_bundle = build_agentic_research_bundle(
+            case_facts=request.case_facts,
+            research_pack=research_pack,
+            requested_output=request.requested_output,
+            strategy_response=draft,
+            matter_id=request.case_id,
+        )
     except ValueError as exc:
         _mark_agent_failed(agent_run_id, str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1474,6 +1482,8 @@ def create_strategy_draft_endpoint(
                 requested_output=request.requested_output,
                 research_pack=research_pack,
                 strategy_response=draft,
+                agentic_research_plan=agentic_bundle.plan,
+                matter_memory=agentic_bundle.matter_memory,
             )
             repo.update_agent_run_status(
                 agent_run_id=agent_run_id,
@@ -1492,6 +1502,8 @@ def create_strategy_draft_endpoint(
                     "missing_authorities": draft.missing_authorities,
                     "warnings": draft.warnings,
                     "reasoning_pack_present": draft.reasoning_pack is not None,
+                    "agentic_research_plan": agentic_bundle.plan.model_dump(mode="json"),
+                    "matter_memory": agentic_bundle.matter_memory.model_dump(mode="json"),
                 },
             )
     except ValueError as exc:

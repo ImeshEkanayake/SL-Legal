@@ -22,10 +22,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..models import (
+    AgentResearchPlan,
     ClaimEvidenceAssessment,
     ClaimEvidenceAssessmentRequest,
     EvidenceStance,
     LegalResearchPack,
+    MatterMemory,
     PackItemSourceResponse,
     StrategyDraftResponse,
     citation_role_for_evidence_stance,
@@ -3559,6 +3561,8 @@ class LegalWorkspaceRepository:
         requested_output: str,
         research_pack: LegalResearchPack,
         strategy_response: StrategyDraftResponse,
+        agentic_research_plan: AgentResearchPlan | None = None,
+        matter_memory: MatterMemory | None = None,
     ) -> PersistedStrategyDraft:
         cited_pack_item_ids = _dedupe(sorted(strategy_response.all_pack_item_ids()))
         stored_pack_item_ids = set(self.research_pack_item_ids(research_pack.pack_id))
@@ -3574,6 +3578,10 @@ class LegalWorkspaceRepository:
             pack_item_ids=cited_pack_item_ids,
         )
         pack_hash = research_pack_hash(research_pack)
+        agentic_metadata = _agentic_research_metadata(
+            agentic_research_plan=agentic_research_plan,
+            matter_memory=matter_memory,
+        )
         message_id = None
         if thread_id:
             message_id = self.add_chat_message(
@@ -3598,6 +3606,7 @@ class LegalWorkspaceRepository:
                         if strategy_response.reasoning_pack is not None
                         else None
                     ),
+                    **agentic_metadata,
                 },
             )
 
@@ -3625,6 +3634,7 @@ class LegalWorkspaceRepository:
                     if strategy_response.reasoning_pack is not None
                     else None
                 ),
+                **agentic_metadata,
             },
         )
         draft_review_item_id = self.create_review_item(
@@ -4624,6 +4634,19 @@ class LegalWorkspaceRepository:
 
 def research_pack_hash(pack: LegalResearchPack) -> str:
     return canonical_research_pack_hash(pack)
+
+
+def _agentic_research_metadata(
+    *,
+    agentic_research_plan: AgentResearchPlan | None,
+    matter_memory: MatterMemory | None,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    if agentic_research_plan is not None:
+        metadata["agentic_research_plan"] = agentic_research_plan.model_dump(mode="json")
+    if matter_memory is not None:
+        metadata["matter_memory"] = matter_memory.model_dump(mode="json")
+    return metadata
 
 
 def _plain_dict(row: Any) -> dict[str, Any]:
