@@ -770,6 +770,27 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 32 execution-pack gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 33: Hosted Staging Execution Validation
+
+Outcome: hosted staging execution evidence is validated by a repeatable gate that distinguishes local pending state from real hosted-staging completion.
+
+Deliverables:
+
+- Machine-readable hosted staging validation manifest.
+- Validation report builder that produces `awaiting_hosted_execution`, `hosted_staging_validated`, or `blocked`.
+- Detached `hosted-staging-validation` mode.
+- Required hosted evidence list covering Phase 30 env readiness, Phase 31 cutover, Phase 32 execution pack, browser smoke, backend tests, frontend quality, operator review, and lawyer-owner acceptance.
+- Operator runbook for attaching hosted staging evidence without committing secrets or tokens.
+
+Exit criteria:
+
+- Phase 32 prerequisites are present and accepted.
+- Local validation returns `awaiting_hosted_execution`.
+- Real hosted validation can return `hosted_staging_validated` only after all hosted evidence passes.
+- Failed hosted evidence blocks production planning.
+- Detached backend tests, frontend quality gate, Phase 33 validation gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

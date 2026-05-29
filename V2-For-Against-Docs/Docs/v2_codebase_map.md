@@ -570,6 +570,19 @@ Phase 32 adds a hosted staging execution pack for running the V2 lawyer workspac
 - `Docs/v2_phase_32_hosted_staging_execution_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_32_hosted_staging_execution.md`: release note and validation evidence.
 
+## V2 Phase 33 Hosted Staging Execution Validation
+
+Phase 33 adds the hosted staging validation gate that consumes real platform evidence. The active implementation uses:
+
+- `rag/evals/phase33_hosted_staging_validation.json`: validation manifest with prerequisites and required hosted evidence.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_staging_validation_manifest` and `build_hosted_staging_validation_report`.
+- `scripts/build_phase33_hosted_staging_validation.py`: report builder for local pending and hosted validated states.
+- `scripts/run_detached_quality_gate.sh`: `hosted-staging-validation` detached mode.
+- `tests/test_phase33_hosted_staging_validation.py`: coverage for pending local evidence, complete hosted evidence, blockers, and CLI output.
+- `Docs/v2_phase_33_hosted_staging_validation_contract.md`: validation contract.
+- `Docs/v2_phase_33_hosted_staging_validation_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_33_hosted_staging_validation.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

@@ -1779,6 +1779,164 @@ def build_hosted_staging_execution_pack(
     }
 
 
+def load_hosted_staging_validation_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase33_hosted_staging_validation.v1":
+        raise ValueError("hosted staging validation manifest schema_version must be phase33_hosted_staging_validation.v1")
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted staging validation manifest must contain a non-empty prerequisites array")
+    hosted_evidence = payload.get("hosted_evidence")
+    if not isinstance(hosted_evidence, list) or not hosted_evidence:
+        raise ValueError("hosted staging validation manifest must contain a non-empty hosted_evidence array")
+    return payload
+
+
+def evaluate_hosted_staging_validation_item(
+    item: dict[str, Any],
+    project_root: Path,
+    *,
+    missing_status: str,
+) -> dict[str, Any]:
+    evidence_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    evidence_type = str(item.get("type") or "").strip()
+    path_value = str(item.get("path") or "").strip()
+    required = bool(item.get("required", True))
+    if not evidence_id:
+        raise ValueError("hosted staging validation evidence id is required")
+    if not title:
+        raise ValueError(f"{evidence_id} title is required")
+    if evidence_type not in {"json_status", "detached_log", "document", "file"}:
+        raise ValueError(f"{evidence_id} has unsupported hosted staging validation type: {evidence_type}")
+    if not path_value:
+        raise ValueError(f"{evidence_id} path is required")
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = project_root / path
+    base = {
+        "id": evidence_id,
+        "title": title,
+        "type": evidence_type,
+        "path": path_value,
+        "required": required,
+        "exists": path.is_file(),
+    }
+    if not path.is_file():
+        return {**base, "status": missing_status, "summary": "evidence is not present"}
+    result = {
+        **base,
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+    }
+    if evidence_type == "detached_log":
+        text = path.read_text(encoding="utf-8", errors="replace")
+        verified = "exit_status=0" in text
+        return {
+            **result,
+            "status": "verified" if verified else "failed",
+            "summary": "detached run exited 0" if verified else "detached run did not exit 0",
+        }
+    if evidence_type in {"document", "file"}:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return {
+            **result,
+            "status": "verified" if text.strip() else "failed",
+            "summary": "evidence file is present" if text.strip() else "evidence file is empty",
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    actual_status = str(payload.get("status") or payload.get("decision") or "").strip()
+    accepted_statuses = [
+        str(status).strip()
+        for status in item.get("accepted_statuses", [])
+        if str(status).strip()
+    ]
+    pending_statuses = [
+        str(status).strip()
+        for status in item.get("pending_statuses", [])
+        if str(status).strip()
+    ]
+    if accepted_statuses and actual_status in accepted_statuses:
+        status = "verified"
+    elif pending_statuses and actual_status in pending_statuses:
+        status = "pending"
+    elif not accepted_statuses and actual_status:
+        status = "verified"
+    else:
+        status = "failed"
+    return {
+        **result,
+        "status": status,
+        "actual_status": actual_status,
+        "accepted_statuses": accepted_statuses,
+        "pending_statuses": pending_statuses,
+        "summary": f"json status={actual_status}",
+    }
+
+
+def build_hosted_staging_validation_report(
+    validation_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(validation_payload.get("target_release_tag") or "").strip()
+    repo = str(validation_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in validation_payload["prerequisites"]
+    ]
+    hosted_evidence = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+        for item in validation_payload["hosted_evidence"]
+    ]
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    hosted_failures = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in hosted_evidence
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_hosted = [
+        item for item in hosted_evidence if item["required"] and item["status"] == "pending"
+    ]
+    blockers = [*prerequisite_blockers, *hosted_failures]
+    if blockers:
+        status = "blocked"
+    elif pending_hosted:
+        status = "awaiting_hosted_execution"
+    else:
+        status = "hosted_staging_validated"
+    return {
+        "schema_version": "phase33_hosted_staging_validation.v1",
+        "source_schema_version": validation_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(validation_payload.get("execution_environment") or "staging"),
+        "prerequisites": prerequisites,
+        "hosted_evidence": hosted_evidence,
+        "pending_hosted_evidence": pending_hosted,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_hosted_evidence": len(hosted_evidence),
+            "verified_hosted_evidence": sum(1 for item in hosted_evidence if item["status"] == "verified"),
+            "pending_hosted_evidence": len(pending_hosted),
+            "failed_hosted_evidence": sum(1 for item in hosted_evidence if item["status"] == "failed"),
+            "blockers": len(blockers),
+        },
+    }
+
+
 def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:
     name = str(item.get("name") or "").strip()
     command = item.get("command")

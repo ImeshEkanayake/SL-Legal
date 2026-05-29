@@ -1,0 +1,128 @@
+{
+  "schema_version": "phase33_hosted_staging_validation.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-32-hosted-staging-execution",
+  "phase_name": "V2 Phase 33: Hosted Staging Execution Validation",
+  "execution_environment": "staging",
+  "description": "Validation gate for real hosted staging execution evidence. Local runs should remain awaiting hosted execution until platform evidence is attached.",
+  "prerequisites": [
+    {
+      "id": "phase32_execution_pack",
+      "title": "Phase 32 hosted staging execution pack",
+      "type": "json_status",
+      "path": "logs/readiness/phase32-hosted-staging-execution-pack.json",
+      "accepted_statuses": [
+        "ready_for_hosted_configuration",
+        "ready_for_hosted_staging_execution"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase32_manifest",
+      "title": "Phase 32 hosted staging execution manifest",
+      "type": "file",
+      "path": "rag/evals/phase32_hosted_staging_execution.json",
+      "required": true
+    },
+    {
+      "id": "phase32_contract",
+      "title": "Phase 32 hosted staging execution contract",
+      "type": "document",
+      "path": "Docs/v2_phase_32_hosted_staging_execution_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase32_runbook",
+      "title": "Phase 32 hosted staging execution runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_32_hosted_staging_execution_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase32_release_note",
+      "title": "Phase 32 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_32_hosted_staging_execution.md",
+      "required": true
+    }
+  ],
+  "hosted_evidence": [
+    {
+      "id": "phase30_hosted_env_readiness",
+      "title": "Hosted Phase 30 environment readiness",
+      "type": "json_status",
+      "path": "logs/readiness/phase30-ui-deployment-readiness-env.json",
+      "accepted_statuses": [
+        "ready_for_deployment_review"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase31_hosted_cutover_dry_run",
+      "title": "Hosted Phase 31 cutover dry run",
+      "type": "json_status",
+      "path": "logs/readiness/phase31-staging-cutover-dry-run.json",
+      "accepted_statuses": [
+        "ready_for_staging_cutover"
+      ],
+      "pending_statuses": [
+        "ready_for_hosted_env_setup"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase32_hosted_execution_pack",
+      "title": "Hosted Phase 32 execution pack",
+      "type": "json_status",
+      "path": "logs/readiness/phase32-hosted-staging-execution-pack.json",
+      "accepted_statuses": [
+        "ready_for_hosted_staging_execution"
+      ],
+      "pending_statuses": [
+        "ready_for_hosted_configuration"
+      ],
+      "required": true
+    },
+    {
+      "id": "hosted_browser_smoke",
+      "title": "Hosted browser smoke detached log",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase33-platform-browser-smoke.log",
+      "required": true
+    },
+    {
+      "id": "hosted_backend_tests",
+      "title": "Hosted backend regression detached log",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase33-platform-tests.log",
+      "required": true
+    },
+    {
+      "id": "hosted_frontend_quality",
+      "title": "Hosted frontend quality detached log",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase33-platform-frontend.log",
+      "required": true
+    },
+    {
+      "id": "operator_secret_review",
+      "title": "Operator hosted secret review",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase33-operator-secret-review.json",
+      "accepted_statuses": [
+        "approved"
+      ],
+      "required": true
+    },
+    {
+      "id": "lawyer_owner_acceptance",
+      "title": "Lawyer-owner staging acceptance",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase33-lawyer-owner-acceptance.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required": true
+    }
+  ]
+}
