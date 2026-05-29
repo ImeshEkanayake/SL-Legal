@@ -294,6 +294,45 @@ export type AuthorityPackExpansionReservationRecord = {
   error_message?: string | null;
 };
 
+export type AuthorityPackItemVerification = {
+  schema_version: string;
+  child_pack_id: string;
+  pack_item_id: string;
+  document_id: string;
+  title: string;
+  document_type: string;
+  source_id: string;
+  authority_level: number;
+  citation: string;
+  anchor_status: string;
+  anchor_count: number;
+  page_text_available: boolean;
+  source_url?: string | null;
+  verification_status: string;
+  requires_lawyer_review: boolean;
+  issues: string[];
+  citable: boolean;
+  reviewer_note: string;
+};
+
+export type AuthorityPackVerificationRecord = {
+  schema_version: string;
+  plan_id: string;
+  request_index: number;
+  child_pack_id: string;
+  child_pack_hash: string;
+  item_count: number;
+  verified_item_count: number;
+  needs_review_item_count: number;
+  status: string;
+  verified_by_user_id?: string | null;
+  verified_at: string;
+  items: AuthorityPackItemVerification[];
+  citable: boolean;
+  promotion_boundary: string;
+  reviewer_note: string;
+};
+
 export type AuthorityPackExpansionPlan = {
   schema_version: string;
   plan_id: string;
@@ -308,6 +347,7 @@ export type AuthorityPackExpansionPlan = {
   reservation_records: AuthorityPackExpansionReservationRecord[];
   executed_pack_ids: string[];
   execution_records: AuthorityPackExpansionExecutionRecord[];
+  verification_records: AuthorityPackVerificationRecord[];
   citable: boolean;
   reviewer_note: string;
 };

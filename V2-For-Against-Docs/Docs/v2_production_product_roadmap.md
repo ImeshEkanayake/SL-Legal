@@ -599,6 +599,27 @@ Exit criteria:
 - Existing execution records and audit events remain green.
 - Candidate authorities remain non-citable and unpromoted.
 
+### Phase 25: Child Pack Source Anchoring and Authority Verification
+
+Outcome: executed authority expansion child packs are inspected against source anchors before any authority can be promoted or cited.
+
+Deliverables:
+
+- `authority_pack_verification.v1` metadata records on authority expansion plans.
+- Per-item verification records for source anchors, citation metadata, authority level, and lawyer-review issues.
+- Locked verification writes against draft metadata.
+- API endpoint to verify an executed child pack.
+- Workspace display of verified/needs-review authority child packs.
+
+Exit criteria:
+
+- Verification only accepts child packs already recorded by the execution phase.
+- Child pack hashes must match the execution record before verification is written.
+- Verified authority items require a source anchor and citation.
+- Weak, missing, or unanchored items are marked `requires_lawyer_review`.
+- Candidate authorities remain non-citable and unpromoted.
+- No V1 changes, raw data upload, or database migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

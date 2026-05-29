@@ -7,6 +7,8 @@ from sl_legal_rag.models import (
     AgentResearchPlan,
     AgentToolTrace,
     AuthorityPackExpansionPlan,
+    AuthorityPackItemVerification,
+    AuthorityPackVerificationRecord,
     AuthorityExpansionCandidate,
     ClarificationNeed,
     MatterMemory,
@@ -323,3 +325,99 @@ def test_phase_24_authority_expansion_reservation_records_are_unique() -> None:
     }
     with pytest.raises(ValidationError, match="authority expansion reservation records require unique request indexes"):
         AuthorityPackExpansionPlan.model_validate(duplicate)
+
+
+def test_phase_25_authority_pack_verification_is_non_citable_and_anchored() -> None:
+    item = AuthorityPackItemVerification.model_validate(
+        {
+            "child_pack_id": "pack_child_001",
+            "pack_item_id": "pack_item_001",
+            "document_id": "doc_001",
+            "title": "Supreme Court Judgment",
+            "document_type": "judgment",
+            "source_id": "SC",
+            "authority_level": 3,
+            "citation": "SC Appeal No. 1/2020",
+            "anchor_status": "anchored",
+            "anchor_count": 1,
+            "page_text_available": True,
+            "verification_status": "verified",
+            "requires_lawyer_review": False,
+            "issues": [],
+            "reviewer_note": "Anchored authority candidate; still non-citable until controlled promotion.",
+        }
+    )
+    record = AuthorityPackVerificationRecord.model_validate(
+        {
+            "plan_id": "authplan_001",
+            "request_index": 0,
+            "child_pack_id": "pack_child_001",
+            "child_pack_hash": "hash_001",
+            "item_count": 1,
+            "verified_item_count": 1,
+            "needs_review_item_count": 0,
+            "status": "verified",
+            "verified_by_user_id": "user_001",
+            "verified_at": "2026-05-30T08:00:00",
+            "items": [item.model_dump(mode="json")],
+        }
+    )
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_001",
+            "case_id": "case_001",
+            "draft_id": "draft_001",
+            "review_item_id": "review_001",
+            "parent_pack_id": "pack_001",
+            "status": "executed",
+            "candidate_ids": ["cand_001"],
+            "expansion_requests": [
+                {
+                    "query": "SC Appeal No. 1/2020 Supreme Court trademark confusion",
+                    "query_class": "case_law_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 3]},
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+            "executed_pack_ids": ["pack_child_001"],
+            "execution_records": [
+                {
+                    "request_index": 0,
+                    "child_pack_id": "pack_child_001",
+                    "child_pack_hash": "hash_001",
+                    "item_count": 1,
+                    "executed_by_user_id": "user_001",
+                    "executed_at": "2026-05-30T07:55:00",
+                    "request_query_sha256": "d" * 64,
+                }
+            ],
+            "verification_records": [record.model_dump(mode="json")],
+        }
+    )
+
+    assert plan.verification_records[0].status == "verified"
+    assert plan.verification_records[0].citable is False
+    assert plan.verification_records[0].items[0].anchor_status == "anchored"
+
+
+def test_phase_25_verified_authority_item_rejects_missing_anchor() -> None:
+    with pytest.raises(ValidationError, match="verified authority items require at least one source anchor"):
+        AuthorityPackItemVerification.model_validate(
+            {
+                "child_pack_id": "pack_child_001",
+                "pack_item_id": "pack_item_001",
+                "document_id": "doc_001",
+                "title": "Supreme Court Judgment",
+                "document_type": "judgment",
+                "source_id": "SC",
+                "authority_level": 3,
+                "citation": "SC Appeal No. 1/2020",
+                "anchor_status": "not_anchored",
+                "anchor_count": 0,
+                "page_text_available": False,
+                "verification_status": "verified",
+                "requires_lawyer_review": False,
+                "issues": [],
+                "reviewer_note": "Invalid verified record.",
+            }
+        )

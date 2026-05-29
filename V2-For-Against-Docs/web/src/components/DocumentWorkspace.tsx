@@ -1196,6 +1196,28 @@ function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: Authorit
           ))}
         </div>
       ) : null}
+      {expansionPlan.verification_records?.length ? (
+        <div className="mt-3 space-y-2">
+          {expansionPlan.verification_records.map((record) => (
+            <div key={record.child_pack_id} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase text-[#434654]">verification</p>
+                  <p className="mt-1 text-xs font-bold text-[#1c1c1a]">{record.child_pack_id}</p>
+                </div>
+                <StatusPill tone={record.status === "verified" ? "green" : "rose"}>{record.status}</StatusPill>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <StatusPill tone="green">{record.verified_item_count} anchored</StatusPill>
+                <StatusPill tone={record.needs_review_item_count ? "rose" : "neutral"}>
+                  {record.needs_review_item_count} review
+                </StatusPill>
+                <StatusPill tone={record.citable ? "rose" : "blue"}>{record.citable ? "citable" : "not citable"}</StatusPill>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {expansionPlan.expansion_requests.map((request, index) => (
           <div key={`${expansionPlan.plan_id}-${index}`} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">

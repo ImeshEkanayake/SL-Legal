@@ -457,6 +457,22 @@ Phase 24 prevents duplicate authority expansion retrieval by reserving a request
 - `Docs/v2_phase_24_authority_expansion_reservation_contract.md`: reservation contract.
 - `Docs/releases/v2_phase_24_authority_expansion_reservation.md`: release note and validation evidence.
 
+## V2 Phase 25 Child Pack Source Anchoring and Authority Verification
+
+Phase 25 verifies executed authority expansion child packs before any candidate authority can be promoted. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `authority_pack_verification.v1` and per-item verification records.
+- `rag/sl_legal_rag/db/repositories.py`: locked child-pack verification and draft metadata persistence.
+- `rag/sl_legal_rag/api.py`: child-pack verification endpoint and audit event.
+- `web/src/lib/workspace-types.ts`: frontend verification record types.
+- `web/src/components/DocumentWorkspace.tsx`: verification status display for authority expansion plans.
+- `web/src/components/CaseWorkspace.test.tsx`: fixture coverage for verification metadata shape.
+- `tests/test_agentic_research_models.py`: verification boundary validation.
+- `tests/test_api_research_pack_endpoint.py`: verification endpoint coverage.
+- `tests/test_db_access_layer.py`: execution-to-verification persistence coverage.
+- `Docs/v2_phase_25_child_pack_authority_verification_contract.md`: verification contract.
+- `Docs/releases/v2_phase_25_child_pack_authority_verification.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

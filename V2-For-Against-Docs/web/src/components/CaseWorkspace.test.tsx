@@ -317,6 +317,7 @@ const snapshot: WorkspaceSnapshot = {
           reservation_records: [],
           executed_pack_ids: [],
           execution_records: [],
+          verification_records: [],
           citable: false,
           reviewer_note: "Planned expansion only; candidate authorities remain non-citable until retrieved, anchored, verified, and sealed into a research pack.",
         },

@@ -23,7 +23,9 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     AgentResearchPlan,
+    AuthorityPackItemVerification,
     AuthorityPackExpansionPlan,
+    AuthorityPackVerificationRecord,
     ClaimEvidenceAssessment,
     ClaimEvidenceAssessmentRequest,
     EvidenceStance,
@@ -4288,6 +4290,145 @@ class LegalWorkspaceRepository:
             },
         )
         return updated_plan
+
+    def verify_authority_expansion_child_pack(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+        child_pack_id: str,
+        verified_by_user_id: str | None,
+    ) -> AuthorityPackVerificationRecord:
+        draft_state = self._draft_state_for_update(case_id=case_id, draft_id=draft_id)
+        if draft_state is None:
+            raise ValueError(f"Draft not found for authority expansion verification: {draft_id}")
+        metadata = dict(draft_state.get("metadata") or {})
+        plans = [
+            dict(item)
+            for item in metadata.get("authority_pack_expansion_plans") or []
+            if isinstance(item, dict)
+        ]
+        plan_index = next((index for index, item in enumerate(plans) if item.get("plan_id") == plan_id), None)
+        if plan_index is None:
+            raise ValueError(f"Authority expansion plan not found: {plan_id}")
+        plan = AuthorityPackExpansionPlan.model_validate(plans[plan_index])
+        execution_record = next(
+            (record for record in plan.execution_records if record.child_pack_id == child_pack_id),
+            None,
+        )
+        if execution_record is None:
+            raise ValueError(f"Authority expansion child pack was not executed for plan: {child_pack_id}")
+
+        child_pack = self.load_research_pack(child_pack_id)
+        if child_pack is None:
+            raise ValueError(f"Authority expansion child pack not found: {child_pack_id}")
+        child_pack_hash = research_pack_hash(child_pack)
+        if child_pack_hash != execution_record.child_pack_hash:
+            raise ValueError("Authority expansion child pack hash does not match execution record")
+
+        item_records: list[AuthorityPackItemVerification] = []
+        for item in child_pack.items:
+            source = self.get_pack_item_source(pack_id=child_pack_id, pack_item_id=item.pack_item_id)
+            issues: list[str] = []
+            if source is None:
+                issues.append("source_record_missing")
+                anchor_status = "not_anchored"
+                anchor_count = 0
+                page_text_available = False
+                source_url = item.source_url
+            else:
+                anchor_status = source.anchor_status
+                anchor_count = len(source.anchors)
+                page_text_available = source.page_text_available
+                source_url = source.source_url
+                if source.anchor_status != "anchored" or not source.anchors:
+                    issues.append("source_anchor_missing")
+                if not source.page_text_available:
+                    issues.append("page_text_unavailable")
+            if not item.citation.strip():
+                issues.append("citation_missing")
+            if item.authority_level > 3:
+                issues.append("authority_level_requires_lawyer_review")
+            if item.document_type.strip().lower() not in {"act", "statute", "regulation", "gazette", "judgment", "case_law"}:
+                issues.append("document_type_requires_lawyer_review")
+
+            verification_status = "requires_lawyer_review" if issues else "verified"
+            item_records.append(
+                AuthorityPackItemVerification.model_validate(
+                    {
+                        "child_pack_id": child_pack_id,
+                        "pack_item_id": item.pack_item_id,
+                        "document_id": item.document_id,
+                        "title": item.title,
+                        "document_type": item.document_type,
+                        "source_id": item.source_id,
+                        "authority_level": item.authority_level,
+                        "citation": item.citation,
+                        "anchor_status": anchor_status,
+                        "anchor_count": anchor_count,
+                        "page_text_available": page_text_available,
+                        "source_url": source_url,
+                        "verification_status": verification_status,
+                        "requires_lawyer_review": verification_status != "verified",
+                        "issues": issues,
+                        "citable": False,
+                        "reviewer_note": (
+                            "Anchored authority candidate; still non-citable until controlled promotion."
+                            if verification_status == "verified"
+                            else "Authority candidate requires lawyer review before any promotion or citation use."
+                        ),
+                    }
+                )
+            )
+
+        verified_item_count = sum(1 for item in item_records if item.verification_status == "verified")
+        needs_review_item_count = sum(1 for item in item_records if item.requires_lawyer_review)
+        verification_record = AuthorityPackVerificationRecord.model_validate(
+            {
+                "plan_id": plan.plan_id,
+                "request_index": execution_record.request_index,
+                "child_pack_id": child_pack_id,
+                "child_pack_hash": child_pack_hash,
+                "item_count": len(item_records),
+                "verified_item_count": verified_item_count,
+                "needs_review_item_count": needs_review_item_count,
+                "status": "verified" if item_records and needs_review_item_count == 0 else "needs_lawyer_review",
+                "verified_by_user_id": verified_by_user_id,
+                "verified_at": datetime.utcnow().isoformat(),
+                "items": [item.model_dump(mode="json") for item in item_records],
+                "citable": False,
+            }
+        )
+        verification_records = [
+            record.model_dump(mode="json")
+            for record in plan.verification_records
+            if record.child_pack_id != child_pack_id
+        ]
+        verification_records.append(verification_record.model_dump(mode="json"))
+        verification_records = sorted(verification_records, key=lambda item: str(item["child_pack_id"]))
+        updated_plan = AuthorityPackExpansionPlan.model_validate(
+            {
+                **plan.model_dump(mode="json"),
+                "verification_records": verification_records,
+            }
+        )
+        self._store_authority_pack_expansion_plan_metadata(
+            case_id=case_id,
+            draft_id=draft_id,
+            metadata=metadata,
+            plans=plans,
+            plan_index=plan_index,
+            updated_plan=updated_plan,
+            review_state_updates={
+                "authority_candidates_are_citable": False,
+                "latest_authority_pack_expansion_plan_id": updated_plan.plan_id,
+                "latest_authority_expansion_child_pack_id": child_pack_id,
+                "latest_authority_pack_verification_status": verification_record.status,
+                "latest_authority_pack_verification_child_pack_id": child_pack_id,
+            },
+        )
+        return verification_record
 
     def _store_authority_pack_expansion_plan_metadata(
         self,

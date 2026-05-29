@@ -14,6 +14,7 @@ from sl_legal_rag.api import CASE_STRUCTURE_BODY_LIMIT_BYTES, app
 from sl_legal_rag.metrics import METRICS
 from sl_legal_rag.models import (
     AuthorityPackExpansionPlan,
+    AuthorityPackVerificationRecord,
     LegalResearchPack,
     PackItemSourceResponse,
     ResearchQueryRequest,
@@ -473,6 +474,88 @@ def test_authority_pack_expansion_execute_endpoint_records_child_pack(monkeypatc
     assert calls["recorded_execution"]["executed_by_user_id"] == "user_1"
     assert calls["audit_events"][-1]["event_type"] == "authority_pack_expansion.executed"
     assert calls["audit_events"][-1]["after_state"]["citable"] is False
+
+
+def test_authority_pack_expansion_verify_endpoint_records_source_anchoring(monkeypatch):
+    calls: dict[str, object] = {}
+    verification_record = AuthorityPackVerificationRecord.model_validate(
+        {
+            "plan_id": "authplan_1",
+            "request_index": 0,
+            "child_pack_id": "pack_child",
+            "child_pack_hash": "hash_child",
+            "item_count": 1,
+            "verified_item_count": 1,
+            "needs_review_item_count": 0,
+            "status": "verified",
+            "verified_by_user_id": "user_1",
+            "verified_at": "2026-05-30T08:20:00",
+            "items": [
+                {
+                    "child_pack_id": "pack_child",
+                    "pack_item_id": "pack_child_item_001",
+                    "document_id": "doc_1",
+                    "title": "Supreme Court Judgment",
+                    "document_type": "judgment",
+                    "source_id": "SC",
+                    "authority_level": 3,
+                    "citation": "SC Appeal No. 1/2020",
+                    "anchor_status": "anchored",
+                    "anchor_count": 1,
+                    "page_text_available": True,
+                    "verification_status": "verified",
+                    "requires_lawyer_review": False,
+                    "issues": [],
+                    "reviewer_note": "Anchored authority candidate; still non-citable until controlled promotion.",
+                }
+            ],
+        }
+    )
+
+    class FakeRepository:
+        def __init__(self, _session):
+            pass
+
+        def case_context(self, case_id: str):
+            assert case_id == "case_1"
+            return SimpleNamespace(organization_id="org_1", created_by_user_id="user_1")
+
+        def user_has_case_permission(self, *, case_id: str, user_id: str):
+            assert case_id == "case_1"
+            assert user_id == "user_1"
+            return True
+
+        def verify_authority_expansion_child_pack(self, **kwargs):
+            calls["verification"] = kwargs
+            assert kwargs["verified_by_user_id"] == "user_1"
+            return verification_record
+
+        def record_audit_event(self, **kwargs):
+            calls["audit_event"] = kwargs
+            return 1
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr("sl_legal_rag.api.LegalWorkspaceRepository", FakeRepository)
+    monkeypatch.setattr("sl_legal_rag.api.session_scope", fake_session_scope)
+
+    target = "/v1/cases/case_1/drafts/draft_1/authority-expansion-plans/authplan_1/child-packs/pack_child/verify"
+    response = TestClient(app).post(
+        target,
+        headers=signed_headers(monkeypatch, method="POST", target=target),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["schema_version"] == "authority_pack_verification.v1"
+    assert data["status"] == "verified"
+    assert data["citable"] is False
+    assert data["items"][0]["anchor_status"] == "anchored"
+    assert calls["verification"]["child_pack_id"] == "pack_child"
+    assert calls["audit_event"]["event_type"] == "authority_pack_expansion.verified"
+    assert calls["audit_event"]["after_state"]["citable"] is False
 
 
 def test_authority_pack_expansion_execute_endpoint_reserves_before_retrieval(monkeypatch):

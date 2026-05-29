@@ -497,6 +497,8 @@ class ResearchPackExpansionRequest(BaseModel):
 
 AuthorityPackExpansionStatus = Literal["planned", "partially_executed", "executed", "cancelled"]
 AuthorityPackExpansionReservationStatus = Literal["reserved", "completed", "failed"]
+AuthorityPackVerificationStatus = Literal["verified", "needs_lawyer_review", "failed"]
+AuthorityPackItemVerificationStatus = Literal["verified", "requires_lawyer_review"]
 
 
 class AuthorityPackExpansionReservationRecord(BaseModel):
@@ -522,6 +524,86 @@ class AuthorityPackExpansionExecutionRecord(BaseModel):
     request_query_sha256: str = Field(min_length=64, max_length=64)
 
 
+class AuthorityPackItemVerification(BaseModel):
+    schema_version: str = "authority_pack_item_verification.v1"
+    child_pack_id: str = Field(min_length=1)
+    pack_item_id: str = Field(min_length=1)
+    document_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    document_type: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    authority_level: int = Field(ge=1)
+    citation: str = ""
+    anchor_status: Literal["anchored", "not_anchored"] = "not_anchored"
+    anchor_count: int = Field(ge=0)
+    page_text_available: bool = False
+    source_url: str | None = None
+    verification_status: AuthorityPackItemVerificationStatus
+    requires_lawyer_review: bool = True
+    issues: list[str] = Field(default_factory=list)
+    citable: bool = False
+    reviewer_note: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_verification_boundary(self) -> "AuthorityPackItemVerification":
+        if self.citable:
+            raise ValueError("authority pack item verification records must not be citable")
+        if self.verification_status == "verified":
+            if self.requires_lawyer_review:
+                raise ValueError("verified authority items cannot require lawyer review")
+            if self.anchor_status != "anchored" or self.anchor_count < 1:
+                raise ValueError("verified authority items require at least one source anchor")
+            if not self.citation.strip():
+                raise ValueError("verified authority items require a citation")
+            if self.issues:
+                raise ValueError("verified authority items cannot carry unresolved issues")
+        return self
+
+
+class AuthorityPackVerificationRecord(BaseModel):
+    schema_version: str = "authority_pack_verification.v1"
+    plan_id: str = Field(min_length=1)
+    request_index: int = Field(ge=0)
+    child_pack_id: str = Field(min_length=1)
+    child_pack_hash: str = Field(min_length=1)
+    item_count: int = Field(ge=0)
+    verified_item_count: int = Field(ge=0)
+    needs_review_item_count: int = Field(ge=0)
+    status: AuthorityPackVerificationStatus
+    verified_by_user_id: str | None = None
+    verified_at: datetime
+    items: list[AuthorityPackItemVerification] = Field(default_factory=list)
+    citable: bool = False
+    promotion_boundary: Literal["verification_only_not_promoted"] = "verification_only_not_promoted"
+    reviewer_note: str = Field(
+        default=(
+            "Child pack verified for source anchoring only; authorities remain non-citable until "
+            "a controlled promotion phase seals them for legal use."
+        ),
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_record_boundary(self) -> "AuthorityPackVerificationRecord":
+        if self.citable:
+            raise ValueError("authority pack verification records must not be citable")
+        if any(item.child_pack_id != self.child_pack_id for item in self.items):
+            raise ValueError("authority pack verification items must match child_pack_id")
+        if self.item_count != len(self.items):
+            raise ValueError("authority pack verification item_count must match items")
+        verified_count = sum(1 for item in self.items if item.verification_status == "verified")
+        needs_review_count = sum(1 for item in self.items if item.requires_lawyer_review)
+        if self.verified_item_count != verified_count:
+            raise ValueError("verified_item_count must match verified items")
+        if self.needs_review_item_count != needs_review_count:
+            raise ValueError("needs_review_item_count must match lawyer review items")
+        if self.status == "verified" and needs_review_count:
+            raise ValueError("verified authority pack records cannot include lawyer review items")
+        if self.status == "failed" and self.item_count:
+            raise ValueError("failed authority pack verification records cannot include verified items")
+        return self
+
+
 class AuthorityPackExpansionPlan(BaseModel):
     schema_version: str = "authority_pack_expansion_plan.v1"
     plan_id: str = Field(min_length=1)
@@ -536,6 +618,7 @@ class AuthorityPackExpansionPlan(BaseModel):
     reservation_records: list[AuthorityPackExpansionReservationRecord] = Field(default_factory=list)
     executed_pack_ids: list[str] = Field(default_factory=list)
     execution_records: list[AuthorityPackExpansionExecutionRecord] = Field(default_factory=list)
+    verification_records: list[AuthorityPackVerificationRecord] = Field(default_factory=list)
     citable: bool = False
     reviewer_note: str = Field(
         default=(
@@ -566,6 +649,20 @@ class AuthorityPackExpansionPlan(BaseModel):
             raise ValueError("authority expansion reservation records require unique request indexes")
         if any(index >= len(self.expansion_requests) for index in reservation_indexes):
             raise ValueError("authority expansion reservation record references unknown request index")
+        verification_pack_ids = [record.child_pack_id for record in self.verification_records]
+        if len(verification_pack_ids) != len(set(verification_pack_ids)):
+            raise ValueError("authority pack verification records require unique child pack ids")
+        execution_by_pack_id = {record.child_pack_id: record for record in self.execution_records}
+        for record in self.verification_records:
+            execution_record = execution_by_pack_id.get(record.child_pack_id)
+            if execution_record is None:
+                raise ValueError("authority pack verification records require executed child packs")
+            if record.plan_id != self.plan_id:
+                raise ValueError("authority pack verification records must match plan_id")
+            if record.request_index != execution_record.request_index:
+                raise ValueError("authority pack verification records must match execution request index")
+            if record.child_pack_hash != execution_record.child_pack_hash:
+                raise ValueError("authority pack verification records must match execution child pack hash")
         executed_indexes = set(request_indexes)
         incomplete_reservations = [
             record.request_index

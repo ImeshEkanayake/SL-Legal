@@ -35,6 +35,7 @@ from .models import (
     AuditEventListResponse,
     AuditEventStreamResponse,
     AuthorityPackExpansionExecutionResponse,
+    AuthorityPackVerificationRecord,
     CaseWorkspaceSnapshot,
     CaseStructureRequest,
     ClaimEvidenceAssessmentRequest,
@@ -1108,6 +1109,62 @@ def execute_authority_pack_expansion_request(
         pack_hash=child_pack_hash,
         authority_pack_expansion_plan=updated_plan,
     ).model_dump(mode="json")
+
+
+@app.post(
+    "/v1/cases/{case_id}/drafts/{draft_id}/authority-expansion-plans/{plan_id}/child-packs/{child_pack_id}/verify",
+    response_model=AuthorityPackVerificationRecord,
+)
+def verify_authority_expansion_child_pack(
+    case_id: str,
+    draft_id: str,
+    plan_id: str,
+    child_pack_id: str,
+    auth: AuthContext = Depends(require_auth_context),
+) -> dict[str, object]:
+    try:
+        with session_scope() as session:
+            repo = LegalWorkspaceRepository(session)
+            case_context = _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+            verification_record = repo.verify_authority_expansion_child_pack(
+                case_id=case_id,
+                draft_id=draft_id,
+                plan_id=plan_id,
+                child_pack_id=child_pack_id,
+                verified_by_user_id=auth.user_id,
+            )
+            repo.record_audit_event(
+                organization_id=case_context.organization_id,
+                case_id=case_id,
+                user_id=auth.user_id,
+                event_type="authority_pack_expansion.verified",
+                entity_type="draft",
+                entity_id=draft_id,
+                after_state={
+                    "plan_id": plan_id,
+                    "child_pack_id": child_pack_id,
+                    "status": verification_record.status,
+                    "item_count": verification_record.item_count,
+                    "verified_item_count": verification_record.verified_item_count,
+                    "needs_review_item_count": verification_record.needs_review_item_count,
+                    "citable": verification_record.citable,
+                },
+                metadata={
+                    "authority_candidates_are_citable": False,
+                    "promotion_boundary": verification_record.promotion_boundary,
+                },
+            )
+    except HTTPException:
+        raise
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=404, detail=message) from exc
+        raise HTTPException(status_code=422, detail=message) from exc
+
+    return verification_record.model_dump(mode="json")
 
 
 @app.get("/v1/cases/{case_id}/drafts", response_model=DraftListResponse)

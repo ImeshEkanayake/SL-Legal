@@ -813,26 +813,87 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             )
             assert reserved_plan.reservation_records[0].status == "reserved"
             assert reserved_plan.reservation_records[0].request_index == 0
+            child_pack_id = "pack_child_authority_001"
+            child_pack_model = LegalResearchPack.model_validate(
+                {
+                    "pack_id": child_pack_id,
+                    "parent_pack_id": persisted_pack.pack_id,
+                    "pack_version": 2,
+                    "query": "official authority expansion for industrial disputes bargaining",
+                    "query_class": "statute_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 2]},
+                    "retrieval_config": {
+                        "fusion": "reciprocal_rank_fusion",
+                        "max_tokens": 3000,
+                        "retriever_counts": {
+                            "opensearch_bm25_phrase_fuzzy": 1,
+                            "qdrant_dense_vector": 0,
+                        },
+                    },
+                    "items": [
+                        {
+                            "pack_item_id": f"{child_pack_id}_item_001",
+                            "chunk_id": str(chunk["chunk_id"]),
+                            "document_id": str(chunk["document_id"]),
+                            "title": str(chunk["title"]),
+                            "document_type": "Act",
+                            "source_id": "PARL_ACTS",
+                            "authority_level": 2,
+                            "citation": str(chunk["citation"]),
+                            "page_start": chunk["page_start"],
+                            "page_end": chunk["page_end"],
+                            "text": str(chunk["chunk_text"]),
+                            "fused_score": 1.0,
+                            "selection_reason": "authority expansion verification selected first retrieval chunk",
+                        }
+                    ],
+                }
+            )
+            persisted_child_pack = repo.save_research_pack(
+                pack=child_pack_model,
+                case_id=workspace.case_id,
+                source_thread_id=chat.thread_id,
+                source_agent_run_id=agent_run_id,
+                created_by_user_id=workspace.user_id,
+                purpose="authority_candidate_pack_expansion",
+            )
             executed_plan = repo.record_authority_pack_expansion_execution(
                 case_id=workspace.case_id,
                 draft_id=persisted_strategy.draft_id,
                 plan_id=expansion_plans[0]["plan_id"],
                 request_index=0,
-                child_pack_id="pack_child_authority_001",
-                child_pack_hash="hash_child_authority_001",
-                item_count=2,
+                child_pack_id=persisted_child_pack.pack_id,
+                child_pack_hash=persisted_child_pack.pack_hash,
+                item_count=1,
                 executed_by_user_id=workspace.user_id,
             )
             assert executed_plan.status == "partially_executed"
-            assert executed_plan.executed_pack_ids == ["pack_child_authority_001"]
+            assert executed_plan.executed_pack_ids == [child_pack_id]
             assert executed_plan.reservation_records[0].status == "completed"
-            assert executed_plan.reservation_records[0].child_pack_id == "pack_child_authority_001"
+            assert executed_plan.reservation_records[0].child_pack_id == child_pack_id
+            verification_record = repo.verify_authority_expansion_child_pack(
+                case_id=workspace.case_id,
+                draft_id=persisted_strategy.draft_id,
+                plan_id=expansion_plans[0]["plan_id"],
+                child_pack_id=child_pack_id,
+                verified_by_user_id=workspace.user_id,
+            )
+            assert verification_record.schema_version == "authority_pack_verification.v1"
+            assert verification_record.status == "verified"
+            assert verification_record.citable is False
+            assert verification_record.items[0].anchor_status == "anchored"
+            assert verification_record.items[0].citable is False
             executed_draft = repo.get_draft_detail(case_id=workspace.case_id, draft_id=persisted_strategy.draft_id)
             assert executed_draft is not None
             assert (
                 executed_draft["metadata"]["matter_memory"]["review_state"]["latest_authority_expansion_child_pack_id"]
-                == "pack_child_authority_001"
+                == child_pack_id
             )
+            assert (
+                executed_draft["metadata"]["matter_memory"]["review_state"]["latest_authority_pack_verification_status"]
+                == "verified"
+            )
+            assert executed_draft["metadata"]["authority_pack_expansion_plans"][0]["verification_records"][0]["citable"] is False
             assert executed_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"] == "candidate_unverified"
             assert repo.list_review_items(case_id=workspace.case_id, status="pending") == []
 
@@ -864,7 +925,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert overview["fact_count"] == 1
             assert overview["issue_count"] == 1
             assert overview["thread_count"] == 1
-            assert overview["pack_count"] == 1
+            assert overview["pack_count"] == 2
             assert overview["claim_count"] == 2
             assert overview["review_count"] == 6
         finally:
