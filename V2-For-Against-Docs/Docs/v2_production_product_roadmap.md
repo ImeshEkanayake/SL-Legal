@@ -520,6 +520,26 @@ Exit criteria:
 - Citation validators reject out-of-pack citations and uncited legal conclusions.
 - No database migration is applied unless separately reviewed and approved.
 
+### Phase 21: Authority Pack Expansion Planning
+
+Outcome: approved authority-candidate reviews produce explicit pack-expansion plans that can be executed in a later phase, while candidate authorities remain non-citable until retrieved, anchored, verified, and sealed.
+
+Deliverables:
+
+- `authority_pack_expansion_plan.v1` structured metadata.
+- Official-source expansion requests derived from approved authority candidates.
+- Draft metadata persistence without a database migration.
+- Audit metadata showing the generated expansion plan.
+- Workspace visibility for planned expansion queries.
+
+Exit criteria:
+
+- Authority-candidate approval creates a draft-scoped expansion plan.
+- Expansion requests require official-source retrieval and use `authority_candidate_pack_expansion`.
+- Candidate authority status is not promoted by approval.
+- Draft detail and workspace snapshot expose the plan.
+- Tests cover model validation, builder behavior, repository persistence, audit metadata, and UI display.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

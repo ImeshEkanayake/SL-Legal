@@ -495,6 +495,43 @@ class ResearchPackExpansionRequest(BaseModel):
         )
 
 
+AuthorityPackExpansionStatus = Literal["planned", "executed", "cancelled"]
+
+
+class AuthorityPackExpansionPlan(BaseModel):
+    schema_version: str = "authority_pack_expansion_plan.v1"
+    plan_id: str = Field(min_length=1)
+    case_id: str = Field(min_length=1)
+    draft_id: str = Field(min_length=1)
+    review_item_id: str = Field(min_length=1)
+    parent_pack_id: str = Field(min_length=1)
+    source: Literal["approved_authority_candidate_review"] = "approved_authority_candidate_review"
+    status: AuthorityPackExpansionStatus = "planned"
+    candidate_ids: list[str] = Field(min_length=1)
+    expansion_requests: list[ResearchPackExpansionRequest] = Field(min_length=1)
+    citable: bool = False
+    reviewer_note: str = Field(
+        default=(
+            "Planned expansion only; candidate authorities remain non-citable until retrieved, "
+            "anchored, verified, and sealed into a research pack."
+        ),
+        min_length=1,
+    )
+
+    @model_validator(mode="after")
+    def validate_expansion_boundary(self) -> "AuthorityPackExpansionPlan":
+        if self.citable:
+            raise ValueError("authority expansion plans must not be citable")
+        if not self.candidate_ids:
+            raise ValueError("authority expansion plans require candidate_ids")
+        for request in self.expansion_requests:
+            if not request.filters.require_official:
+                raise ValueError("authority expansion requests must require official-source retrieval")
+            if request.purpose != "authority_candidate_pack_expansion":
+                raise ValueError("authority expansion requests must use authority_candidate_pack_expansion purpose")
+        return self
+
+
 class CitedClaim(BaseModel):
     claim: str = Field(min_length=1)
     pack_item_ids: list[str] = Field(min_length=1)
@@ -1163,6 +1200,7 @@ class WorkspaceDraftSummary(BaseModel):
     reasoningPack: ReasoningPackOutput | None = None
     agenticResearchPlan: AgentResearchPlan | None = None
     matterMemory: MatterMemory | None = None
+    authorityPackExpansionPlans: list[AuthorityPackExpansionPlan] = Field(default_factory=list)
 
 
 class WorkspaceReviewItem(BaseModel):

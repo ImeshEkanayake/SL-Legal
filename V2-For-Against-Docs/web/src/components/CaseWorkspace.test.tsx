@@ -288,6 +288,36 @@ const snapshot: WorkspaceSnapshot = {
         tool_traces: [],
         review_state: { lawyer_review_required: true },
       },
+      authorityPackExpansionPlans: [
+        {
+          schema_version: "authority_pack_expansion_plan.v1",
+          plan_id: "authplan_1",
+          case_id: "case_1",
+          draft_id: "draft_1",
+          review_item_id: "review_4",
+          parent_pack_id: "pack_1",
+          source: "approved_authority_candidate_review",
+          status: "planned",
+          candidate_ids: ["authcand_1"],
+          expansion_requests: [
+            {
+              query: "Current Act verification Current Act verification. Act Missing evidence task",
+              query_class: "statute_lookup",
+              filters: {
+                require_official: true,
+                authority_levels: [1, 2],
+                document_types: ["statute"],
+              },
+              max_pack_items: 12,
+              max_pack_tokens: 18000,
+              case_id: "case_1",
+              purpose: "authority_candidate_pack_expansion",
+            },
+          ],
+          citable: false,
+          reviewer_note: "Planned expansion only; candidate authorities remain non-citable until retrieved, anchored, verified, and sealed into a research pack.",
+        },
+      ],
     },
   ],
   reviewItems: [
@@ -426,6 +456,9 @@ describe("CaseWorkspace", () => {
     expect(screen.getByText("search_database")).toBeInTheDocument();
     expect(screen.getByText("What is the union registration number?")).toBeInTheDocument();
     expect(screen.getByText("Current Act verification")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Authority expansion plans" })).toBeInTheDocument();
+    expect(screen.getByText("authplan_1")).toBeInTheDocument();
+    expect(screen.getByText("official required")).toBeInTheDocument();
     expect(screen.getAllByText("The opposing party may argue the union was not qualifying.").length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "Preliminary opinion" })).toBeInTheDocument();
     expect(screen.getAllByText("Whether refusal to bargain is prohibited.").length).toBeGreaterThan(0);

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from sl_legal_rag.agentic_research import build_agentic_research_bundle, identify_clarification_needs
+from sl_legal_rag.agentic_research import (
+    build_agentic_research_bundle,
+    build_authority_pack_expansion_plan,
+    identify_clarification_needs,
+)
 from sl_legal_rag.models import LegalResearchPack, StrategyDraftResponse
 
 
@@ -87,6 +91,36 @@ def test_phase_17_agentic_bundle_records_pack_bound_route_and_candidates() -> No
     assert bundle.matter_memory.missing_evidence_tasks[0].startswith("Supreme Court")
 
 
+def test_phase_21_authority_candidate_approval_builds_pack_expansion_plan() -> None:
+    pack = research_pack()
+    bundle = build_agentic_research_bundle(
+        case_facts=(
+            "We act for the right-holder in a trademark dispute in 2024. "
+            "The respondent used a similar label in Colombo."
+        ),
+        research_pack=pack,
+        requested_output="lawyer_review_pack",
+        strategy_response=strategy_response(),
+        matter_id="case_001",
+    )
+
+    plan = build_authority_pack_expansion_plan(
+        case_id="case_001",
+        draft_id="draft_001",
+        parent_pack_id=pack.pack_id,
+        review_item_id="review_001",
+        matter_memory=bundle.matter_memory,
+    )
+
+    assert plan is not None
+    assert plan.parent_pack_id == pack.pack_id
+    assert plan.citable is False
+    assert plan.candidate_ids == [bundle.matter_memory.candidate_authorities[0].candidate_id]
+    assert plan.expansion_requests[0].purpose == "authority_candidate_pack_expansion"
+    assert plan.expansion_requests[0].query_class == "case_law_lookup"
+    assert plan.expansion_requests[0].filters.require_official is True
+
+
 def test_phase_17_clarification_policy_blocks_weak_ip_opinion_without_registration() -> None:
     needs = identify_clarification_needs(
         case_facts="A trademark judgment excerpt says IP Act coverage may apply.",
@@ -98,4 +132,3 @@ def test_phase_17_clarification_policy_blocks_weak_ip_opinion_without_registrati
 
     assert {"client_position", "dates", "registration_number", "case_number"}.issubset(categories)
     assert {"client_position", "dates", "registration_number", "case_number"}.issubset(blocking)
-

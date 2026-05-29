@@ -790,6 +790,20 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert authority_candidate_review is not None
             assert authority_candidate_review.review_item["item_type"] == "authority_candidate"
             assert authority_candidate_review.review_item["status"] == "approved"
+            expanded_draft = repo.get_draft_detail(case_id=workspace.case_id, draft_id=persisted_strategy.draft_id)
+            assert expanded_draft is not None
+            expansion_plans = expanded_draft["metadata"]["authority_pack_expansion_plans"]
+            assert len(expansion_plans) == 1
+            assert expansion_plans[0]["schema_version"] == "authority_pack_expansion_plan.v1"
+            assert expansion_plans[0]["source"] == "approved_authority_candidate_review"
+            assert expansion_plans[0]["citable"] is False
+            assert expansion_plans[0]["expansion_requests"][0]["purpose"] == "authority_candidate_pack_expansion"
+            assert expansion_plans[0]["expansion_requests"][0]["filters"]["require_official"] is True
+            assert (
+                expanded_draft["metadata"]["matter_memory"]["review_state"]["latest_authority_pack_expansion_plan_id"]
+                == expansion_plans[0]["plan_id"]
+            )
+            assert expanded_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"] == "candidate_unverified"
             assert repo.list_review_items(case_id=workspace.case_id, status="pending") == []
 
             audit_count = session.execute(
@@ -810,6 +824,10 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             )
             assert len(audit_events) == 6
             assert audit_events[0]["metadata"]["target_status"] in {"approved", "changes_requested", "lawyer_approved"}
+            assert (
+                audit_events[0]["metadata"]["authority_pack_expansion_plan"]["schema_version"]
+                == "authority_pack_expansion_plan.v1"
+            )
             assert audit_events[0]["before_state"]["review_item"]["status"] == "pending"
 
             overview = repo.case_overview(workspace.case_id)

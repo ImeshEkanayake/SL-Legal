@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from sl_legal_rag.models import (
     AgentResearchPlan,
     AgentToolTrace,
+    AuthorityPackExpansionPlan,
     AuthorityExpansionCandidate,
     ClarificationNeed,
     MatterMemory,
@@ -195,3 +196,47 @@ def test_phase_16_matter_memory_requires_trace_for_candidates_and_sealed_pack_fo
     assert memory.promoted_pack_item_ids == {"pack_item_001"}
     assert memory.unresolved_blocking_clarifications[0].category == "registration_number"
 
+
+def test_phase_21_authority_pack_expansion_plan_is_non_citable_and_official_only() -> None:
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_001",
+            "case_id": "case_001",
+            "draft_id": "draft_001",
+            "review_item_id": "review_001",
+            "parent_pack_id": "pack_001",
+            "candidate_ids": ["cand_001"],
+            "expansion_requests": [
+                {
+                    "query": "SC Appeal No. 1/2020 Supreme Court trademark confusion",
+                    "query_class": "case_law_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 3]},
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+        }
+    )
+
+    assert plan.schema_version == "authority_pack_expansion_plan.v1"
+    assert plan.citable is False
+    assert plan.expansion_requests[0].filters.require_official is True
+
+    with pytest.raises(ValidationError, match="authority expansion plans must not be citable"):
+        AuthorityPackExpansionPlan.model_validate(
+            {
+                "plan_id": "authplan_001",
+                "case_id": "case_001",
+                "draft_id": "draft_001",
+                "review_item_id": "review_001",
+                "parent_pack_id": "pack_001",
+                "candidate_ids": ["cand_001"],
+                "expansion_requests": [
+                    {
+                        "query": "SC Appeal No. 1/2020 Supreme Court trademark confusion",
+                        "filters": {"require_official": True},
+                        "purpose": "authority_candidate_pack_expansion",
+                    }
+                ],
+                "citable": True,
+            }
+        )

@@ -8,11 +8,14 @@ from typing import Any
 from .models import (
     AgentResearchPlan,
     AgentToolTrace,
+    AuthorityPackExpansionPlan,
     AuthorityExpansionCandidate,
     ClarificationNeed,
     LegalResearchPack,
     MatterMemory,
+    QueryClass,
     ReasoningPackOutput,
+    ResearchPackExpansionRequest,
     StrategyDraftResponse,
 )
 from .research_pack import research_pack_hash
@@ -202,6 +205,51 @@ def build_authority_candidates(*, strategy_response: StrategyDraftResponse | Non
     return candidates
 
 
+def build_authority_pack_expansion_plan(
+    *,
+    case_id: str,
+    draft_id: str,
+    parent_pack_id: str,
+    review_item_id: str,
+    matter_memory: MatterMemory | dict[str, Any],
+) -> AuthorityPackExpansionPlan | None:
+    memory = matter_memory if isinstance(matter_memory, MatterMemory) else MatterMemory.model_validate(matter_memory)
+    candidates = [candidate for candidate in memory.candidate_authorities if not candidate.citable]
+    if not candidates:
+        return None
+
+    return AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": _stable_id(
+                "authplan",
+                case_id,
+                draft_id,
+                parent_pack_id,
+                review_item_id,
+                ",".join(candidate.candidate_id for candidate in candidates),
+            ),
+            "case_id": case_id,
+            "draft_id": draft_id,
+            "review_item_id": review_item_id,
+            "parent_pack_id": parent_pack_id,
+            "candidate_ids": [candidate.candidate_id for candidate in candidates],
+            "expansion_requests": [
+                ResearchPackExpansionRequest(
+                    query=_authority_expansion_query(candidate),
+                    query_class=_authority_expansion_query_class(candidate),
+                    filters=_authority_expansion_filters(candidate),
+                    max_pack_items=12,
+                    max_pack_tokens=18000,
+                    case_id=case_id,
+                    purpose="authority_candidate_pack_expansion",
+                )
+                for candidate in candidates
+            ],
+            "citable": False,
+        }
+    )
+
+
 def build_tool_traces(
     *,
     case_facts: str,
@@ -387,6 +435,43 @@ def _candidate_type(text: str) -> str:
     if "nipo" in lowered:
         return "Official registry material"
     return "Missing authority task"
+
+
+def _authority_expansion_query(candidate: AuthorityExpansionCandidate) -> str:
+    query_parts = [
+        candidate.title,
+        candidate.citation_or_identifier,
+        candidate.authority_type,
+        candidate.source_hint,
+    ]
+    query = " ".join(part.strip() for part in query_parts if part and part.strip())
+    return query[:500].strip() or candidate.title
+
+
+def _authority_expansion_query_class(candidate: AuthorityExpansionCandidate) -> QueryClass:
+    text = f"{candidate.authority_type} {candidate.title} {candidate.citation_or_identifier}".lower()
+    if any(term in text for term in ("act", "section", "gazette", "regulation", "ordinance", "statutory")):
+        return QueryClass.STATUTE_LOOKUP
+    if any(term in text for term in ("supreme court", "court of appeal", "case", "appeal", "judgment")):
+        return QueryClass.CASE_LAW_LOOKUP
+    return QueryClass.GENERAL_RESEARCH
+
+
+def _authority_expansion_filters(candidate: AuthorityExpansionCandidate) -> dict[str, Any]:
+    text = f"{candidate.authority_type} {candidate.title} {candidate.citation_or_identifier}".lower()
+    authority_levels = [1]
+    document_types: list[str] = []
+    if any(term in text for term in ("act", "section", "gazette", "regulation", "ordinance", "statutory")):
+        authority_levels.append(2)
+        document_types.extend(["statute", "gazette", "regulation"])
+    if any(term in text for term in ("supreme court", "court of appeal", "case", "appeal", "judgment")):
+        authority_levels.append(3)
+        document_types.extend(["judgment", "case_law"])
+    return {
+        "require_official": True,
+        "authority_levels": sorted(set(authority_levels)),
+        "document_types": _dedupe_text(document_types),
+    }
 
 
 def _stable_id(prefix: str, *parts: str) -> str:

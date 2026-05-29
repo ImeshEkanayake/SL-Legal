@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     AgentResearchPlan,
+    AuthorityPackExpansionPlan,
     ClaimEvidenceAssessment,
     ClaimEvidenceAssessmentRequest,
     EvidenceStance,
@@ -33,6 +34,7 @@ from ..models import (
     citation_role_for_evidence_stance,
     evidence_stance_for_citation_role,
 )
+from ..agentic_research import build_authority_pack_expansion_plan
 from ..research_pack import research_pack_hash as canonical_research_pack_hash
 from ..research_pack import require_valid_research_pack_contract, seal_research_pack
 from ..source_anchoring import PageText, SourceAnchor, build_source_anchors
@@ -1207,6 +1209,7 @@ class LegalWorkspaceRepository:
                     "reasoningPack": metadata.get("reasoning_pack"),
                     "agenticResearchPlan": metadata.get("agentic_research_plan"),
                     "matterMemory": metadata.get("matter_memory"),
+                    "authorityPackExpansionPlans": metadata.get("authority_pack_expansion_plans") or [],
                 }
             )
         return drafts
@@ -3911,7 +3914,12 @@ class LegalWorkspaceRepository:
             "clarification_need",
             "authority_candidate",
         }:
-            pass
+            if review_before["item_type"] == "authority_candidate" and decision == "approved":
+                authority_expansion_plan = self._record_authority_pack_expansion_plan(
+                    case_id=case_id,
+                    draft_id=str(review_before["item_id"]),
+                    review_item_id=review_item_id,
+                )
         else:
             raise ValueError(f"Unsupported review item type: {review_before['item_type']}")
 
@@ -3928,6 +3936,15 @@ class LegalWorkspaceRepository:
             item_type=str(review_before["item_type"]),
             item_id=str(review_before["item_id"]),
         )
+        audit_metadata = {
+            "decision": decision,
+            "target_item_type": review_before["item_type"],
+            "target_item_id": review_before["item_id"],
+            "target_status": target_status,
+        }
+        if "authority_expansion_plan" in locals() and authority_expansion_plan is not None:
+            audit_metadata["authority_pack_expansion_plan"] = authority_expansion_plan.model_dump(mode="json")
+
         audit_event_id = self._insert_audit_event(
             organization_id=str(review_before["organization_id"]),
             case_id=case_id,
@@ -3943,12 +3960,7 @@ class LegalWorkspaceRepository:
                 "review_item": review_after,
                 "target": target_after,
             },
-            metadata={
-                "decision": decision,
-                "target_item_type": review_before["item_type"],
-                "target_item_id": review_before["item_id"],
-                "target_status": target_status,
-            },
+            metadata=audit_metadata,
         )
         self.session.flush()
         return ReviewDecisionResult(
@@ -3958,6 +3970,62 @@ class LegalWorkspaceRepository:
             target_status=target_status,
             audit_event_id=audit_event_id,
         )
+
+    def _record_authority_pack_expansion_plan(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        review_item_id: str,
+    ) -> AuthorityPackExpansionPlan | None:
+        draft_state = self._review_target_state(case_id=case_id, item_type="draft", item_id=draft_id)
+        if draft_state is None:
+            return None
+        metadata = dict(draft_state.get("metadata") or {})
+        matter_memory = metadata.get("matter_memory")
+        parent_pack_id = str(draft_state.get("pack_id") or "")
+        if not matter_memory or not parent_pack_id:
+            return None
+        plan = build_authority_pack_expansion_plan(
+            case_id=case_id,
+            draft_id=draft_id,
+            parent_pack_id=parent_pack_id,
+            review_item_id=review_item_id,
+            matter_memory=matter_memory,
+        )
+        if plan is None:
+            return None
+        existing_plans = [
+            dict(item)
+            for item in metadata.get("authority_pack_expansion_plans") or []
+            if isinstance(item, dict) and item.get("plan_id") != plan.plan_id
+        ]
+        existing_plans.append(plan.model_dump(mode="json"))
+        metadata["authority_pack_expansion_plans"] = existing_plans
+        matter_memory = dict(matter_memory)
+        review_state = dict(matter_memory.get("review_state") or {})
+        review_state.update(
+            {
+                "authority_candidates_are_citable": False,
+                "latest_authority_pack_expansion_plan_id": plan.plan_id,
+                "authority_pack_expansion_status": plan.status,
+            }
+        )
+        matter_memory["review_state"] = review_state
+        metadata["matter_memory"] = matter_memory
+        self.session.execute(
+            text(
+                """
+                UPDATE drafts
+                SET metadata = CAST(:metadata AS jsonb), updated_at = now()
+                WHERE case_id = :case_id
+                  AND draft_id = :draft_id
+                """
+            ),
+            {"case_id": case_id, "draft_id": draft_id, "metadata": _json(metadata)},
+        )
+        self.session.flush()
+        return plan
 
     def list_case_drafts(
         self,

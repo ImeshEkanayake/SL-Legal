@@ -254,6 +254,38 @@ export type MatterMemory = {
   review_state: Record<string, unknown>;
 };
 
+export type PackExpansionRequest = {
+  query: string;
+  query_class: string;
+  filters: {
+    require_official?: boolean;
+    document_types?: string[];
+    authority_levels?: number[];
+    [key: string]: unknown;
+  };
+  max_pack_items: number;
+  max_pack_tokens: number;
+  case_id?: string | null;
+  source_thread_id?: string | null;
+  source_agent_run_id?: string | null;
+  purpose: string;
+};
+
+export type AuthorityPackExpansionPlan = {
+  schema_version: string;
+  plan_id: string;
+  case_id: string;
+  draft_id: string;
+  review_item_id: string;
+  parent_pack_id: string;
+  source: string;
+  status: string;
+  candidate_ids: string[];
+  expansion_requests: PackExpansionRequest[];
+  citable: boolean;
+  reviewer_note: string;
+};
+
 export type DraftSummary = {
   draftId: string;
   title: string;
@@ -266,6 +298,7 @@ export type DraftSummary = {
   reasoningPack?: ReasoningPack | null;
   agenticResearchPlan?: AgenticResearchPlan | null;
   matterMemory?: MatterMemory | null;
+  authorityPackExpansionPlans?: AuthorityPackExpansionPlan[];
 };
 
 export type ReviewItem = {

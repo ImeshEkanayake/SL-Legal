@@ -23,6 +23,7 @@ import { PdfDocumentViewer } from "./PdfDocumentViewer";
 import type {
   AgenticResearchPlan,
   AgentToolTrace,
+  AuthorityPackExpansionPlan,
   AuthorityExpansionCandidate,
   CaseDocument,
   ClarificationNeed,
@@ -978,6 +979,7 @@ function ReasoningTab({
               <AgenticResearchDetail
                 plan={selectedDraft.agenticResearchPlan ?? null}
                 memory={selectedDraft.matterMemory ?? null}
+                expansionPlans={selectedDraft.authorityPackExpansionPlans ?? []}
                 packItems={packItems}
                 onOpenPackItem={onOpenPackItem}
               />
@@ -1004,11 +1006,13 @@ function ReasoningTab({
 function AgenticResearchDetail({
   plan,
   memory,
+  expansionPlans,
   packItems,
   onOpenPackItem,
 }: {
   plan: AgenticResearchPlan | null;
   memory: MatterMemory | null;
+  expansionPlans: AuthorityPackExpansionPlan[];
   packItems: ResearchPackItem[];
   onOpenPackItem: (packItemId: string) => void;
 }) {
@@ -1033,6 +1037,7 @@ function AgenticResearchDetail({
             {clarificationNeeds.length} clarifications
           </StatusPill>
           <StatusPill tone="neutral">{candidates.length} candidates</StatusPill>
+          {expansionPlans.length ? <StatusPill tone="blue">{expansionPlans.length} expansion plans</StatusPill> : null}
         </div>
       </div>
 
@@ -1091,6 +1096,16 @@ function AgenticResearchDetail({
           )}
         </ReasoningSection>
       </section>
+
+      {expansionPlans.length ? (
+        <ReasoningSection title="Authority expansion plans" count={expansionPlans.length}>
+          <div className="space-y-2">
+            {expansionPlans.map((expansionPlan) => (
+              <AuthorityExpansionPlanCard key={expansionPlan.plan_id} expansionPlan={expansionPlan} />
+            ))}
+          </div>
+        </ReasoningSection>
+      ) : null}
     </section>
   );
 }
@@ -1157,6 +1172,35 @@ function AuthorityCandidateCard({
         <StatusPill tone="neutral">{candidate.source_boundary}</StatusPill>
       </div>
       <PackItemButtons packItemIds={candidate.promoted_pack_item_ids} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+    </article>
+  );
+}
+
+function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: AuthorityPackExpansionPlan }) {
+  return (
+    <article className="rounded-md border border-[#c3c6d6] bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase text-[#434654]">{expansionPlan.schema_version}</p>
+          <h4 className="mt-1 text-sm font-bold text-[#1c1c1a]">{expansionPlan.plan_id}</h4>
+        </div>
+        <StatusPill tone={expansionPlan.citable ? "rose" : "blue"}>{expansionPlan.status}</StatusPill>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[#434654]">{expansionPlan.reviewer_note}</p>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {expansionPlan.expansion_requests.map((request, index) => (
+          <div key={`${expansionPlan.plan_id}-${index}`} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">
+            <p className="text-xs font-bold uppercase text-[#003d9b]">{request.query_class}</p>
+            <p className="mt-1 text-xs leading-5 text-[#1c1c1a]">{request.query}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <StatusPill tone={request.filters.require_official ? "green" : "rose"}>
+                {request.filters.require_official ? "official required" : "official missing"}
+              </StatusPill>
+              <StatusPill tone="neutral">{request.max_pack_items} items</StatusPill>
+            </div>
+          </div>
+        ))}
+      </div>
     </article>
   );
 }

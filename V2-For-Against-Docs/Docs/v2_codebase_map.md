@@ -401,6 +401,22 @@ Phase 20 makes agentic metadata actionable through the existing review queue wit
 - `Docs/v2_phase_20_agentic_review_queue_contract.md`: review item contract and decision boundaries.
 - `Docs/releases/v2_phase_20_agentic_review_queue.md`: release note and validation evidence.
 
+## V2 Phase 21 Authority Pack Expansion Planning
+
+Phase 21 converts approved authority-candidate reviews into draft metadata that can drive a later research-pack expansion, while candidate authorities remain non-citable. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `AuthorityPackExpansionPlan` schema and validation boundaries.
+- `rag/sl_legal_rag/agentic_research.py`: deterministic builder for official-source expansion requests.
+- `rag/sl_legal_rag/db/repositories.py`: review approval hook that stores expansion plans and audit metadata.
+- `web/src/lib/workspace-types.ts`: workspace types for expansion plans.
+- `web/src/components/DocumentWorkspace.tsx`: reasoning workspace display for planned expansion queries.
+- `tests/test_agentic_research_models.py`: non-citable and official-source schema coverage.
+- `tests/test_agentic_research_service.py`: builder coverage.
+- `tests/test_db_access_layer.py`: persistence and audit integration coverage.
+- `web/src/components/CaseWorkspace.test.tsx`: UI visibility coverage.
+- `Docs/v2_phase_21_authority_pack_expansion_contract.md`: planning contract and future execution boundary.
+- `Docs/releases/v2_phase_21_authority_pack_expansion_planning.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
