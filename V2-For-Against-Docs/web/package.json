@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "phase29:e2e": "node scripts/run-phase29-browser-workflow.mjs",
     "quality": "npm run lint && npm run test && npm run build && npm audit --audit-level=moderate"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "jsdom": "^29.1.1",
+    "playwright-core": "^1.60.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"

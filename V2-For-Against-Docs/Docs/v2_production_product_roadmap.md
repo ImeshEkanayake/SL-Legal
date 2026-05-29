@@ -683,6 +683,28 @@ Exit criteria:
 - Detached backend tests and frontend quality gate pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 29: Browser Workflow Validation Evidence
+
+Outcome: the authority workflow UI is validated in a real browser against a representative matter without touching the shared database.
+
+Deliverables:
+
+- Browser workflow validation runner using the real Next workspace and a temporary signed fake backend.
+- Representative case fixture covering reasoning pack, authority expansion plan, executed child pack, verification record, and promotion record.
+- Chrome-driven Execute -> Verify -> Promote validation.
+- Local screenshot, JSON report, Markdown summary, and Next dev log evidence under `logs/phase29-browser-workflow`.
+- Detached quality-gate mode for repeatable browser workflow validation.
+
+Exit criteria:
+
+- Browser renders the representative matter and reasoning panel.
+- Browser completes Execute -> Verify -> Promote through the real UI controls.
+- Fake backend observes signed workspace, execute, verify, and promote API calls.
+- Promotion sends only the verified pack item ID.
+- No React hydration mismatch is observed with browser extensions disabled.
+- Detached backend tests, frontend quality gate, and Phase 29 browser workflow validation pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
