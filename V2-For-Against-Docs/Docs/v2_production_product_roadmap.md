@@ -24,6 +24,9 @@ Every legal statement must trace to a sealed research pack item, source citation
 - Citations are product objects, not prose decoration.
 - Retrieval and reasoning are separate stages. Retrieval builds sealed evidence packs; reasoning may only use those packs.
 - Adverse authority is mandatory. Strategy output is incomplete unless it actively searches for and explains evidence against the client position.
+- Agentic legal research must be tool-routed and auditable. The system may plan, clarify, retrieve, expand, verify, and draft, but every step must be recorded as a bounded tool action with source boundaries and reviewer-facing rationale.
+- Wider authority expansion produces candidates, not legal citations, until those authorities are promoted into a sealed reviewed pack.
+- Clarification is a safety feature. Missing material facts, jurisdiction, dates, parties, relief, case numbers, registration numbers, or client position must trigger clarification or cautious missing-evidence treatment instead of confident conclusions.
 - Human review is part of the system design. Lawyer approval, rejection, and requested changes must be persisted and auditable.
 - Data quality is visible. OCR, translation, missing text, weak anchors, and source reliability warnings must affect confidence and display.
 
@@ -117,6 +120,15 @@ Every legal statement must trace to a sealed research pack item, source citation
 - Track missing source coverage, OCR confidence, translation status, and searchability health.
 - Keep licensed and public-domain corpora clearly separated.
 - Add reproducible data hydration scripts for future environments.
+
+### 8. Agentic Tool Routing and Matter Memory
+
+- Add a schema-constrained research agent that can route between intake structuring, database search, authority expansion, official-source verification, clarification, answer drafting, and lawyer-review-pack generation.
+- Keep database-first retrieval as the default. Official-source checks are used only when the sealed corpus is incomplete, current-law verification is required, or candidate authority metadata is uncertain.
+- Persist a tool trace for every routed step with purpose, input summary, source boundary, result count or status, selected outputs, and reviewer-facing note.
+- Maintain matter/session memory for client facts, selected authorities, retrieved packs, candidate expansion authorities, adverse material, missing-evidence tasks, and prior lawyer review decisions.
+- Separate promoted sealed authorities from unverified candidate authorities in all outputs.
+- Add expert-style evaluation rubrics for legal taxonomy, legal logic, authority quality, citation precision, adverse reasoning, missing-evidence coverage, and lawyer-review readiness.
 
 ## Milestones
 
@@ -417,6 +429,96 @@ Exit criteria:
 - Required Phase 13 attestation and Phase 14 signing readiness artifacts are checksummed.
 - Signing commands are planned but not executed unless a future reviewed approval flag is supplied.
 - No V1 changes, no raw data upload, no private signing keys, no signature output files, and no database schema migration.
+
+### Phase 16: Maat-Informed Agentic Research Workflow Plan
+
+Outcome: the V2 roadmap formally adopts the relevant lessons from the Maat legal agent paper as a production plan: tool routing, matter memory, clarification, database-first retrieval, authority expansion, official-source verification, and expert evaluation. The paper informs the workflow design, while V2's sealed-pack, citation-validation, lawyer-review, and release-discipline rules remain authoritative.
+
+Product specification source:
+
+- Maat paper: `https://arxiv.org/pdf/2605.27331v1`
+- Existing Phase 4 reasoning-pack specification: `/Users/imeshekanayake/Downloads/detailed.md`
+- Existing V2 production roadmap, release discipline, citation safety rules, and no-final-legal-advice boundary.
+
+Implementation plan:
+
+- Add an agent router contract with these bounded tools:
+  - `case_intake_structurer`
+  - `search_database`
+  - `expand_authorities`
+  - `official_source_check`
+  - `ask_clarification`
+  - `answer_from_pack`
+  - `lawyer_review_pack`
+- Add tool-trace schemas and validators without applying a database migration. Store traces in existing metadata fields until a reviewed schema plan is approved.
+- Add matter/session memory structures for selected authorities, retrieved packs, stage-1 authority candidates, client facts, adverse material, unresolved missing-evidence tasks, and lawyer review state.
+- Add a clarification policy for missing client position, parties, jurisdiction, dates, relief sought, registration numbers, case numbers, procedural posture, and material disputed facts.
+- Add an authority-promotion workflow so wider-search candidates remain non-citable until retrieved, anchored, verified, and sealed into a reviewed pack.
+- Add official-source fallback checks for current-law and authority-verification gaps, preferring primary or official sources and marking verification status.
+- Add expert-style offline evaluation reports for legal logic, taxonomy, issue spotting, authority quality, citation precision, missing evidence, adverse reasoning, and lawyer-review readiness.
+
+Exit criteria:
+
+- Router unit tests pass for database-first search, clarification, authority expansion, official-source fallback, and answer-from-pack paths.
+- Every tool call emits trace metadata with purpose, input summary, source boundary, result count or status, selected outputs, and reviewer-facing note.
+- Clarification triggers prevent stronger preliminary opinions when material facts are absent.
+- Authority expansion candidates are never cited as law until promoted into the sealed pack.
+- Official-source checks mark authorities as `verified`, `partially_verified`, or `requires_lawyer_verification`.
+- Expert-evaluation output passes on at least one tuned scenario and identifies deliberate adversarial failures.
+- No V1 changes, no raw data upload, and no database migration.
+
+### Phase 17: Full Tuned-Scenario Agentic Validation
+
+Outcome: the Maat-informed workflow is validated across the existing 10 tuned scenarios before backend persistence or UI expansion. The goal is to prove that long-text, multi-document reasoning produces useful lawyer-review packs with strong supportive arguments, adverse arguments, missing-evidence tasks, authority candidates, and cautious preliminary opinions.
+
+Deliverables:
+
+- Detached validation run for all 10 tuned scenarios.
+- Per-scenario reports covering:
+  - base sealed pack contents
+  - supportive evidence retrieval
+  - adverse evidence retrieval
+  - wider authority candidates
+  - promoted versus unpromoted authorities
+  - issue matrix
+  - legal element matrix
+  - fact-to-law mapping
+  - for/against brief
+  - missing evidence checklist
+  - preliminary opinion
+  - lawyer-review readiness
+- Failure ledger for weak retrieval, missing authority names, unclear case names, uncited propositions, overconfident language, and missing adverse analysis.
+- Domain templates for recurring Sri Lankan legal areas, starting with intellectual property, industrial disputes, administrative law, contract, land, and civil procedure.
+
+Exit criteria:
+
+- All 10 tuned scenarios complete without runtime errors.
+- Every scenario separates facts, law, application, supportive arguments, adverse arguments, missing evidence, review items, and next retrieval tasks.
+- No out-of-pack citations appear in final legal reasoning.
+- Candidate authorities are traceable and clearly marked until promoted.
+- Missing-evidence entries cover facts, client documents, procedure, authorities, and verification gaps.
+- Preliminary opinions use cautious lawyer-review language and never present final legal advice.
+- Release notes and evidence summaries are produced without raw data upload, database mutation, or V1 changes.
+
+### Phase 18: Backend Workflow Integration for Agentic Research
+
+Outcome: the validated agentic workflow becomes a backend V2 workflow that can generate and persist lawyer-review packs through existing APIs and metadata storage, still without a schema migration unless a separate migration plan is approved.
+
+Deliverables:
+
+- Backend service layer for routed research steps.
+- API contracts for starting a routed research run, inspecting tool traces, requesting clarification, approving authority promotion, and generating a lawyer-review pack.
+- Draft metadata persistence for reasoning packs, tool traces, candidate authority state, clarification state, and expert-evaluation summaries.
+- Review queue integration for draft review, adverse-material review, authority-promotion review, and missing-evidence review.
+- Integration tests for happy path, clarification-required path, candidate-authority path, official-source verification path, and rejection of unsafe output.
+
+Exit criteria:
+
+- Backend integration tests prove full reasoning-pack persistence and retrieval.
+- Draft detail returns structured reasoning metadata, tool traces, and candidate authority state.
+- Review queue includes draft, adverse, authority-promotion, and missing-evidence items.
+- Citation validators reject out-of-pack citations and uncited legal conclusions.
+- No database migration is applied unless separately reviewed and approved.
 
 ## Phase 8 Production Evidence Requirements
 
