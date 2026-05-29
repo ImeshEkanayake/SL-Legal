@@ -515,6 +515,44 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         if court_ids
         else "Retrieve specific Supreme Court and Court of Appeal trademark cases with case numbers."
     )
+    missing_rights_documents = [
+        "Client/right-holder documents: trademark registration certificate, application/registration number, class, goods/services specification, owner name, and current registry extract.",
+        "Client/right-holder documents: renewal history, pending opposition/cancellation status, disclaimers, limitations, assignments, licences, security interests, and group-company authority to sue.",
+        "Client instructions and facts: chronology of adoption, first use, continuous use, geographic use, product lines, sales history, advertising spend, and instructions confirming the exact relief sought.",
+    ]
+    missing_defendant_conduct = [
+        "Defendant conduct evidence: specimens of the accused mark/sign, packaging, labels, invoices, catalogues, advertisements, social media posts, website pages, marketplace listings, and dated screenshots.",
+        "Defendant conduct evidence: date of first use, continued use, manufacturing/supplier/distributor details, sales channels, territory, customer targets, and whether use is registered, licensed, or claimed as prior use.",
+        "Comparison evidence: side-by-side mark comparison, phonetic/visual/conceptual similarity analysis, goods/services comparison, trade-channel overlap, price-point overlap, and likely customer profile.",
+    ]
+    missing_confusion_and_damage = [
+        "Confusion/goodwill evidence: customer complaints, mistaken enquiries, surveys, retailer evidence, distributor evidence, social-media confusion, market recognition, goodwill, reputation, and deception/misrepresentation proof.",
+        "Damage/remedy evidence: lost sales, diverted customers, unjust profit/accounting material, reputational harm, urgency, balance of convenience, irreparable harm, delivery-up needs, and customs/enforcement facts.",
+    ]
+    missing_law_authorities = [
+        "Statutory verification: current consolidated Intellectual Property Act/Code sections for registration, rights conferred, infringement, unfair competition/passing off, assignments/licences, remedies, offences, and transitional provisions.",
+        "Amendment verification: all post-enactment IP amendments checked against official sources, with effective dates and whether they affect marks, trade names, unfair competition, remedies, or procedure.",
+        court_case_next_step,
+        "Case-law verification: Court of Appeal trademark, trade name, unfair competition, passing off, interim injunction, and remedy decisions with party captions, case numbers, holdings, and current treatment.",
+        "Gazette/NIPO verification: relevant Gazette notices, NIPO practice directions, fee schedules, classification material, registry practice, opposition/cancellation procedure, and any mark-specific Gazette publications.",
+    ]
+    missing_defences_adverse = [
+        "Defences/adverse facts: prior use, honest concurrent use, descriptive/generic use, own-name use, consent/licence, acquiescence, delay/laches, non-use, invalidity, exhaustion, different goods/services, and lack of confusion.",
+        "Adverse retrieval review: non-IP statutes, Penal Code/proceeds/anti-corruption/appropriation materials, and unrelated Gazettes must be quarantined unless a lawyer identifies a specific procedural or enforcement relevance.",
+    ]
+    missing_procedure_quality = [
+        "Procedure/forum proof: correct forum, cause of action, limitation period, standing, necessary parties, interim injunction test, pleadings, affidavits, exhibits, translations, certified copies, and service/enforcement route.",
+        "Source-quality review: OCR quality, page anchors, judgment caption pages, archive-member boundaries, official-source availability, translations, Sinhala/Tamil/English consistency, and whether excerpts match the cited authority.",
+        "Witness proof: client witnesses, investigators, retailers/distributors, confused customers, registry/NIPO records custodians, and affidavit-ready exhibit list.",
+    ]
+    comprehensive_missing_evidence = [
+        *missing_rights_documents,
+        *missing_defendant_conduct,
+        *missing_confusion_and_damage,
+        *missing_law_authorities,
+        *missing_defences_adverse,
+        *missing_procedure_quality,
+    ]
     authority_verifications = [
         AuthorityVerification(
             authority_id=f"AUTH_{index:03d}",
@@ -539,7 +577,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             opposing_facts=["The current pack does not include the client's registration certificate, assignment chain, or renewal status."],
             authority_ids=["AUTH_001"],
             pack_item_ids=primary_ids[:3],
-            missing_evidence=["Trademark registration certificate, registry extract, assignment/licence documents, and renewal history."],
+            missing_evidence=missing_rights_documents,
             verification_status="requires_lawyer_review",
         ),
         LegalElement(
@@ -549,7 +587,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             opposing_facts=["No defendant packaging, advertisements, invoices, screenshots, or marketplace evidence is in the pack."],
             authority_ids=["AUTH_001"],
             pack_item_ids=primary_ids[:4],
-            missing_evidence=["Specimens of defendant use, dates of first use, channels of trade, and side-by-side mark comparison."],
+            missing_evidence=missing_defendant_conduct + missing_confusion_and_damage,
             verification_status="requires_lawyer_review",
         ),
         LegalElement(
@@ -559,7 +597,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             opposing_facts=["Several retrieved documents are unrelated to trademark infringement and should not be treated as legal support."],
             authority_ids=["AUTH_006"],
             pack_item_ids=(gazette_ids[:2] + adverse_ids[:2]) or all_focus_ids[:3],
-            missing_evidence=["Current procedural rules, remedy authorities, injunction evidence, and damages/accounting evidence."],
+            missing_evidence=missing_law_authorities + missing_defences_adverse + missing_procedure_quality,
             verification_status="requires_lawyer_review",
         ),
     ]
@@ -732,20 +770,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             pack_item_ids=(gazette_ids[:4] + adverse_ids[:4] + court_ids[:2]) or all_focus_ids[:6],
         ),
     ]
-    missing_evidence = [
-        "Client trademark registration certificate and current registry extract.",
-        "Renewal, assignment, licence, or chain-of-title documents.",
-        "Defendant mark/sign specimens, packaging, advertisements, invoices, social posts, URLs, and marketplace screenshots.",
-        "Date of first defendant use and evidence of continued use.",
-        "Goods/services comparison and trade-channel evidence.",
-        "Evidence of actual confusion, customer complaints, surveys, or mistaken enquiries.",
-        "Current consolidated Code of Intellectual Property with amendments checked against an official source.",
-        court_case_next_step,
-        "Court of Appeal trademark cases with case numbers and current treatment.",
-        "Relevant Gazette notices tied to IP procedure, fees, registry practice, or enforcement.",
-        "Remedy evidence for interim injunction, damages, account of profits, delivery-up, or customs/enforcement steps.",
-        "Lawyer verification of whether non-IP documents in the top-25 set are irrelevant retrieval noise.",
-    ]
+    missing_evidence = comprehensive_missing_evidence
     reviewed_docs = [
         f"{item.metadata.get('authority_type') or item.document_type}: {item.metadata.get('authority_identifier') or item.citation}"
         for item in pack.items[:25]
@@ -782,10 +807,12 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             "The case may fail at proof stage if ownership and defendant use are not documented.",
             "Unrelated retrieved authorities must not be relied on as legal support.",
             "A court-facing strategy needs specific Supreme Court or Court of Appeal cases and current statutory sections.",
+            "Potential defences such as prior use, descriptive/generic use, acquiescence, non-use, invalidity, different goods/services, or lack of confusion have not been tested.",
         ],
         recommended_next_steps=[
             court_case_next_step,
-            "Collect registry, renewal, assignment, defendant-use, and confusion evidence.",
+            "Collect registry, renewal, assignment, licence, defendant-use, comparison, confusion, goodwill, and damages evidence.",
+            "Prepare an adverse-defence review covering prior use, honest concurrent use, generic/descriptive use, delay/acquiescence, non-use, invalidity, exhaustion, and different goods/services.",
             "Have a lawyer verify current statutory sections and amendment status.",
         ],
         conclusion=(
@@ -797,7 +824,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         one_page_case_summary=(
             "Test 10 concerns trademark infringement and IP registration. The 25-document pack contains several IP Acts/amendments and "
             "Gazettes, but it also includes unrelated authorities and lacks client-specific trademark documents, defendant-use exhibits, "
-            "and specific appellate case numbers."
+            "market/confusion evidence, remedy proof, procedural verification, and complete adverse-defence review."
         ),
         issue_matrix_ids=[item.issue_id for item in issue_matrix],
         authority_ids=[item.authority_id for item in authority_verifications],
@@ -811,6 +838,8 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             "Which current Code of Intellectual Property sections govern the pleaded infringement theory?",
             "Which additional Supreme Court or Court of Appeal trademark authorities, by case number, must be added or distinguished?",
             "Are any Gazettes in this pack relevant to IP procedure, fees, registry practice, or enforcement?",
+            "What defences or adverse facts must be tested before stronger advice is given?",
+            "What forum, limitation, interim injunction, affidavit, translation, certified-copy, and exhibit requirements apply?",
             "Should non-IP documents be excluded as adverse retrieval noise?",
         ],
         review_notes=[
@@ -906,6 +935,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             court_case_next_step,
             "Additional Court of Appeal trademark infringement cases with case numbers.",
             "Relevant Gazettes tied to IP procedure or registry practice.",
+            "Procedural authorities for forum, limitation, interim injunctions, affidavits, certified copies, translations, and enforcement.",
         ],
         warnings=[
             "Azure provider failed repeated attempts; deterministic fallback generated a cautious triage pack.",

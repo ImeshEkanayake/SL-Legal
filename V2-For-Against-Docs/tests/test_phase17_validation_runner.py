@@ -163,5 +163,22 @@ def test_deterministic_reasoning_pack_stays_pack_bounded() -> None:
 
     assert draft.citation_validation["valid"] is True
     assert len(draft.reasoning_pack.for_against_brief) >= 2
-    assert len(draft.reasoning_pack.missing_evidence_checklist) >= 5
+    assert len(draft.reasoning_pack.missing_evidence_checklist) >= 15
+    checklist = "\n".join(draft.reasoning_pack.missing_evidence_checklist)
+    for expected_category in [
+        "Client/right-holder documents",
+        "Defendant conduct evidence",
+        "Comparison evidence",
+        "Confusion/goodwill evidence",
+        "Damage/remedy evidence",
+        "Statutory verification",
+        "Amendment verification",
+        "Case-law verification",
+        "Gazette/NIPO verification",
+        "Defences/adverse facts",
+        "Procedure/forum proof",
+        "Source-quality review",
+        "Witness proof",
+    ]:
+        assert expected_category in checklist
     assert validate_strategy_response_against_pack(draft, pack, requested_output="lawyer_review_pack") == []

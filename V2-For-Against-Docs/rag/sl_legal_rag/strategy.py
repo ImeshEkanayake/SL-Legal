@@ -303,7 +303,15 @@ If requested_output is "for_against_brief", "preliminary_legal_opinion", or "law
       "pack_item_ids": ["{example_pack_item_id}"]
     }}
   ],
-  "missing_evidence_checklist": ["specific missing document, fact, case law, procedure, or authority verification task"],
+  "missing_evidence_checklist": [
+    "Client/right-holder documents: specific missing registration, ownership, renewal, assignment, licence, or instruction document",
+    "Defendant conduct evidence: specific missing use, packaging, advertising, invoice, website, social media, or marketplace exhibit",
+    "Similarity/market facts: specific missing mark comparison, goods/services comparison, trade channel, territory, timing, or confusion evidence",
+    "Law and authority verification: specific missing Act section, amendment, Gazette, Supreme Court case, Court of Appeal case, procedural rule, or current-treatment check",
+    "Defences/adverse material: specific missing prior-use, honest concurrent use, descriptive/generic use, delay/acquiescence, licence, exhaustion, or other opposing evidence",
+    "Procedure/remedies/proof: specific missing forum, limitation, interim injunction, affidavit, damages, account of profits, delivery-up, customs/enforcement, or witness proof task",
+    "Source-quality review: specific missing OCR, translation, page/caption, official-source, or relevance verification task"
+  ],
   "preliminary_legal_opinion": {{
     "matter": "matter title",
     "instructions": "question presented",
@@ -331,6 +339,15 @@ If requested_output is "for_against_brief", "preliminary_legal_opinion", or "law
   "lawyer_verification_required": true,
   "warnings": ["lawyer verification required before reliance"]
 }}
+
+The missing_evidence_checklist must be production-review ready. Cover each relevant bucket explicitly:
+- client/right-holder documents
+- defendant conduct evidence
+- similarity, goods/services, market, timing, territory, and confusion facts
+- statutory sections, amendments, Gazette/NIPO material, Supreme Court authority, Court of Appeal authority, and current-treatment checks
+- possible defences and adverse facts
+- procedure, limitation/forum, interim relief, remedies, damages, enforcement, affidavits, and witnesses
+- source-quality gaps such as OCR, translation, caption/page, official-source, and relevance verification.
 
 If the pack does not support a legal conclusion, put it in missing_authorities, warnings, missing_evidence_checklist, or mark the structured item as requires_lawyer_review instead of claiming it."""
 

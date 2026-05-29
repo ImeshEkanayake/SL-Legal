@@ -44,6 +44,10 @@ Local validation completed on 2026-05-29:
 - Test 10 court-caption correction:
   - The Supreme Court pack source now resolves the useful lawyer-facing caption where available: `DURAI VISVANATHAN RAJPRASAD vs THE SWADESHI INDUSTRIAL WORKS LIMITED, S.C. C.H.C. Appeal No. 10/2005`.
   - If a retrieved court chunk lacks the caption page and no local extracted full text is available, the authority label explicitly says the case caption is missing and asks for the full judgment/caption page.
+- Test 10 missing-evidence hardening:
+  - The missing-evidence checklist is now category-based and production-review oriented.
+  - It covers client/right-holder documents, client instructions/facts, defendant conduct, comparison evidence, confusion/goodwill, damage/remedies, statutory verification, amendments, case law, Gazette/NIPO material, defences/adverse facts, adverse retrieval review, procedure/forum proof, source quality, and witness proof.
+  - The regenerated Test 10 pack contains `18` missing-evidence entries with citation validation still `valid`.
 - Expanded focused runner/reasoning tests:
   - Command: `PYTHONPATH=rag uv run --with pytest --with pydantic --with pydantic-settings --with eval-type-backport python -m pytest tests/test_phase17_validation_runner.py tests/test_strategy_reasoning.py tests/test_reasoning_pack_models.py tests/test_azure_openai_config.py -q`
   - Result: `23 passed`.
