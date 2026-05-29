@@ -1649,6 +1649,136 @@ def build_staging_cutover_dry_run(
     }
 
 
+def load_hosted_staging_execution_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase32_hosted_staging_execution.v1":
+        raise ValueError("hosted staging execution manifest schema_version must be phase32_hosted_staging_execution.v1")
+    required_reports = payload.get("required_reports")
+    if not isinstance(required_reports, list) or not required_reports:
+        raise ValueError("hosted staging execution manifest must contain a non-empty required_reports array")
+    execution_steps = payload.get("execution_steps")
+    if not isinstance(execution_steps, list) or not execution_steps:
+        raise ValueError("hosted staging execution manifest must contain a non-empty execution_steps array")
+    rollback_steps = payload.get("rollback_steps")
+    if not isinstance(rollback_steps, list) or not rollback_steps:
+        raise ValueError("hosted staging execution manifest must contain rollback_steps")
+    return payload
+
+
+def hosted_execution_step_from_mapping(item: dict[str, Any]) -> dict[str, Any]:
+    step_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    command = item.get("command")
+    if not step_id:
+        raise ValueError("hosted staging execution step id is required")
+    if not title:
+        raise ValueError(f"{step_id} title is required")
+    if command is not None and (
+        not isinstance(command, list) or not command or not all(str(part).strip() for part in command)
+    ):
+        raise ValueError(f"{step_id} command must be a non-empty string array when provided")
+    requires_hosted = bool(item.get("requires_hosted_environment", False))
+    requires_manual = bool(item.get("requires_manual_action", False))
+    required_before_exposure = bool(item.get("required_before_exposure", True))
+    return {
+        "id": step_id,
+        "title": title,
+        "description": str(item.get("description") or "").strip(),
+        "command": [str(part) for part in command] if isinstance(command, list) else [],
+        "command_line": " ".join(shlex.quote(str(part)) for part in command) if isinstance(command, list) else "",
+        "expected_evidence": str(item.get("expected_evidence") or "").strip(),
+        "requires_hosted_environment": requires_hosted,
+        "requires_manual_action": requires_manual,
+        "required_before_exposure": required_before_exposure,
+        "status": "requires_hosted_environment" if requires_hosted else "ready_to_run",
+    }
+
+
+def build_hosted_staging_execution_pack(
+    execution_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(execution_payload.get("target_release_tag") or "").strip()
+    repo = str(execution_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    reports = [
+        evaluate_staging_cutover_report(item, project_root)
+        for item in execution_payload["required_reports"]
+    ]
+    execution_steps = [hosted_execution_step_from_mapping(item) for item in execution_payload["execution_steps"]]
+    rollback_steps = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "title": str(item.get("title") or "").strip(),
+            "action": str(item.get("action") or "").strip(),
+            "owner": str(item.get("owner") or "operator").strip(),
+        }
+        for item in execution_payload.get("rollback_steps", [])
+    ]
+    approvals = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "title": str(item.get("title") or "").strip(),
+            "required": bool(item.get("required", True)),
+        }
+        for item in execution_payload.get("manual_approvals", [])
+    ]
+    blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in reports
+        if item["required"] and item["status"] != "verified"
+    ]
+    for item in execution_steps:
+        if item["required_before_exposure"] and not item["description"] and not item["command"]:
+            blockers.append({"id": item["id"], "status": "failed", "summary": "execution step lacks description or command"})
+    for item in rollback_steps:
+        if not item["id"] or not item["title"] or not item["action"]:
+            blockers.append({"id": "rollback_step", "status": "failed", "summary": "rollback step is incomplete"})
+    for item in approvals:
+        if item["required"] and (not item["id"] or not item["title"]):
+            blockers.append({"id": "manual_approval", "status": "failed", "summary": "manual approval is incomplete"})
+    phase31_status = ""
+    for item in reports:
+        if item["id"] == "phase31_cutover_dry_run":
+            phase31_status = str(item.get("actual_status") or "")
+    if blockers:
+        status = "blocked"
+    elif phase31_status == "ready_for_staging_cutover":
+        status = "ready_for_hosted_staging_execution"
+    else:
+        status = "ready_for_hosted_configuration"
+    return {
+        "schema_version": "phase32_hosted_staging_execution.v1",
+        "source_schema_version": execution_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(execution_payload.get("execution_environment") or "staging"),
+        "required_reports": reports,
+        "execution_steps": execution_steps,
+        "manual_approvals": approvals,
+        "rollback_steps": rollback_steps,
+        "blockers": blockers,
+        "summary": {
+            "total_reports": len(reports),
+            "verified_reports": sum(1 for item in reports if item["status"] == "verified"),
+            "failed_reports": sum(1 for item in reports if item["status"] == "failed"),
+            "missing_reports": sum(1 for item in reports if item["status"] == "missing"),
+            "execution_steps": len(execution_steps),
+            "hosted_execution_steps": sum(1 for item in execution_steps if item["requires_hosted_environment"]),
+            "manual_execution_steps": sum(1 for item in execution_steps if item["requires_manual_action"]),
+            "rollback_steps": len(rollback_steps),
+            "manual_approvals": len(approvals),
+            "blockers": len(blockers),
+        },
+    }
+
+
 def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:
     name = str(item.get("name") or "").strip()
     command = item.get("command")

@@ -556,6 +556,20 @@ Phase 31 adds a non-mutating staging cutover dry-run gate for the V2 lawyer work
 - `Docs/v2_phase_31_staging_cutover_dry_run_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_31_staging_cutover_dry_run.md`: release note and validation evidence.
 
+## V2 Phase 32 Hosted Staging Execution Pack
+
+Phase 32 adds a hosted staging execution pack for running the V2 lawyer workspace UI in staging with private reviewer access. The active implementation uses:
+
+- `rag/evals/phase32_hosted_staging_execution.json`: execution manifest with required reports, hosted execution steps, approvals, and rollback steps.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_staging_execution_manifest` and `build_hosted_staging_execution_pack`.
+- `scripts/build_phase32_hosted_staging_execution_pack.py`: report builder for local and hosted staging execution packs.
+- `scripts/create_ui_session_token.py`: private signed session cookie utility for hosted staging review.
+- `scripts/run_detached_quality_gate.sh`: `hosted-staging-execution-pack` detached mode.
+- `tests/test_phase32_hosted_staging_execution_pack.py`: coverage for execution-pack states, blockers, CLI output, and token shape.
+- `Docs/v2_phase_32_hosted_staging_execution_contract.md`: execution contract.
+- `Docs/v2_phase_32_hosted_staging_execution_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_32_hosted_staging_execution.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

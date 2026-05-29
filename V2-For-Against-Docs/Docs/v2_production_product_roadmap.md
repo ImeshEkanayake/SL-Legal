@@ -749,6 +749,27 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 31 dry run, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 32: Hosted Staging Execution Pack
+
+Outcome: the staging cutover dry run becomes an executable hosted-staging checklist with private reviewer session-token support and rollback controls.
+
+Deliverables:
+
+- Machine-readable hosted staging execution manifest.
+- Execution-pack report builder that produces `ready_for_hosted_configuration`, `ready_for_hosted_staging_execution`, or `blocked`.
+- Detached `hosted-staging-execution-pack` mode.
+- Private signed UI session token utility for lawyer-review staging sessions.
+- Hosted staging runbook covering env setup, token handling, smoke checks, and rollback.
+
+Exit criteria:
+
+- Phase 31 dry-run report is present and accepted.
+- Local execution pack returns `ready_for_hosted_configuration`.
+- Hosted execution pack can return `ready_for_hosted_staging_execution` only after Phase 31 is `ready_for_staging_cutover`.
+- Session-token utility is tested and does not write tokens into Git-tracked files.
+- Detached backend tests, frontend quality gate, Phase 32 execution-pack gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

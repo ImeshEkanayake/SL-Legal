@@ -1,0 +1,156 @@
+{
+  "schema_version": "phase32_hosted_staging_execution.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-31-staging-cutover-dry-run",
+  "phase_name": "V2 Phase 32: Hosted Staging Execution Pack",
+  "execution_environment": "staging",
+  "description": "Operator-safe execution pack for running the V2 UI in hosted staging without exposing secrets or mutating the shared database.",
+  "required_reports": [
+    {
+      "id": "phase31_cutover_dry_run",
+      "title": "Phase 31 staging cutover dry-run report",
+      "type": "json_status",
+      "path": "logs/readiness/phase31-staging-cutover-dry-run.json",
+      "accepted_statuses": [
+        "ready_for_hosted_env_setup",
+        "ready_for_staging_cutover"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase31_manifest",
+      "title": "Phase 31 staging cutover manifest",
+      "type": "file",
+      "path": "rag/evals/phase31_staging_cutover_dry_run.json",
+      "required": true
+    },
+    {
+      "id": "phase31_contract",
+      "title": "Phase 31 staging cutover contract",
+      "type": "document",
+      "path": "Docs/v2_phase_31_staging_cutover_dry_run_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase31_runbook",
+      "title": "Phase 31 staging cutover runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_31_staging_cutover_dry_run_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase31_release_note",
+      "title": "Phase 31 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_31_staging_cutover_dry_run.md",
+      "required": true
+    }
+  ],
+  "execution_steps": [
+    {
+      "id": "configure_hosted_environment",
+      "title": "Configure hosted staging environment",
+      "description": "Set SL_LEGAL_API_BASE_URL, SL_LEGAL_AUTH_HMAC_SECRET, SL_LEGAL_UI_SESSION_SECRET, and optional SL_LEGAL_UI_SESSION_COOKIE_NAME in the deployment platform; do not set SL_LEGAL_UI_USER_ID.",
+      "requires_hosted_environment": true,
+      "requires_manual_action": true,
+      "required_before_exposure": true,
+      "expected_evidence": "deployment platform environment review"
+    },
+    {
+      "id": "hosted_env_readiness",
+      "title": "Run hosted environment readiness gate",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "ui-deployment-readiness-env",
+        "phase32-hosted-env-readiness"
+      ],
+      "expected_evidence": "logs/test-runs/phase32-hosted-env-readiness.log",
+      "requires_hosted_environment": true,
+      "requires_manual_action": false,
+      "required_before_exposure": true
+    },
+    {
+      "id": "rebuild_cutover_dry_run",
+      "title": "Rebuild cutover dry-run after hosted env gate",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "staging-cutover-dry-run",
+        "phase32-hosted-cutover-dry-run"
+      ],
+      "expected_evidence": "logs/test-runs/phase32-hosted-cutover-dry-run.log",
+      "requires_hosted_environment": true,
+      "requires_manual_action": false,
+      "required_before_exposure": true
+    },
+    {
+      "id": "create_review_session_cookie",
+      "title": "Create signed lawyer-review UI session cookie",
+      "command": [
+        "python3",
+        "scripts/create_ui_session_token.py",
+        "--user-id",
+        "<reviewer-user-id>",
+        "--output",
+        "cookie"
+      ],
+      "expected_evidence": "operator copies cookie value into a private browser session; token is not committed",
+      "requires_hosted_environment": true,
+      "requires_manual_action": true,
+      "required_before_exposure": true
+    },
+    {
+      "id": "browser_smoke",
+      "title": "Run representative browser smoke",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "phase29-browser-workflow",
+        "phase32-hosted-browser-smoke"
+      ],
+      "expected_evidence": "logs/test-runs/phase32-hosted-browser-smoke.log",
+      "requires_hosted_environment": false,
+      "requires_manual_action": false,
+      "required_before_exposure": true
+    },
+    {
+      "id": "lawyer_review_acceptance",
+      "title": "Lawyer-review acceptance",
+      "description": "Lawyer owner opens the hosted staging UI with the signed session cookie and confirms the authority workflow panel is usable for review.",
+      "requires_hosted_environment": true,
+      "requires_manual_action": true,
+      "required_before_exposure": true,
+      "expected_evidence": "lawyer-owner staging acceptance note"
+    }
+  ],
+  "manual_approvals": [
+    {
+      "id": "operator_secret_review",
+      "title": "Operator confirms hosted secrets are configured only in the deployment platform",
+      "required": true
+    },
+    {
+      "id": "lawyer_owner_acceptance",
+      "title": "Lawyer owner accepts hosted staging smoke output",
+      "required": true
+    }
+  ],
+  "rollback_steps": [
+    {
+      "id": "revoke_session_cookie",
+      "title": "Revoke or expire staging review session",
+      "action": "Rotate SL_LEGAL_UI_SESSION_SECRET or reduce access if a staging review token leaks.",
+      "owner": "operator"
+    },
+    {
+      "id": "restore_previous_deployment",
+      "title": "Restore previous staging deployment",
+      "action": "Move the staging deployment alias back to the previous stable release.",
+      "owner": "operator"
+    },
+    {
+      "id": "preserve_evidence",
+      "title": "Preserve execution evidence",
+      "action": "Keep detached logs and readiness reports locally for diagnosis without uploading raw corpus data.",
+      "owner": "operator"
+    }
+  ]
+}
