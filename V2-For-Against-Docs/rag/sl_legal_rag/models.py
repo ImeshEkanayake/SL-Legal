@@ -265,6 +265,210 @@ class LegalResearchPack(BaseModel):
         return {item.pack_item_id for item in self.items}
 
 
+VerificationStatus = Literal[
+    "verified",
+    "partially_verified",
+    "assumed",
+    "missing_evidence",
+    "requires_case_law",
+    "requires_lawyer_review",
+]
+ReasoningOutputType = Literal["for_against_brief", "preliminary_legal_opinion", "lawyer_review_pack"]
+ArgumentStrength = Literal["high", "medium", "low", "unknown"]
+
+AgentResearchToolName = Literal[
+    "case_intake_structurer",
+    "search_database",
+    "expand_authorities",
+    "official_source_check",
+    "ask_clarification",
+    "answer_from_pack",
+    "lawyer_review_pack",
+]
+AgentToolStatus = Literal["planned", "completed", "empty", "failed", "requires_clarification", "blocked"]
+AgentSourceBoundary = Literal[
+    "user_input",
+    "database",
+    "sealed_pack",
+    "candidate_authorities",
+    "official_source",
+    "generated_draft",
+]
+AuthorityCandidateStatus = Literal[
+    "candidate_unverified",
+    "candidate_metadata_verified",
+    "promoted_to_sealed_pack",
+    "rejected",
+    "requires_lawyer_verification",
+]
+ClarificationCategory = Literal[
+    "client_position",
+    "parties",
+    "jurisdiction",
+    "dates",
+    "relief_sought",
+    "registration_number",
+    "case_number",
+    "procedural_posture",
+    "material_fact",
+]
+
+TOOL_ALLOWED_SOURCE_BOUNDARIES: dict[str, set[str]] = {
+    "case_intake_structurer": {"user_input"},
+    "search_database": {"database"},
+    "expand_authorities": {"candidate_authorities", "database"},
+    "official_source_check": {"official_source"},
+    "ask_clarification": {"user_input"},
+    "answer_from_pack": {"sealed_pack"},
+    "lawyer_review_pack": {"sealed_pack", "generated_draft"},
+}
+
+
+class AgentToolTrace(BaseModel):
+    schema_version: str = "agent_tool_trace.v1"
+    trace_id: str = Field(min_length=1)
+    tool_name: AgentResearchToolName
+    purpose: str = Field(min_length=1)
+    source_boundary: AgentSourceBoundary
+    input_summary: dict[str, Any] = Field(default_factory=dict)
+    result_count: int | None = Field(default=None, ge=0)
+    status: AgentToolStatus = "planned"
+    selected_outputs: list[dict[str, Any]] = Field(default_factory=list)
+    reviewer_note: str = Field(min_length=1)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_trace_contract(self) -> "AgentToolTrace":
+        allowed = TOOL_ALLOWED_SOURCE_BOUNDARIES[self.tool_name]
+        if self.source_boundary not in allowed:
+            raise ValueError(f"{self.tool_name} cannot use source boundary {self.source_boundary}")
+        if self.status in {"completed", "empty"} and self.result_count is None:
+            raise ValueError("completed or empty tool traces require result_count")
+        if self.status == "completed" and self.result_count == 0:
+            raise ValueError("completed tool traces require a positive result_count; use empty for zero results")
+        if self.status == "failed" and "error" not in self.metadata:
+            raise ValueError("failed tool traces require metadata.error")
+        return self
+
+
+class AuthorityExpansionCandidate(BaseModel):
+    schema_version: str = "authority_expansion_candidate.v1"
+    candidate_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    authority_type: str = Field(min_length=1)
+    citation_or_identifier: str = Field(min_length=1)
+    source_boundary: Literal["candidate_authorities", "official_source"] = "candidate_authorities"
+    originating_tool_trace_id: str = Field(min_length=1)
+    source_hint: str = Field(min_length=1)
+    status: AuthorityCandidateStatus = "candidate_unverified"
+    verification_status: VerificationStatus = "requires_lawyer_review"
+    promoted_pack_item_ids: list[str] = Field(default_factory=list)
+    reviewer_note: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def citable(self) -> bool:
+        return self.status == "promoted_to_sealed_pack" and bool(self.promoted_pack_item_ids)
+
+    @model_validator(mode="after")
+    def validate_candidate_promotion_boundary(self) -> "AuthorityExpansionCandidate":
+        if self.status == "promoted_to_sealed_pack" and not self.promoted_pack_item_ids:
+            raise ValueError("promoted authority candidates require promoted_pack_item_ids")
+        if self.status != "promoted_to_sealed_pack" and self.promoted_pack_item_ids:
+            raise ValueError("unpromoted authority candidates must not carry promoted pack item ids")
+        if self.status == "candidate_metadata_verified" and self.verification_status == "verified":
+            raise ValueError("candidate metadata verification is not enough for citable verified legal authority")
+        return self
+
+
+class ClarificationNeed(BaseModel):
+    clarification_id: str = Field(min_length=1)
+    category: ClarificationCategory
+    question: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    blocks_preliminary_opinion: bool = True
+    suggested_retrieval_after_answer: list[RetrievalQueryVariant] = Field(default_factory=list)
+
+
+class MatterMemory(BaseModel):
+    schema_version: str = "matter_memory.v1"
+    matter_id: str = Field(min_length=1)
+    case_id: str | None = None
+    client_position: str | None = None
+    selected_authority_ids: list[str] = Field(default_factory=list)
+    sealed_pack_ids: list[str] = Field(default_factory=list)
+    candidate_authorities: list[AuthorityExpansionCandidate] = Field(default_factory=list)
+    client_facts: list[str] = Field(default_factory=list)
+    adverse_material: list[str] = Field(default_factory=list)
+    missing_evidence_tasks: list[str] = Field(default_factory=list)
+    clarification_needs: list[ClarificationNeed] = Field(default_factory=list)
+    tool_traces: list[AgentToolTrace] = Field(default_factory=list)
+    review_state: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def promoted_pack_item_ids(self) -> set[str]:
+        return {
+            pack_item_id
+            for candidate in self.candidate_authorities
+            if candidate.citable
+            for pack_item_id in candidate.promoted_pack_item_ids
+        }
+
+    @property
+    def unresolved_blocking_clarifications(self) -> list[ClarificationNeed]:
+        return [need for need in self.clarification_needs if need.blocks_preliminary_opinion]
+
+    @model_validator(mode="after")
+    def validate_memory_trace_references(self) -> "MatterMemory":
+        trace_ids = {trace.trace_id for trace in self.tool_traces}
+        missing_trace_ids = sorted(
+            {
+                candidate.originating_tool_trace_id
+                for candidate in self.candidate_authorities
+                if candidate.originating_tool_trace_id not in trace_ids
+            }
+        )
+        if missing_trace_ids:
+            raise ValueError(f"authority candidates reference unknown tool traces: {', '.join(missing_trace_ids)}")
+        if any(candidate.citable for candidate in self.candidate_authorities) and not self.sealed_pack_ids:
+            raise ValueError("promoted authority candidates require at least one sealed_pack_id in matter memory")
+        return self
+
+
+class AgentResearchPlan(BaseModel):
+    schema_version: str = "agent_research_plan.v1"
+    plan_id: str = Field(min_length=1)
+    matter_id: str = Field(min_length=1)
+    requested_output: ReasoningOutputType | Literal["strategy_report"] = "lawyer_review_pack"
+    tool_traces: list[AgentToolTrace] = Field(min_length=1)
+    clarification_needs: list[ClarificationNeed] = Field(default_factory=list)
+    authority_candidates: list[AuthorityExpansionCandidate] = Field(default_factory=list)
+    reviewer_summary: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_plan_sequence(self) -> "AgentResearchPlan":
+        trace_names = [trace.tool_name for trace in self.tool_traces]
+        if "answer_from_pack" in trace_names and "search_database" not in trace_names:
+            raise ValueError("answer_from_pack requires a prior search_database trace")
+        if "official_source_check" in trace_names and "expand_authorities" not in trace_names:
+            raise ValueError("official_source_check requires a prior expand_authorities trace")
+        if self.clarification_needs and "ask_clarification" not in trace_names:
+            raise ValueError("clarification needs require an ask_clarification trace")
+        trace_ids = {trace.trace_id for trace in self.tool_traces}
+        missing_trace_ids = sorted(
+            {
+                candidate.originating_tool_trace_id
+                for candidate in self.authority_candidates
+                if candidate.originating_tool_trace_id not in trace_ids
+            }
+        )
+        if missing_trace_ids:
+            raise ValueError(f"authority candidates reference unknown tool traces: {', '.join(missing_trace_ids)}")
+        return self
+
+
 class ResearchPackExpansionRequest(BaseModel):
     query: str = Field(min_length=3)
     query_class: QueryClass = QueryClass.GENERAL_RESEARCH
@@ -440,18 +644,6 @@ class StrategyRiskRanking(BaseModel):
     rationale: str = Field(min_length=1)
     pack_item_ids: list[str] = Field(default_factory=list)
     mitigation: str | None = None
-
-
-VerificationStatus = Literal[
-    "verified",
-    "partially_verified",
-    "assumed",
-    "missing_evidence",
-    "requires_case_law",
-    "requires_lawyer_review",
-]
-ReasoningOutputType = Literal["for_against_brief", "preliminary_legal_opinion", "lawyer_review_pack"]
-ArgumentStrength = Literal["high", "medium", "low", "unknown"]
 
 
 class AuthorityVerification(BaseModel):

@@ -28,7 +28,7 @@ rag/sl_legal_rag/
 Important modules:
 
 - `api.py`: FastAPI endpoints for research packs, strategy, cases, review, drafts, claims, audit, and workspace data.
-- `models.py`: Pydantic contracts for case structuring, research packs, strategy drafts, reasoning packs, review queues, claims, and workspace responses.
+- `models.py`: Pydantic contracts for case structuring, research packs, strategy drafts, reasoning packs, agentic research plans, matter memory, review queues, claims, and workspace responses.
 - `strategy.py`: pack-bounded strategy prompt construction, reasoning-pack draft generation, and citation validation.
 - `research_pack.py`: research pack sealing, hashing, token accounting, and contract validation.
 - `case_structure.py`: MECE case structuring prompts and validation.
@@ -346,6 +346,15 @@ Phase 15 adds a non-mutating release signing execution plan without changing the
 - `tests/test_phase15_signing_plan.py`: planned report, missing-artifact, unready-readiness, saved-metadata, and manifest tests.
 - `Docs/v2_phase_15_release_signing_plan_contract.md`: signing-plan contract.
 - `Docs/v2_phase_15_release_signing_plan_runbook.md`: signing-plan workflow.
+
+## V2 Phase 16 Agentic Research Workflow Foundation
+
+Phase 16 adds the Maat-informed agentic research foundation without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `AgentToolTrace`, `AuthorityExpansionCandidate`, `ClarificationNeed`, `MatterMemory`, and `AgentResearchPlan`.
+- `tests/test_agentic_research_models.py`: source-boundary, sequencing, clarification, authority-promotion, and matter-memory validator coverage.
+- `Docs/v2_phase_16_agentic_research_contract.md`: tool router, source boundary, authority candidate, clarification, matter-memory, and plan sequencing contract.
+- `Docs/releases/v2_phase_16_agentic_research_foundation.md`: release note and local validation evidence.
 
 ## V2 Phase 17 Lawyer Review Pack Validation
 
