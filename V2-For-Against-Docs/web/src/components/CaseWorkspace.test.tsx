@@ -305,6 +305,20 @@ const snapshot: WorkspaceSnapshot = {
       status: "pending",
       priority: "normal",
     },
+    {
+      reviewItemId: "review_3",
+      itemType: "clarification_need",
+      itemTitle: "Clarification review",
+      status: "pending",
+      priority: "high",
+    },
+    {
+      reviewItemId: "review_4",
+      itemType: "authority_candidate",
+      itemTitle: "Authority candidate review",
+      status: "pending",
+      priority: "high",
+    },
   ],
 };
 
@@ -415,6 +429,10 @@ describe("CaseWorkspace", () => {
     expect(screen.getAllByText("The opposing party may argue the union was not qualifying.").length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "Preliminary opinion" })).toBeInTheDocument();
     expect(screen.getAllByText("Whether refusal to bargain is prohibited.").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reviews" }));
+    expect(screen.getAllByText("Clarification review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Authority candidate review").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(screen.getByRole("heading", { name: "Document Navigation & Chat Workspace" })).toBeInTheDocument();

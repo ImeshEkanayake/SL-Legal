@@ -559,7 +559,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 }
             )
             agentic_bundle = build_agentic_research_bundle(
-                case_facts="We act for the union in a 2024 refusal to bargain matter.",
+                case_facts="We act for the union in a refusal to bargain matter.",
                 research_pack=pack_model,
                 requested_output="lawyer_review_pack",
                 strategy_response=strategy_response,
@@ -583,7 +583,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert len(persisted_strategy.claim_ids) == 1
             assert persisted_strategy.draft_review_item_id.startswith("review_")
             assert len(persisted_strategy.claim_review_item_ids) == 1
-            assert len(persisted_strategy.reasoning_review_item_ids) == 2
+            assert len(persisted_strategy.reasoning_review_item_ids) == 4
 
             follow_up_message = repo.add_case_user_message(
                 organization_id=workspace.organization_id,
@@ -620,6 +620,8 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 "legal_claim",
                 "adverse_evidence",
                 "missing_evidence",
+                "clarification_need",
+                "authority_candidate",
             }
 
             review_items = repo.list_review_items(case_id=workspace.case_id, status="pending")
@@ -628,8 +630,12 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 "legal_claim",
                 "adverse_evidence",
                 "missing_evidence",
+                "clarification_need",
+                "authority_candidate",
             }
             assert all(item["item_title"] for item in review_items)
+            assert any(item["item_title"] == "Clarification review" for item in review_items)
+            assert any(item["item_title"] == "Authority candidate review" for item in review_items)
 
             drafts = repo.list_case_drafts(case_id=workspace.case_id)
             assert len(drafts) == 1
@@ -762,6 +768,28 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert missing_evidence_review is not None
             assert missing_evidence_review.review_item["item_type"] == "missing_evidence"
             assert missing_evidence_review.review_item["status"] == "changes_requested"
+
+            clarification_review = repo.apply_review_decision(
+                case_id=workspace.case_id,
+                review_item_id=persisted_strategy.reasoning_review_item_ids[2],
+                reviewer_user_id=workspace.user_id,
+                decision="changes_requested",
+                comment="Ask the client for material dates before relying on the opinion.",
+            )
+            assert clarification_review is not None
+            assert clarification_review.review_item["item_type"] == "clarification_need"
+            assert clarification_review.review_item["status"] == "changes_requested"
+
+            authority_candidate_review = repo.apply_review_decision(
+                case_id=workspace.case_id,
+                review_item_id=persisted_strategy.reasoning_review_item_ids[3],
+                reviewer_user_id=workspace.user_id,
+                decision="approved",
+                comment="Candidate authority should be retrieved and sealed in the next pack expansion.",
+            )
+            assert authority_candidate_review is not None
+            assert authority_candidate_review.review_item["item_type"] == "authority_candidate"
+            assert authority_candidate_review.review_item["status"] == "approved"
             assert repo.list_review_items(case_id=workspace.case_id, status="pending") == []
 
             audit_count = session.execute(
@@ -775,13 +803,13 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 ),
                 {"case_id": workspace.case_id},
             ).scalar_one()
-            assert audit_count == 4
+            assert audit_count == 6
             audit_events = repo.list_case_audit_events(
                 case_id=workspace.case_id,
                 event_type="review.decision.recorded",
             )
-            assert len(audit_events) == 4
-            assert audit_events[0]["metadata"]["target_status"] in {"changes_requested", "lawyer_approved"}
+            assert len(audit_events) == 6
+            assert audit_events[0]["metadata"]["target_status"] in {"approved", "changes_requested", "lawyer_approved"}
             assert audit_events[0]["before_state"]["review_item"]["status"] == "pending"
 
             overview = repo.case_overview(workspace.case_id)
@@ -790,7 +818,7 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert overview["thread_count"] == 1
             assert overview["pack_count"] == 1
             assert overview["claim_count"] == 2
-            assert overview["review_count"] == 4
+            assert overview["review_count"] == 6
         finally:
             session.close()
             transaction.rollback()

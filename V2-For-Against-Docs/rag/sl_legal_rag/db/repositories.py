@@ -3703,6 +3703,27 @@ class LegalWorkspaceRepository:
                         priority="normal",
                     )
                 )
+        if matter_memory is not None:
+            if matter_memory.unresolved_blocking_clarifications:
+                reasoning_review_item_ids.append(
+                    self.create_review_item(
+                        case_id=case_id,
+                        item_type="clarification_need",
+                        item_id=draft_id,
+                        assigned_to_user_id=assigned_review_user_id,
+                        priority="high",
+                    )
+                )
+            if matter_memory.candidate_authorities:
+                reasoning_review_item_ids.append(
+                    self.create_review_item(
+                        case_id=case_id,
+                        item_type="authority_candidate",
+                        item_id=draft_id,
+                        assigned_to_user_id=assigned_review_user_id,
+                        priority="high",
+                    )
+                )
 
         self.session.flush()
         return PersistedStrategyDraft(
@@ -3761,6 +3782,8 @@ class LegalWorkspaceRepository:
                         CASE
                             WHEN ri.item_type = 'adverse_evidence' THEN 'Adverse evidence review'
                             WHEN ri.item_type = 'missing_evidence' THEN 'Missing evidence review'
+                            WHEN ri.item_type = 'clarification_need' THEN 'Clarification review'
+                            WHEN ri.item_type = 'authority_candidate' THEN 'Authority candidate review'
                             ELSE d.title
                         END,
                         left(lc.claim_text, 160),
@@ -3771,7 +3794,7 @@ class LegalWorkspaceRepository:
                     COALESCE(d.thread_id, lc.thread_id) AS thread_id
                 FROM review_items ri
                 LEFT JOIN drafts d
-                    ON ri.item_type IN ('draft', 'adverse_evidence', 'missing_evidence')
+                    ON ri.item_type IN ('draft', 'adverse_evidence', 'missing_evidence', 'clarification_need', 'authority_candidate')
                    AND d.draft_id = ri.item_id
                    AND d.case_id = ri.case_id
                 LEFT JOIN legal_claims lc
@@ -3882,7 +3905,12 @@ class LegalWorkspaceRepository:
                     "reviewer_user_id": reviewer_user_id,
                 },
             )
-        elif review_before["item_type"] in {"adverse_evidence", "missing_evidence"}:
+        elif review_before["item_type"] in {
+            "adverse_evidence",
+            "missing_evidence",
+            "clarification_need",
+            "authority_candidate",
+        }:
             pass
         else:
             raise ValueError(f"Unsupported review item type: {review_before['item_type']}")
@@ -4357,7 +4385,7 @@ class LegalWorkspaceRepository:
         return _plain_dict(row) if row is not None else None
 
     def _review_target_state(self, *, case_id: str, item_type: str, item_id: str) -> dict[str, Any] | None:
-        if item_type in {"draft", "adverse_evidence", "missing_evidence"}:
+        if item_type in {"draft", "adverse_evidence", "missing_evidence", "clarification_need", "authority_candidate"}:
             row = self.session.execute(
                 text(
                     """
@@ -4892,7 +4920,7 @@ def _text_list(value: Any) -> list[str]:
 
 
 def _target_status_for_decision(item_type: str, decision: str) -> str:
-    if item_type in {"draft", "adverse_evidence", "missing_evidence"}:
+    if item_type in {"draft", "adverse_evidence", "missing_evidence", "clarification_need", "authority_candidate"}:
         return {
             "approved": "approved",
             "rejected": "rejected",

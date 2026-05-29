@@ -391,6 +391,16 @@ Phase 19 exposes the agentic backend metadata in the lawyer workspace without ch
 - `Docs/v2_phase_19_agentic_workspace_contract.md`: agentic workspace contract and UI safety boundaries.
 - `Docs/releases/v2_phase_19_agentic_workspace.md`: release note and validation evidence.
 
+## V2 Phase 20 Agentic Review Queue Actions
+
+Phase 20 makes agentic metadata actionable through the existing review queue without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/db/repositories.py`: creates and handles `clarification_need` and `authority_candidate` review items.
+- `tests/test_db_access_layer.py`: integration coverage for new review item creation, listing, decisions, and audit events.
+- `web/src/components/CaseWorkspace.test.tsx`: UI fixture and rendering coverage for the new review item types.
+- `Docs/v2_phase_20_agentic_review_queue_contract.md`: review item contract and decision boundaries.
+- `Docs/releases/v2_phase_20_agentic_review_queue.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
