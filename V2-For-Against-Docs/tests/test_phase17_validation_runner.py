@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from scripts.run_phase17_lawyer_review_pack_validation import (
     RetryingJsonChatClient,
+    apply_authority_expansion_to_draft,
     authority_identifier_for_document,
     deterministic_reasoning_pack,
 )
@@ -103,6 +104,67 @@ PLAINTIFF- RESPONDENT
 
 
 def test_deterministic_reasoning_pack_stays_pack_bounded() -> None:
+    pack = build_test_pack()
+    draft = deterministic_reasoning_pack(
+        {"case_id": "intellectual_property_trademark_infringement", "case_facts": "Trademark dispute"},
+        pack,
+        provider_error="Azure OpenAI request failed with HTTP 500",
+    )
+
+    assert draft.citation_validation["valid"] is True
+    assert len(draft.reasoning_pack.for_against_brief) >= 2
+    assert len(draft.reasoning_pack.missing_evidence_checklist) >= 15
+    checklist = "\n".join(draft.reasoning_pack.missing_evidence_checklist)
+    for expected_category in [
+        "Client/right-holder documents",
+        "Defendant conduct evidence",
+        "Comparison evidence",
+        "Confusion/goodwill evidence",
+        "Damage/remedy evidence",
+        "Statutory verification",
+        "Amendment verification",
+        "Case-law verification",
+        "Gazette/NIPO verification",
+        "Defences/adverse facts",
+        "Procedure/forum proof",
+        "Source-quality review",
+        "Witness proof",
+    ]:
+        assert expected_category in checklist
+    assert validate_strategy_response_against_pack(draft, pack, requested_output="lawyer_review_pack") == []
+
+
+def test_authority_expansion_candidates_strengthen_next_pack_guidance() -> None:
+    pack = build_test_pack()
+    draft = deterministic_reasoning_pack(
+        {"case_id": "intellectual_property_trademark_infringement", "case_facts": "Trademark dispute"},
+        pack,
+        provider_error="Azure OpenAI request failed with HTTP 500",
+    )
+
+    updated = apply_authority_expansion_to_draft(
+        draft,
+        {
+            "status": "pass",
+            "candidates": [
+                {
+                    "authority_type": "Court of Appeal",
+                    "authority_identifier": "Example Trader vs Example Respondent, CA Appeal No. 1/2020",
+                    "matched_purpose": "direct trademark infringement appellate authorities",
+                }
+            ],
+        },
+    )
+
+    checklist = "\n".join(updated.reasoning_pack.missing_evidence_checklist)
+    assert "Candidate authorities from wider stage-1 expansion" in checklist
+    assert "Promote the strongest stage-1 expansion candidate authorities" in "\n".join(
+        updated.reasoning_pack.preliminary_legal_opinion.recommended_next_steps
+    )
+    assert validate_strategy_response_against_pack(updated, pack, requested_output="lawyer_review_pack") == []
+
+
+def build_test_pack() -> LegalResearchPack:
     pack = LegalResearchPack(
         pack_id="phase17_test_pack",
         query="trademark infringement and registration",
@@ -154,31 +216,4 @@ def test_deterministic_reasoning_pack_stays_pack_bounded() -> None:
             ),
         ],
     )
-
-    draft = deterministic_reasoning_pack(
-        {"case_id": "intellectual_property_trademark_infringement", "case_facts": "Trademark dispute"},
-        pack,
-        provider_error="Azure OpenAI request failed with HTTP 500",
-    )
-
-    assert draft.citation_validation["valid"] is True
-    assert len(draft.reasoning_pack.for_against_brief) >= 2
-    assert len(draft.reasoning_pack.missing_evidence_checklist) >= 15
-    checklist = "\n".join(draft.reasoning_pack.missing_evidence_checklist)
-    for expected_category in [
-        "Client/right-holder documents",
-        "Defendant conduct evidence",
-        "Comparison evidence",
-        "Confusion/goodwill evidence",
-        "Damage/remedy evidence",
-        "Statutory verification",
-        "Amendment verification",
-        "Case-law verification",
-        "Gazette/NIPO verification",
-        "Defences/adverse facts",
-        "Procedure/forum proof",
-        "Source-quality review",
-        "Witness proof",
-    ]:
-        assert expected_category in checklist
-    assert validate_strategy_response_against_pack(draft, pack, requested_output="lawyer_review_pack") == []
+    return pack

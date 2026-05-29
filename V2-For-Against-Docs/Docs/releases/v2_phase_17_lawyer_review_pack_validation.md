@@ -48,6 +48,10 @@ Local validation completed on 2026-05-29:
   - The missing-evidence checklist is now category-based and production-review oriented.
   - It covers client/right-holder documents, client instructions/facts, defendant conduct, comparison evidence, confusion/goodwill, damage/remedies, statutory verification, amendments, case law, Gazette/NIPO material, defences/adverse facts, adverse retrieval review, procedure/forum proof, source quality, and witness proof.
   - The regenerated Test 10 pack contains `18` missing-evidence entries with citation validation still `valid`.
+- Wider stage-1 authority expansion:
+  - Phase 17 can now run a read-only targeted expansion against the document base after the for/against arguments are built.
+  - Expansion candidates are listed separately as authorities to verify and promote into the next reviewed pack; they are not treated as pack-cited authorities until promoted.
+  - The regenerated Test 10 report includes `10` wider-stage candidate authorities and `19` missing-evidence/next-pack entries with citation validation still `valid`.
 - Expanded focused runner/reasoning tests:
   - Command: `PYTHONPATH=rag uv run --with pytest --with pydantic --with pydantic-settings --with eval-type-backport python -m pytest tests/test_phase17_validation_runner.py tests/test_strategy_reasoning.py tests/test_reasoning_pack_models.py tests/test_azure_openai_config.py -q`
   - Result: `23 passed`.

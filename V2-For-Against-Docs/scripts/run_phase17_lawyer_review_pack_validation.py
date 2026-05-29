@@ -39,12 +39,36 @@ from sl_legal_rag.models import (  # noqa: E402
     StrategyRiskRanking,
 )
 from sl_legal_rag.strategy import build_citation_validation_summary, generate_strategy_draft  # noqa: E402
+from sl_legal_rag.two_stage_retrieval import (  # noqa: E402
+    DEFAULT_SUMMARY_TYPE,
+    TwoStageRetrievalConfig,
+    TwoStageRetrievalRequest,
+    excerpt_around_terms,
+    search_summary_candidates,
+    tokenize,
+)
 
 
 DEFAULT_REPORT_JSON = PROJECT_ROOT / "data" / "tracking" / "phase16_union_bargaining_validation" / "two_stage_search_report.json"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "tracking" / "phase17_lawyer_review_pack_validation"
 DEFAULT_PARENT_ENV = PROJECT_ROOT.parent / ".env.azure-openai"
 DEFAULT_LOCAL_ENV = PROJECT_ROOT / ".env.azure-openai"
+DEFAULT_DSN = "postgresql://sl_legal:sl_legal_dev@localhost:5433/sl_legal_assist"
+EXPANSION_DOCUMENT_TYPES = (
+    "Supreme Court Judgment",
+    "Court of Appeal Judgment",
+    "Sri Lanka Law Report",
+    "New Law Report",
+    "Court of Appeal Order",
+)
+EXPANSION_RELEVANCE_TERMS = (
+    "Intellectual Property",
+    "trade mark",
+    "trademark",
+    "passing off",
+    "unfair competition",
+    "brand name",
+)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -60,6 +84,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--llm-retry-delay-seconds", type=float, default=10.0)
     parser.add_argument("--azure-env-file", default=None)
     parser.add_argument("--no-deterministic-fallback", action="store_true")
+    parser.add_argument("--skip-authority-expansion", action="store_true")
+    parser.add_argument(
+        "--authority-expansion-dsn",
+        default=None,
+        help="Postgres DSN for read-only wider document-base authority expansion. Defaults to env DSN or local dev DSN.",
+    )
+    parser.add_argument("--authority-expansion-stage1-limit", type=int, default=250)
+    parser.add_argument("--authority-expansion-per-query", type=int, default=5)
+    parser.add_argument("--authority-expansion-max-candidates", type=int, default=12)
     parser.add_argument("--skip-llm", action="store_true", help="Build the research pack and report config without calling Azure.")
     args = parser.parse_args(argv)
     if args.top_documents < 1:
@@ -74,6 +107,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--llm-attempts must be >= 1")
     if args.llm_retry_delay_seconds < 0:
         parser.error("--llm-retry-delay-seconds must be >= 0")
+    if args.authority_expansion_stage1_limit < 1:
+        parser.error("--authority-expansion-stage1-limit must be >= 1")
+    if args.authority_expansion_per_query < 1:
+        parser.error("--authority-expansion-per-query must be >= 1")
+    if args.authority_expansion_max_candidates < 1:
+        parser.error("--authority-expansion-max-candidates must be >= 1")
     return args
 
 
@@ -413,6 +452,311 @@ def resolve_azure_env_file(raw_path: str | None) -> Path | None:
     if DEFAULT_PARENT_ENV.exists():
         return DEFAULT_PARENT_ENV
     return None
+
+
+def normalize_psycopg_dsn(dsn: str) -> str:
+    return dsn.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+def authority_expansion_dsn(raw_dsn: str | None) -> str:
+    import os
+
+    return normalize_psycopg_dsn(
+        raw_dsn
+        or os.getenv("SL_LEGAL_POSTGRES_DSN")
+        or os.getenv("SL_LEGAL_DATABASE_URL")
+        or DEFAULT_DSN
+    )
+
+
+def build_authority_expansion_queries(case: dict[str, Any], draft: StrategyDraftResponse) -> list[dict[str, str]]:
+    issue_text = " ".join(argument.issue for argument in (draft.reasoning_pack.for_against_brief if draft.reasoning_pack else []))
+    missing_text = " ".join(draft.reasoning_pack.missing_evidence_checklist if draft.reasoning_pack else [])
+    base_context = clean_text(f"{case.get('title')} {case.get('query')} {issue_text} {missing_text}", max_chars=800)
+    queries = [
+        {
+            "purpose": "direct trademark infringement appellate authorities",
+            "query": (
+                "trade mark trademark infringement confusing similarity goods services "
+                "Intellectual Property Act Supreme Court Court of Appeal Sri Lanka "
+                f"{base_context}"
+            ),
+        },
+        {
+            "purpose": "passing off and unfair competition authorities",
+            "query": (
+                "passing off unfair competition trade name goodwill misrepresentation "
+                "Intellectual Property Act Supreme Court Court of Appeal Sri Lanka "
+                f"{base_context}"
+            ),
+        },
+        {
+            "purpose": "interim injunction and remedy authorities",
+            "query": (
+                "interim injunction intellectual property trademark balance of convenience "
+                "damages account of profits delivery up Supreme Court Court of Appeal Sri Lanka "
+                f"{base_context}"
+            ),
+        },
+        {
+            "purpose": "defence and adverse-authority authorities",
+            "query": (
+                "honest concurrent use prior use descriptive generic non-use acquiescence delay "
+                "trademark Intellectual Property Act Supreme Court Court of Appeal Sri Lanka "
+                f"{base_context}"
+            ),
+        },
+    ]
+    return queries
+
+
+def expand_authority_candidates(
+    *,
+    case: dict[str, Any],
+    draft: StrategyDraftResponse,
+    pack: LegalResearchPack,
+    dsn: str,
+    stage1_limit: int,
+    per_query: int,
+    max_candidates: int,
+) -> dict[str, Any]:
+    try:
+        import psycopg
+    except ImportError as exc:
+        return {
+            "enabled": True,
+            "status": "skipped",
+            "error": f"Missing psycopg dependency: {exc}",
+            "queries": [],
+            "candidates": [],
+        }
+
+    queries = build_authority_expansion_queries(case, draft)
+    base_document_ids = {item.document_id for item in pack.items}
+    candidates_by_id: dict[str, dict[str, Any]] = {}
+    seen_authority_keys: set[str] = set()
+    query_results: list[dict[str, Any]] = []
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        with psycopg.connect(dsn, connect_timeout=5) as conn:
+            conn.execute("SET statement_timeout = '15000ms'")
+            for query in queries:
+                request = TwoStageRetrievalRequest(
+                    query=query["query"],
+                    document_types=EXPANSION_DOCUMENT_TYPES,
+                    language=str(case.get("language") or "English"),
+                )
+                config = TwoStageRetrievalConfig(
+                    summary_type=DEFAULT_SUMMARY_TYPE,
+                    stage1_limit=stage1_limit,
+                    title_expansion_limit=0,
+                    chunks_per_document=0,
+                )
+                stage1 = search_summary_candidates(conn, request, config)
+                query_results.append(
+                    {
+                        "purpose": query["purpose"],
+                        "query": query["query"],
+                        "stage1_candidate_count": len(stage1),
+                    }
+                )
+                tokens = tokenize(query["query"])
+                accepted_for_query = 0
+                for candidate in stage1:
+                    if candidate.document_id in base_document_ids:
+                        continue
+                    authority, authority_context = authority_identifier_for_expansion_candidate(candidate)
+                    if not is_relevant_authority_expansion_candidate(candidate, authority, authority_context):
+                        continue
+                    authority_key = slugify_identifier(
+                        f"{authority['authority_type']} {authority['authority_identifier']}"
+                    )
+                    if authority_key in seen_authority_keys:
+                        continue
+                    existing = candidates_by_id.get(candidate.document_id)
+                    serialized = {
+                        "document_id": candidate.document_id,
+                        "title": candidate.title,
+                        "document_type": candidate.document_type,
+                        "year": candidate.year,
+                        "source_id": candidate.source_id,
+                        "source_url": candidate.source_url,
+                        "local_path": candidate.local_path,
+                        "authority_type": authority["authority_type"],
+                        "authority_identifier": authority["authority_identifier"],
+                        "citation_label": authority["citation_label"],
+                        "matched_purpose": query["purpose"],
+                        "stage1_rank": candidate.stage1_rank,
+                        "stage1_score": round(candidate.stage1_score, 8),
+                        "summary_excerpt": clean_text(
+                            excerpt_around_terms(authority_context or candidate.summary_text, tokens),
+                            max_chars=600,
+                        ),
+                    }
+                    if existing is None or serialized["stage1_score"] > existing["stage1_score"]:
+                        candidates_by_id[candidate.document_id] = serialized
+                        seen_authority_keys.add(authority_key)
+                        accepted_for_query += 1
+                    if accepted_for_query >= per_query:
+                        break
+                    if len(candidates_by_id) >= max_candidates:
+                        break
+                if len(candidates_by_id) >= max_candidates:
+                    break
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "status": "failed",
+            "started_at": started_at,
+            "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "error": str(exc),
+            "queries": query_results,
+            "candidates": [],
+        }
+    candidates = sorted(
+        candidates_by_id.values(),
+        key=lambda item: (float(item["stage1_score"]), -int(item["stage1_rank"] or 0)),
+        reverse=True,
+    )[:max_candidates]
+    return {
+        "enabled": True,
+        "status": "pass",
+        "started_at": started_at,
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "queries": query_results,
+        "candidates": candidates,
+        "candidate_count": len(candidates),
+        "note": "Read-only stage-1 expansion; candidates are not treated as pack-cited authorities until promoted into a reviewed pack.",
+    }
+
+
+def authority_identifier_for_expansion_candidate(candidate: Any) -> tuple[dict[str, str], str]:
+    context = expansion_context_from_extracted_text(candidate)
+    document = {
+        "document_id": candidate.document_id,
+        "document_type": candidate.document_type,
+        "title": candidate.title,
+        "year": candidate.year,
+        "best_full_text_chunk": {"chunk_text": context or candidate.summary_text},
+    }
+    return authority_identifier_for_document(document), context
+
+
+def expansion_context_from_extracted_text(candidate: Any) -> str:
+    extracted_path = find_extracted_text_for_document_id(candidate.document_id)
+    if extracted_path is None:
+        return ""
+    try:
+        full_text = extracted_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    lower = full_text.lower()
+    positions = [lower.find(term.lower()) for term in EXPANSION_RELEVANCE_TERMS if lower.find(term.lower()) >= 0]
+    if not positions:
+        return ""
+    anchor_index = min(positions)
+    heading_index = full_text.rfind("IN THE SUPREME COURT", 0, anchor_index)
+    if heading_index == -1:
+        heading_index = full_text.rfind("IN THE COURT OF APPEAL", 0, anchor_index)
+    start_index = heading_index if heading_index != -1 else max(0, anchor_index - 5000)
+    return full_text[start_index : anchor_index + 1800]
+
+
+def find_extracted_text_for_document_id(document_id: str) -> Path | None:
+    extracted_root = PROJECT_ROOT.parent / "data" / "extracted" / "text"
+    if not extracted_root.exists():
+        return None
+    raw_id = str(document_id or "").strip()
+    raw_candidates = sorted(extracted_root.glob(f"{raw_id}*.txt"), key=lambda path: (len(path.name), path.name))
+    if raw_candidates:
+        return raw_candidates[0]
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(document_id or "").strip().lower()).strip("_")
+    candidates = sorted(extracted_root.glob(f"{slug}*.txt"), key=lambda path: (len(path.name), path.name))
+    return candidates[0] if candidates else None
+
+
+def is_relevant_authority_expansion_candidate(candidate: Any, authority: dict[str, str], authority_context: str) -> bool:
+    identifier = authority.get("authority_identifier", "")
+    if "case caption missing" in identifier.lower():
+        return False
+    text = " ".join([candidate.title, candidate.document_type, candidate.summary_text, authority_context]).lower()
+    return any(term.lower() in text for term in EXPANSION_RELEVANCE_TERMS)
+
+
+def apply_authority_expansion_to_draft(
+    draft: StrategyDraftResponse,
+    authority_expansion: dict[str, Any],
+) -> StrategyDraftResponse:
+    if draft.reasoning_pack is None or authority_expansion.get("status") != "pass":
+        return draft
+    candidates = authority_expansion.get("candidates") or []
+    if not candidates:
+        return draft
+    top_candidates = candidates[:5]
+    candidate_lines = [
+        f"{item['authority_type']}: {item['authority_identifier']} ({item['matched_purpose']})"
+        for item in top_candidates
+    ]
+    candidate_sentence = "Candidate authorities from wider stage-1 expansion: " + "; ".join(candidate_lines)
+    reasoning = draft.reasoning_pack
+    opinion = reasoning.preliminary_legal_opinion
+    review_pack = reasoning.lawyer_review_pack
+    updated_missing = list(dict.fromkeys([*reasoning.missing_evidence_checklist, candidate_sentence]))
+    updated_opinion = opinion.model_copy(
+        update={
+            "applicable_law": list(dict.fromkeys([*opinion.applicable_law, candidate_sentence])),
+            "preliminary_opinion": (
+                opinion.preliminary_opinion
+                + " The wider document-base expansion has identified candidate appellate or report authorities for verification, "
+                "so the next step is to promote the most relevant candidates into the reviewed pack before settling a stronger merits view."
+            ),
+            "recommended_next_steps": list(
+                dict.fromkeys(
+                    [
+                        *opinion.recommended_next_steps,
+                        "Promote the strongest stage-1 expansion candidate authorities into the next reviewed pack and re-run the lawyer-review pack.",
+                    ]
+                )
+            ),
+        }
+    )
+    updated_review_pack = review_pack.model_copy(
+        update={
+            "missing_documents": list(dict.fromkeys([*review_pack.missing_documents, candidate_sentence])),
+            "questions_for_lawyer": list(
+                dict.fromkeys(
+                    [
+                        *review_pack.questions_for_lawyer,
+                        "Which stage-1 expansion candidate authorities should be promoted into the reviewed pack, relied on, distinguished, or rejected?",
+                    ]
+                )
+            ),
+            "review_notes": list(
+                dict.fromkeys(
+                    [
+                        *review_pack.review_notes,
+                        "Wider stage-1 expansion was run read-only against the document base; candidates require promotion into a reviewed pack before reliance.",
+                    ]
+                )
+            ),
+        }
+    )
+    updated_reasoning = reasoning.model_copy(
+        update={
+            "missing_evidence_checklist": updated_missing,
+            "preliminary_legal_opinion": updated_opinion,
+            "lawyer_review_pack": updated_review_pack,
+        }
+    )
+    warnings = list(
+        dict.fromkeys(
+            [
+                *draft.warnings,
+                "Wider document-base expansion found candidate authorities that require lawyer verification and pack promotion before reliance.",
+            ]
+        )
+    )
+    return draft.model_copy(update={"reasoning_pack": updated_reasoning, "warnings": warnings})
 
 
 class RetryingJsonChatClient:
@@ -1011,6 +1355,34 @@ def write_summary(case: dict[str, Any], draft: Any | None, report: dict[str, Any
                     "",
                 ]
             )
+        authority_expansion = report.get("authority_expansion") or {}
+        if authority_expansion.get("status") == "pass":
+            lines.extend(
+                [
+                    "## Wider Stage-1 Authority Expansion",
+                    "",
+                    f"- Status: `{authority_expansion.get('status')}`",
+                    f"- Candidate authorities: `{authority_expansion.get('candidate_count', 0)}`",
+                    "- Use: candidate authorities for lawyer verification and next-pack promotion; not pack-cited authorities yet.",
+                    "",
+                ]
+            )
+            for candidate in authority_expansion.get("candidates", [])[:12]:
+                lines.append(
+                    f"- {candidate['authority_type']} - {candidate['authority_identifier']} "
+                    f"(`{candidate['document_id']}`, purpose: {candidate['matched_purpose']})"
+                )
+            lines.append("")
+        elif authority_expansion:
+            lines.extend(
+                [
+                    "## Wider Stage-1 Authority Expansion",
+                    "",
+                    f"- Status: `{authority_expansion.get('status')}`",
+                    f"- Error: {authority_expansion.get('error') or 'none'}",
+                    "",
+                ]
+            )
         lines.extend(
             [
                 "## Missing Evidence Checklist",
@@ -1112,12 +1484,9 @@ def main(argv: list[str]) -> int:
                 report["llm_attempts"] = client.attempt_log
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, previous_handler)
-            draft_path = output_dir / "phase17_lawyer_review_pack.json"
-            draft_path.write_text(draft.model_dump_json(indent=2) + "\n", encoding="utf-8")
             report.update(
                 {
                     "status": "pass",
-                    "draft_path": str(draft_path),
                     "claim_count": len(draft.claims),
                     "for_against_count": len(draft.reasoning_pack.for_against_brief) if draft.reasoning_pack else 0,
                     "missing_evidence_count": (
@@ -1132,12 +1501,9 @@ def main(argv: list[str]) -> int:
         if not args.skip_llm and not args.no_deterministic_fallback:
             try:
                 draft = deterministic_reasoning_pack(case, pack, provider_error=str(exc))
-                draft_path = output_dir / "phase17_lawyer_review_pack.json"
-                draft_path.write_text(draft.model_dump_json(indent=2) + "\n", encoding="utf-8")
                 report.update(
                     {
                         "status": "pass_with_deterministic_fallback",
-                        "draft_path": str(draft_path),
                         "claim_count": len(draft.claims),
                         "for_against_count": len(draft.reasoning_pack.for_against_brief) if draft.reasoning_pack else 0,
                         "missing_evidence_count": (
@@ -1150,6 +1516,34 @@ def main(argv: list[str]) -> int:
                 )
             except Exception as fallback_exc:
                 report["fallback_error"] = str(fallback_exc)
+    if draft is not None and not args.skip_authority_expansion:
+        authority_expansion = expand_authority_candidates(
+            case=case,
+            draft=draft,
+            pack=pack,
+            dsn=authority_expansion_dsn(args.authority_expansion_dsn),
+            stage1_limit=args.authority_expansion_stage1_limit,
+            per_query=args.authority_expansion_per_query,
+            max_candidates=args.authority_expansion_max_candidates,
+        )
+        report["authority_expansion"] = authority_expansion
+        draft = apply_authority_expansion_to_draft(draft, authority_expansion)
+        report.update(
+            {
+                "claim_count": len(draft.claims),
+                "for_against_count": len(draft.reasoning_pack.for_against_brief) if draft.reasoning_pack else 0,
+                "missing_evidence_count": (
+                    len(draft.reasoning_pack.missing_evidence_checklist) if draft.reasoning_pack else 0
+                ),
+                "citation_validation": draft.citation_validation,
+            }
+        )
+    elif draft is not None:
+        report["authority_expansion"] = {"enabled": False, "status": "skipped", "candidates": []}
+    if draft is not None:
+        draft_path = output_dir / "phase17_lawyer_review_pack.json"
+        draft_path.write_text(draft.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        report["draft_path"] = str(draft_path)
     report["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     summary_path = output_dir / "phase17_lawyer_review_pack_summary.md"
     write_summary(case, draft, report, summary_path)
