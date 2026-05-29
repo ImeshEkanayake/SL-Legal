@@ -123,24 +123,21 @@ def authority_identifier_for_document(document: dict[str, Any]) -> dict[str, str
             "citation_label": f"{document_type} {identifier.replace('Gazette ', '')} ({year})",
         }
     if "supreme court" in lower_type:
-        case_number = extract_case_number(title)
-        identifier = case_number or clean_text(title, max_chars=140)
+        identifier = extract_court_authority_identifier(document, default_title=title)
         return {
             "authority_type": "Supreme Court",
             "authority_identifier": identifier,
             "citation_label": f"Supreme Court {identifier}",
         }
     if "court of appeal" in lower_type:
-        case_number = extract_case_number(title)
-        identifier = case_number or clean_text(title, max_chars=140)
+        identifier = extract_court_authority_identifier(document, default_title=title)
         return {
             "authority_type": "Court of Appeal",
             "authority_identifier": identifier,
             "citation_label": f"Court of Appeal {identifier}",
         }
     if "law report" in lower_type:
-        case_number = extract_case_number(title)
-        identifier = case_number or clean_text(title, max_chars=140)
+        identifier = extract_court_authority_identifier(document, default_title=title)
         return {
             "authority_type": "Law Report",
             "authority_identifier": identifier,
@@ -161,16 +158,137 @@ def authority_identifier_for_document(document: dict[str, Any]) -> dict[str, str
     }
 
 
+def extract_court_authority_identifier(document: dict[str, Any], *, default_title: str) -> str:
+    contexts = court_identifier_contexts(document, default_title=default_title)
+    for context in contexts:
+        party_caption = extract_party_caption(context)
+        case_number = extract_case_number(context)
+        if party_caption and case_number:
+            return clean_text(f"{party_caption}, {case_number}", max_chars=220)
+        if party_caption:
+            return clean_text(party_caption, max_chars=220)
+        if case_number:
+            return clean_text(case_number, max_chars=220)
+    archive_member = extract_archive_member_name(" ".join(contexts))
+    suffix = f" from {archive_member}" if archive_member else ""
+    return clean_text(f"case caption missing from retrieved excerpt{suffix}; retrieve full judgment/caption page", max_chars=220)
+
+
+def court_identifier_contexts(document: dict[str, Any], *, default_title: str) -> list[str]:
+    contexts: list[str] = [default_title]
+    chunk_texts = [
+        str(chunk.get("chunk_text") or chunk.get("excerpt") or "")
+        for chunk in document_chunks(document)
+        if chunk.get("chunk_text") or chunk.get("excerpt")
+    ]
+    contexts.extend(chunk_texts)
+    full_text_context = court_full_text_heading_context(document, chunk_texts)
+    if full_text_context:
+        contexts.insert(1, full_text_context)
+    return contexts
+
+
+def court_full_text_heading_context(document: dict[str, Any], chunk_texts: list[str]) -> str | None:
+    archive_member = extract_archive_member_name(" ".join(chunk_texts))
+    if not archive_member:
+        return None
+    extracted_path = find_extracted_archive_text(document, archive_member)
+    if extracted_path is None:
+        return None
+    try:
+        full_text = extracted_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    anchor = first_distinctive_anchor(chunk_texts)
+    anchor_index = full_text.find(anchor) if anchor else -1
+    if anchor_index == -1 and chunk_texts:
+        compact_anchor = clean_text(chunk_texts[0], max_chars=140)
+        compact_full_text = clean_text(full_text)
+        compact_index = compact_full_text.find(compact_anchor)
+        if compact_index != -1:
+            return compact_full_text[max(0, compact_index - 6000) : compact_index + 1200]
+    if anchor_index == -1:
+        return None
+    heading_index = full_text.rfind("IN THE SUPREME COURT", 0, anchor_index)
+    start_index = heading_index if heading_index != -1 else max(0, anchor_index - 6000)
+    return full_text[start_index : anchor_index + 1200]
+
+
+def extract_archive_member_name(text: str) -> str | None:
+    match = re.search(r"Archive member:\s*([^\n\r]+?\.pdf)\b", text or "", re.IGNORECASE)
+    return clean_text(match.group(1)) if match else None
+
+
+def find_extracted_archive_text(document: dict[str, Any], archive_member: str) -> Path | None:
+    extracted_root = PROJECT_ROOT.parent / "data" / "extracted" / "text"
+    if not extracted_root.exists():
+        return None
+    document_id = slugify_identifier(document.get("document_id"))
+    member_stem = slugify_identifier(Path(archive_member).stem)
+    candidates = sorted(extracted_root.glob(f"{document_id}*{member_stem}*.txt"))
+    return candidates[0] if candidates else None
+
+
+def first_distinctive_anchor(chunk_texts: list[str]) -> str | None:
+    for text in chunk_texts:
+        lines = [line.strip() for line in str(text or "").splitlines() if len(line.strip()) >= 60]
+        for line in lines:
+            if not line.lower().startswith("archive member:"):
+                return line
+    return None
+
+
+def extract_party_caption(text: str) -> str | None:
+    patterns = [
+        re.compile(
+            r"\bAND\s+(?P<appellant>.*?)\s+(?:\d+(?:ST|ND|RD|TH)\s+)?(?:DEFENDANT|PLAINTIFF|PETITIONER|ACCUSED|COMPLAINANT)\s*-\s*APPELLANT\s+VS\.?\s+(?P<respondent>.*?)\s+(?:PLAINTIFF|DEFENDANT|PETITIONER|RESPONDENT|COMPLAINANT)\s*-\s*RESPONDENT",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
+            r"(?P<appellant>[A-Z][A-Z0-9.,&'()/ \n-]{6,180}?)\s+(?:PLAINTIFF|PETITIONER|APPELLANT|ACCUSED|COMPLAINANT)\s+VS\.?\s+(?P<respondent>[A-Z][A-Z0-9.,&'()/ \n-]{6,180}?)\s+(?:DEFENDANT|RESPONDENT)",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ]
+    for pattern in patterns:
+        match = pattern.search(text or "")
+        if not match:
+            continue
+        appellant = party_name_from_block(match.group("appellant"))
+        respondent = party_name_from_block(match.group("respondent"))
+        if appellant and respondent:
+            return f"{appellant} vs {respondent}"
+    return None
+
+
+def party_name_from_block(block: str) -> str:
+    lines: list[str] = []
+    for raw_line in (block or "").splitlines():
+        line = raw_line.strip(" .,\t")
+        if not line:
+            continue
+        if re.search(r"\b(No\.|C/O|National Intellectual Property Office|Floor|Road|Street|Mawatha|Colombo|Matale|Kandana|Department)\b", line, re.IGNORECASE):
+            break
+        if re.search(r"\b(S\.?C\.?|C\.?H\.?C\.?|Appeal|Application|Case No\.?|BEFORE|COUNSEL|ARGUED|DECIDED)\b", line, re.IGNORECASE):
+            continue
+        if re.fullmatch(r"(AND|NOW|BETWEEN|VS\.?|V\.?)", line, re.IGNORECASE):
+            continue
+        lines.append(line)
+        if len(lines) >= 3:
+            break
+    return clean_text(" ".join(lines), max_chars=120)
+
+
 def extract_case_number(title: str) -> str | None:
     patterns = [
-        r"\b(?:SC|S\.C\.|Supreme Court)\s*(?:FR|SPL|Appeal|Application|Reference|TAB)?\s*(?:No\.?)?\s*[\w./-]+(?:\s*(?:of|/)\s*\d{4})?",
-        r"\b(?:CA|C\.A\.|Court of Appeal)\s*(?:Writ|Appeal|Application|Revision)?\s*(?:No\.?)?\s*[\w./-]+(?:\s*(?:of|/)\s*\d{4})?",
+        r"\bS\.?C\.?\s*(?:\([^)]+\)\s*)?(?:C\.?H\.?C\.?\s*)?(?:FR|F/R|SPL|Appeal|Application|Reference|TAB)?\s*(?:No\.?|Application\s+No\.?)\s*:?\s*[\w./ -]+(?:\s*(?:of|/)\s*\d{4})?",
+        r"\b(?:SC|Supreme Court)\s*(?:FR|F/R|SPL|Appeal|Application|Reference|TAB)?\s*(?:No\.?|Application\s+No\.?)\s*:?\s*[\w./ -]+(?:\s*(?:of|/)\s*\d{4})?",
+        r"\b(?:CA|C\.A\.|Court of Appeal)\s*(?:Writ|Appeal|Application|Revision)?\s*(?:No\.?)\s*:?\s*[\w./ -]+(?:\s*(?:of|/)\s*\d{4})?",
         r"\bCase\s+No\.?\s*[\w./-]+(?:\s*(?:of|/)\s*\d{4})?",
     ]
     for pattern in patterns:
         match = re.search(pattern, title, re.IGNORECASE)
         if match:
-            return clean_text(match.group(0))
+            return clean_text(re.sub(r"\s+VS\.?$", "", match.group(0), flags=re.IGNORECASE))
     return None
 
 
@@ -387,6 +505,16 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
     adverse_ids = [item.pack_item_id for item in adverse_items[:6]]
     court_ids = [item.pack_item_id for item in court_items[:3]]
     all_focus_ids = sorted(set(primary_ids + gazette_ids + adverse_ids + court_ids)) or sorted(pack.allowed_pack_item_ids)[:5]
+    court_case_status = (
+        "The pack identifies a Supreme Court case caption and case number; lawyer verification is still required for current treatment and direct trademark relevance."
+        if court_ids
+        else "The pack does not identify a specific Supreme Court or Court of Appeal trademark case number."
+    )
+    court_case_next_step = (
+        "Verify the identified Supreme Court judgment and retrieve additional Supreme Court or Court of Appeal trademark authorities if needed."
+        if court_ids
+        else "Retrieve specific Supreme Court and Court of Appeal trademark cases with case numbers."
+    )
     authority_verifications = [
         AuthorityVerification(
             authority_id=f"AUTH_{index:03d}",
@@ -467,7 +595,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             elements=[issue_elements[2]],
             authority_ids=["AUTH_006"],
             facts_supporting=["The pack identifies some official-source materials such as Acts and Gazettes."],
-            facts_against=["Unrelated Acts and a generic Supreme Court entry appear in the 25-document set and should be treated as adverse retrieval noise."],
+            facts_against=["Unrelated Acts appear in the 25-document set and should be treated as adverse retrieval noise.", court_case_status],
             missing_evidence=issue_elements[2].missing_evidence,
             confidence=0.48,
             verification_status="requires_lawyer_review",
@@ -506,7 +634,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             specific_section="not_applicable",
             supporting_reasoning="Non-IP materials may be contextual at most; they should be adverse retrieval-noise review items unless a lawyer identifies a procedural or criminal-enforcement relevance.",
             risk="Using unrelated authorities would weaken the lawyer-review pack and may create uncited or inaccurate legal propositions.",
-            missing_documents=["Targeted Supreme Court or Court of Appeal trademark cases with case numbers and current treatment."],
+            missing_documents=[court_case_next_step],
             pack_item_ids=adverse_ids[:4] or all_focus_ids[:2],
             verification_status="requires_lawyer_review",
         ),
@@ -573,22 +701,30 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
                 ForAgainstLegalBasis(
                     authority_id="AUTH_015" if court_ids else None,
                     authority="Supreme Court or Court of Appeal trademark authority",
-                    section="specific case number missing from current pack",
-                    proposition="A production-ready opinion needs current Supreme Court or Court of Appeal authority with specific case numbers, not a generic judgment label.",
+                    section=(
+                        "identified case caption and case number; trademark relevance/current treatment to_be_verified"
+                        if court_ids
+                        else "specific case number missing from current pack"
+                    ),
+                    proposition=(
+                        "A production-ready opinion must verify the identified Supreme Court judgment and add any more directly relevant appellate trademark authorities."
+                        if court_ids
+                        else "A production-ready opinion needs current Supreme Court or Court of Appeal authority with specific case numbers, not a generic judgment label."
+                    ),
                     pack_item_ids=court_ids,
                     verification_status="requires_lawyer_review",
                 ),
             ],
-            facts_relied_on=["The top-25 retrieval includes unrelated Acts and no clearly identified trademark case number."],
+            facts_relied_on=["The top-25 retrieval includes unrelated Acts.", court_case_status],
             client_argument="For the client: official Acts and Gazettes are available as a starting authority set.",
-            opposing_argument="Against the client: unrelated authorities and missing case numbers weaken the review pack and must be separated from the legal basis.",
-            rebuttal="Treat unrelated documents as adverse retrieval items, require lawyer verification, and run targeted retrieval for Supreme Court, Court of Appeal, Gazette, and registry materials.",
+            opposing_argument="Against the client: unrelated authorities and insufficiently verified appellate treatment weaken the review pack and must be separated from the legal basis.",
+            rebuttal="Treat unrelated documents as adverse retrieval items, require lawyer verification, and run targeted retrieval for additional Supreme Court, Court of Appeal, Gazette, and registry materials.",
             weaknesses=[
-                "Generic Supreme Court result lacks a specific trademark case number.",
+                court_case_status,
                 "Several top-25 documents appear unrelated to trademark infringement.",
             ],
             missing_evidence=[
-                "Specific Supreme Court and Court of Appeal trademark infringement cases with case numbers.",
+                court_case_next_step,
                 "Relevant Gazette notices only if tied to IP procedure, fees, registry practice, or enforcement.",
             ],
             strength="unknown",
@@ -604,8 +740,8 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         "Goods/services comparison and trade-channel evidence.",
         "Evidence of actual confusion, customer complaints, surveys, or mistaken enquiries.",
         "Current consolidated Code of Intellectual Property with amendments checked against an official source.",
-        "Specific Supreme Court trademark cases with case numbers and current treatment.",
-        "Specific Court of Appeal trademark cases with case numbers and current treatment.",
+        court_case_next_step,
+        "Court of Appeal trademark cases with case numbers and current treatment.",
         "Relevant Gazette notices tied to IP procedure, fees, registry practice, or enforcement.",
         "Remedy evidence for interim injunction, damages, account of profits, delivery-up, or customs/enforcement steps.",
         "Lawyer verification of whether non-IP documents in the top-25 set are irrelevant retrieval noise.",
@@ -630,7 +766,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         applicable_law=[
             "Code of Intellectual Property and Intellectual Property amendments, sections to_be_verified by lawyer.",
             "Relevant Gazettes only if tied to IP procedure or registry practice, Gazette numbers to_be_verified by lawyer.",
-            "Specific Supreme Court and Court of Appeal trademark cases are missing and must be retrieved by case number.",
+            court_case_next_step,
         ],
         analysis=(
             "The preliminary analysis is supportive only at the legal-framework level: IP statutes and amendments were retrieved, "
@@ -639,8 +775,8 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         ),
         preliminary_opinion=(
             "Preliminary view for lawyer verification: the matter can be structured as a trademark infringement review, but the current "
-            "25-document pack is not sufficient for a merits opinion because client-specific facts, defendant-use evidence, and case-law "
-            "authorities with specific case numbers are missing."
+            "25-document pack is not sufficient for a merits opinion because client-specific facts, defendant-use evidence, and additional "
+            "directly relevant case-law authorities may still be needed."
         ),
         risks=[
             "The case may fail at proof stage if ownership and defendant use are not documented.",
@@ -648,7 +784,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
             "A court-facing strategy needs specific Supreme Court or Court of Appeal cases and current statutory sections.",
         ],
         recommended_next_steps=[
-            "Run targeted retrieval for Supreme Court and Court of Appeal trademark cases with case numbers.",
+            court_case_next_step,
             "Collect registry, renewal, assignment, defendant-use, and confusion evidence.",
             "Have a lawyer verify current statutory sections and amendment status.",
         ],
@@ -673,7 +809,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         ],
         questions_for_lawyer=[
             "Which current Code of Intellectual Property sections govern the pleaded infringement theory?",
-            "Which Supreme Court or Court of Appeal trademark authorities, by case number, must be added?",
+            "Which additional Supreme Court or Court of Appeal trademark authorities, by case number, must be added or distinguished?",
             "Are any Gazettes in this pack relevant to IP procedure, fees, registry practice, or enforcement?",
             "Should non-IP documents be excluded as adverse retrieval noise?",
         ],
@@ -702,7 +838,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         f"amendments, Gazettes, and review flags only as a bounded validation set. {' '.join(f'[{item_id}]' for item_id in all_focus_ids[:8])} "
         f"The supportive position is that the Code of Intellectual Property and related amendments provide the correct legal framework, "
         f"but the case still needs registration, renewal, title, defendant-use, similarity, and confusion evidence before a lawyer can settle an opinion. {' '.join(f'[{item_id}]' for item_id in primary_ids[:6])} "
-        f"The adverse position is that unrelated retrieved documents, generic court references, and missing specific Supreme Court or Court of Appeal case numbers weaken the pack and require targeted authority retrieval. {' '.join(f'[{item_id}]' for item_id in (adverse_ids[:4] + court_ids[:2] + gazette_ids[:2]) or all_focus_ids[:6])} "
+        f"The adverse position is that unrelated retrieved documents and insufficiently verified appellate treatment weaken the pack and require targeted authority retrieval. {' '.join(f'[{item_id}]' for item_id in (adverse_ids[:4] + court_ids[:2] + gazette_ids[:2]) or all_focus_ids[:6])} "
         f"This output is not settled legal advice and requires lawyer verification of statutory sections, amendments, case law, Gazettes, and procedure. {' '.join(f'[{item_id}]' for item_id in all_focus_ids[:8])}"
     )
     response = StrategyDraftResponse(
@@ -720,7 +856,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
                 confidence="needs_lawyer_review",
             ),
             CitedClaim(
-                claim="Specific Supreme Court or Court of Appeal trademark case numbers are missing from the current pack.",
+                claim=court_case_status,
                 pack_item_ids=court_ids or all_focus_ids[:3],
                 confidence="needs_lawyer_review",
             ),
@@ -735,7 +871,7 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
                 risk_level="high",
             ),
             CounterargumentSimulation(
-                counterargument="The opposing side can attack reliance on unrelated retrieved documents or generic court references.",
+                counterargument="The opposing side can attack reliance on unrelated retrieved documents or insufficiently verified appellate treatment.",
                 supporting_pack_item_ids=adverse_ids[:4] or all_focus_ids[:4],
                 response="Those materials should be treated as adverse retrieval noise unless a lawyer confirms a specific relevance.",
                 response_pack_item_ids=(adverse_ids[:4] + court_ids[:2]) or all_focus_ids[:4],
@@ -767,8 +903,8 @@ def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, 
         ],
         missing_authorities=[
             "Current consolidated Code of Intellectual Property sections for trademark infringement.",
-            "Specific Supreme Court trademark infringement cases with case numbers.",
-            "Specific Court of Appeal trademark infringement cases with case numbers.",
+            court_case_next_step,
+            "Additional Court of Appeal trademark infringement cases with case numbers.",
             "Relevant Gazettes tied to IP procedure or registry practice.",
         ],
         warnings=[

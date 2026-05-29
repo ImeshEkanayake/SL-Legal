@@ -40,7 +40,10 @@ Local validation completed on 2026-05-29:
   - For/against arguments: `2`.
   - Missing evidence entries: `10`.
   - Citation validation: `valid`, `0` issues.
-  - Authority identifiers include Acts, Gazette numbers, and a Supreme Court item marked `case citation to_be_verified`; the pack explicitly flags that specific Supreme Court or Court of Appeal trademark case numbers are still missing.
+  - Authority identifiers include Acts, Gazette numbers, and court captions/case numbers when available; remaining appellate authority questions are flagged for lawyer verification.
+- Test 10 court-caption correction:
+  - The Supreme Court pack source now resolves the useful lawyer-facing caption where available: `DURAI VISVANATHAN RAJPRASAD vs THE SWADESHI INDUSTRIAL WORKS LIMITED, S.C. C.H.C. Appeal No. 10/2005`.
+  - If a retrieved court chunk lacks the caption page and no local extracted full text is available, the authority label explicitly says the case caption is missing and asks for the full judgment/caption page.
 - Expanded focused runner/reasoning tests:
   - Command: `PYTHONPATH=rag uv run --with pytest --with pydantic --with pydantic-settings --with eval-type-backport python -m pytest tests/test_phase17_validation_runner.py tests/test_strategy_reasoning.py tests/test_reasoning_pack_models.py tests/test_azure_openai_config.py -q`
   - Result: `23 passed`.

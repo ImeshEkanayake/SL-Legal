@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from scripts.run_phase17_lawyer_review_pack_validation import RetryingJsonChatClient, deterministic_reasoning_pack
+from scripts.run_phase17_lawyer_review_pack_validation import (
+    RetryingJsonChatClient,
+    authority_identifier_for_document,
+    deterministic_reasoning_pack,
+)
 from sl_legal_rag.models import LegalResearchPack, PackItem, QueryClass, RetrievalFilters
 from sl_legal_rag.strategy import validate_strategy_response_against_pack
 
@@ -52,6 +56,50 @@ def test_retrying_json_chat_client_does_not_retry_non_transient_failures() -> No
 
     assert len(retrying.attempt_log) == 1
     assert retrying.attempt_log[0]["transient"] is False
+
+
+def test_court_authority_identifier_prefers_party_caption_and_case_number() -> None:
+    document = {
+        "title": "Supreme Court Judgements (2018)",
+        "document_type": "Supreme Court Judgment",
+        "best_full_text_chunk": {
+            "chunk_text": """
+IN THE SUPREME COURT OF THE DEMOCRATIC SOCIALIST REPUBLIC OF SRI LANKA
+In the matter of an Appeal.
+THE SWADESHI INDUSTRIAL WORKS LIMITED
+No.57, Colombo Road,
+Kandana.
+PLAINTIFF
+S.C. C.H.C. Appeal No. 10/2005 VS.
+1. DURAI VISVANATHAN RAJPRASAD
+C/O M/S Rani Grinding Mills,
+No. 219, Main Street,
+Matale.
+DEFENDANTS
+AND
+DURAI VISVANATHAN
+RAJPRASAD
+C/O M/S Rani Grinding Mills,
+No. 219, Main Street,
+Matale.
+1ST DEFENDANT- APPELLANT
+VS.
+THE SWADESHI INDUSTRIAL
+WORKS LIMITED
+No.57, Colombo Road,
+Kandana.
+PLAINTIFF- RESPONDENT
+"""
+        },
+    }
+
+    authority = authority_identifier_for_document(document)
+
+    assert authority["authority_type"] == "Supreme Court"
+    assert authority["authority_identifier"] == (
+        "DURAI VISVANATHAN RAJPRASAD vs THE SWADESHI INDUSTRIAL WORKS LIMITED, "
+        "S.C. C.H.C. Appeal No. 10/2005"
+    )
 
 
 def test_deterministic_reasoning_pack_stays_pack_bounded() -> None:
