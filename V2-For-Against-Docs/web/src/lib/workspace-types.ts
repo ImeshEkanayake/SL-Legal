@@ -271,6 +271,17 @@ export type PackExpansionRequest = {
   purpose: string;
 };
 
+export type AuthorityPackExpansionExecutionRecord = {
+  schema_version: string;
+  request_index: number;
+  child_pack_id: string;
+  child_pack_hash: string;
+  item_count: number;
+  executed_by_user_id?: string | null;
+  executed_at: string;
+  request_query_sha256: string;
+};
+
 export type AuthorityPackExpansionPlan = {
   schema_version: string;
   plan_id: string;
@@ -282,6 +293,8 @@ export type AuthorityPackExpansionPlan = {
   status: string;
   candidate_ids: string[];
   expansion_requests: PackExpansionRequest[];
+  executed_pack_ids: string[];
+  execution_records: AuthorityPackExpansionExecutionRecord[];
   citable: boolean;
   reviewer_note: string;
 };

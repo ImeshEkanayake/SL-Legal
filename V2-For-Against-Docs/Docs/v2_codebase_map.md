@@ -417,6 +417,21 @@ Phase 21 converts approved authority-candidate reviews into draft metadata that 
 - `Docs/v2_phase_21_authority_pack_expansion_contract.md`: planning contract and future execution boundary.
 - `Docs/releases/v2_phase_21_authority_pack_expansion_planning.md`: release note and validation evidence.
 
+## V2 Phase 22 Authority Pack Expansion Execution
+
+Phase 22 executes planned authority expansion requests through the existing research-pack expansion flow and records child pack metadata without promoting authorities. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: execution records and endpoint response schema.
+- `rag/sl_legal_rag/api.py`: execution endpoint for planned authority expansion requests.
+- `rag/sl_legal_rag/db/repositories.py`: metadata persistence for child pack execution records.
+- `web/src/lib/workspace-types.ts`: workspace types for execution records.
+- `web/src/components/DocumentWorkspace.tsx`: display of executed child pack IDs.
+- `tests/test_agentic_research_models.py`: execution metadata validation coverage.
+- `tests/test_api_research_pack_endpoint.py`: API endpoint execution coverage.
+- `tests/test_db_access_layer.py`: repository metadata integration coverage.
+- `Docs/v2_phase_22_authority_pack_expansion_execution_contract.md`: execution contract and promotion boundary.
+- `Docs/releases/v2_phase_22_authority_pack_expansion_execution.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

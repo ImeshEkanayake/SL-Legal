@@ -804,6 +804,25 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 == expansion_plans[0]["plan_id"]
             )
             assert expanded_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"] == "candidate_unverified"
+            executed_plan = repo.record_authority_pack_expansion_execution(
+                case_id=workspace.case_id,
+                draft_id=persisted_strategy.draft_id,
+                plan_id=expansion_plans[0]["plan_id"],
+                request_index=0,
+                child_pack_id="pack_child_authority_001",
+                child_pack_hash="hash_child_authority_001",
+                item_count=2,
+                executed_by_user_id=workspace.user_id,
+            )
+            assert executed_plan.status == "partially_executed"
+            assert executed_plan.executed_pack_ids == ["pack_child_authority_001"]
+            executed_draft = repo.get_draft_detail(case_id=workspace.case_id, draft_id=persisted_strategy.draft_id)
+            assert executed_draft is not None
+            assert (
+                executed_draft["metadata"]["matter_memory"]["review_state"]["latest_authority_expansion_child_pack_id"]
+                == "pack_child_authority_001"
+            )
+            assert executed_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"] == "candidate_unverified"
             assert repo.list_review_items(case_id=workspace.case_id, status="pending") == []
 
             audit_count = session.execute(

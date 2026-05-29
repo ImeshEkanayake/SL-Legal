@@ -4027,6 +4027,109 @@ class LegalWorkspaceRepository:
         self.session.flush()
         return plan
 
+    def get_authority_pack_expansion_plan(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+    ) -> AuthorityPackExpansionPlan | None:
+        draft_state = self._review_target_state(case_id=case_id, item_type="draft", item_id=draft_id)
+        if draft_state is None:
+            return None
+        metadata = dict(draft_state.get("metadata") or {})
+        for item in metadata.get("authority_pack_expansion_plans") or []:
+            if isinstance(item, dict) and item.get("plan_id") == plan_id:
+                return AuthorityPackExpansionPlan.model_validate(item)
+        return None
+
+    def record_authority_pack_expansion_execution(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+        request_index: int,
+        child_pack_id: str,
+        child_pack_hash: str,
+        item_count: int,
+        executed_by_user_id: str | None,
+    ) -> AuthorityPackExpansionPlan:
+        draft_state = self._review_target_state(case_id=case_id, item_type="draft", item_id=draft_id)
+        if draft_state is None:
+            raise ValueError(f"Draft not found for authority expansion execution: {draft_id}")
+        metadata = dict(draft_state.get("metadata") or {})
+        plans = [
+            dict(item)
+            for item in metadata.get("authority_pack_expansion_plans") or []
+            if isinstance(item, dict)
+        ]
+        plan_index = next((index for index, item in enumerate(plans) if item.get("plan_id") == plan_id), None)
+        if plan_index is None:
+            raise ValueError(f"Authority expansion plan not found: {plan_id}")
+        plan = AuthorityPackExpansionPlan.model_validate(plans[plan_index])
+        if request_index < 0 or request_index >= len(plan.expansion_requests):
+            raise ValueError(f"Authority expansion request index not found: {request_index}")
+        if plan.status == "cancelled":
+            raise ValueError("Cancelled authority expansion plans cannot be executed")
+        if any(record.request_index == request_index for record in plan.execution_records):
+            raise ValueError(f"Authority expansion request already executed: {request_index}")
+
+        request = plan.expansion_requests[request_index]
+        execution_records = [
+            record.model_dump(mode="json")
+            for record in plan.execution_records
+        ]
+        execution_records.append(
+            {
+                "request_index": request_index,
+                "child_pack_id": child_pack_id,
+                "child_pack_hash": child_pack_hash,
+                "item_count": item_count,
+                "executed_by_user_id": executed_by_user_id,
+                "executed_at": datetime.utcnow().isoformat(),
+                "request_query_sha256": _sha256(request.query),
+            }
+        )
+        execution_records = sorted(execution_records, key=lambda item: int(item["request_index"]))
+        status = "executed" if len(execution_records) == len(plan.expansion_requests) else "partially_executed"
+        updated_plan = AuthorityPackExpansionPlan.model_validate(
+            {
+                **plan.model_dump(mode="json"),
+                "status": status,
+                "executed_pack_ids": [str(record["child_pack_id"]) for record in execution_records],
+                "execution_records": execution_records,
+            }
+        )
+        plans[plan_index] = updated_plan.model_dump(mode="json")
+        metadata["authority_pack_expansion_plans"] = plans
+        matter_memory = dict(metadata.get("matter_memory") or {})
+        if matter_memory:
+            review_state = dict(matter_memory.get("review_state") or {})
+            review_state.update(
+                {
+                    "authority_candidates_are_citable": False,
+                    "latest_authority_pack_expansion_plan_id": updated_plan.plan_id,
+                    "authority_pack_expansion_status": updated_plan.status,
+                    "latest_authority_expansion_child_pack_id": child_pack_id,
+                }
+            )
+            matter_memory["review_state"] = review_state
+            metadata["matter_memory"] = matter_memory
+        self.session.execute(
+            text(
+                """
+                UPDATE drafts
+                SET metadata = CAST(:metadata AS jsonb), updated_at = now()
+                WHERE case_id = :case_id
+                  AND draft_id = :draft_id
+                """
+            ),
+            {"case_id": case_id, "draft_id": draft_id, "metadata": _json(metadata)},
+        )
+        self.session.flush()
+        return updated_plan
+
     def list_case_drafts(
         self,
         *,

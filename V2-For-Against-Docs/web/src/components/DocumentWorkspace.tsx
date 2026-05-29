@@ -1187,6 +1187,15 @@ function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: Authorit
         <StatusPill tone={expansionPlan.citable ? "rose" : "blue"}>{expansionPlan.status}</StatusPill>
       </div>
       <p className="mt-2 text-xs leading-5 text-[#434654]">{expansionPlan.reviewer_note}</p>
+      {expansionPlan.executed_pack_ids.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {expansionPlan.executed_pack_ids.map((packId) => (
+            <StatusPill key={packId} tone="green">
+              {packId}
+            </StatusPill>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {expansionPlan.expansion_requests.map((request, index) => (
           <div key={`${expansionPlan.plan_id}-${index}`} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">

@@ -540,6 +540,26 @@ Exit criteria:
 - Draft detail and workspace snapshot expose the plan.
 - Tests cover model validation, builder behavior, repository persistence, audit metadata, and UI display.
 
+### Phase 22: Authority Pack Expansion Execution
+
+Outcome: a planned authority pack-expansion request can be executed through the existing research-pack expansion API, producing a child pack while preserving the non-citable candidate boundary.
+
+Deliverables:
+
+- Execution endpoint for a selected authority expansion request.
+- Child pack persistence through the existing research-pack expansion path.
+- Draft metadata execution records with child pack ID, pack hash, item count, user, timestamp, and request hash.
+- Audit event for expansion execution.
+- Workspace-safe visibility of executed child pack IDs.
+
+Exit criteria:
+
+- Executing a request creates and stores a parent-linked child research pack.
+- Duplicate execution of the same request index is rejected.
+- Plan status reflects `partially_executed` or `executed`.
+- Candidate authorities remain non-citable and unpromoted.
+- Tests cover endpoint behavior, repository metadata updates, schema validation, and UI type/display safety.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

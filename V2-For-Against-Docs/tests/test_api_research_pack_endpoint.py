@@ -12,7 +12,13 @@ from fastapi.testclient import TestClient
 from sl_legal_rag.auth import AUTH_SECRET_ENV, BODY_SHA256_HEADER, sign_auth_request
 from sl_legal_rag.api import CASE_STRUCTURE_BODY_LIMIT_BYTES, app
 from sl_legal_rag.metrics import METRICS
-from sl_legal_rag.models import LegalResearchPack, PackItemSourceResponse, ResearchQueryRequest, StrategyDraftResponse
+from sl_legal_rag.models import (
+    AuthorityPackExpansionPlan,
+    LegalResearchPack,
+    PackItemSourceResponse,
+    ResearchQueryRequest,
+    StrategyDraftResponse,
+)
 
 
 TEST_AUTH_SECRET = "test-auth-secret-for-sl-legal-assist-32chars"
@@ -322,6 +328,145 @@ def test_research_pack_expand_endpoint_links_parent_pack_and_case(monkeypatch):
     assert calls["saved_case_id"] == "case_1"
     assert calls["rate_limit"]["route_key"] == "research_pack.expand"
     assert calls["audit_event"]["after_state"]["parent_pack_id"] == "pack_parent"
+
+
+def test_authority_pack_expansion_execute_endpoint_records_child_pack(monkeypatch):
+    calls: dict[str, object] = {}
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_1",
+            "case_id": "case_1",
+            "draft_id": "draft_1",
+            "review_item_id": "review_1",
+            "parent_pack_id": "pack_parent",
+            "candidate_ids": ["authcand_1"],
+            "expansion_requests": [
+                {
+                    "query": "Supreme Court case-law on trademark confusion",
+                    "query_class": "case_law_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 3]},
+                    "max_pack_items": 4,
+                    "max_pack_tokens": 3000,
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+        }
+    )
+
+    def fake_create_research_pack(request: ResearchQueryRequest) -> LegalResearchPack:
+        calls["retrieval_request"] = request
+        assert request.parent_pack_id == "pack_parent"
+        assert request.case_id == "case_1"
+        assert request.purpose == "authority_candidate_pack_expansion"
+        return LegalResearchPack.model_validate(
+            {
+                "pack_id": "pack_child",
+                "query": request.query,
+                "query_class": request.query_class,
+                "filters": request.filters.model_dump(mode="json"),
+                "retrieval_config": {"max_tokens": request.max_pack_tokens},
+                "items": [
+                    {
+                        "pack_item_id": "pack_child_item_001",
+                        "chunk_id": "chunk_1",
+                        "document_id": "doc_1",
+                        "title": "Supreme Court Judgment",
+                        "document_type": "judgment",
+                        "source_id": "SC",
+                        "authority_level": 3,
+                        "citation": "SC Appeal No. 1/2020",
+                        "text": "Confusion must be assessed by reference to the mark and market context.",
+                        "fused_score": 1.0,
+                        "selection_reason": "test",
+                    }
+                ],
+            }
+        )
+
+    class FakeRepository:
+        def __init__(self, _session):
+            pass
+
+        def case_context(self, case_id: str):
+            assert case_id == "case_1"
+            return SimpleNamespace(organization_id="org_1", created_by_user_id="user_1")
+
+        def user_has_case_permission(self, *, case_id: str, user_id: str):
+            assert case_id == "case_1"
+            assert user_id == "user_1"
+            return True
+
+        def get_authority_pack_expansion_plan(self, **kwargs):
+            calls["loaded_plan"] = kwargs
+            return plan
+
+        def research_pack_access_context(self, pack_id: str):
+            assert pack_id == "pack_parent"
+            return SimpleNamespace(pack_id=pack_id, case_ids=("case_1",))
+
+        def next_child_research_pack_version(self, parent_pack_id: str):
+            assert parent_pack_id == "pack_parent"
+            return 2
+
+        def consume_rate_limit(self, **kwargs):
+            calls["rate_limit"] = kwargs
+            return allowed_rate_limit(kwargs["route_key"])
+
+        def save_research_pack(self, **kwargs):
+            calls["saved_pack"] = kwargs
+
+        def record_authority_pack_expansion_execution(self, **kwargs):
+            calls["recorded_execution"] = kwargs
+            assert kwargs["child_pack_id"] == "pack_child"
+            assert kwargs["request_index"] == 0
+            return AuthorityPackExpansionPlan.model_validate(
+                {
+                    **plan.model_dump(mode="json"),
+                    "status": "executed",
+                    "executed_pack_ids": ["pack_child"],
+                    "execution_records": [
+                        {
+                            "request_index": 0,
+                            "child_pack_id": "pack_child",
+                            "child_pack_hash": kwargs["child_pack_hash"],
+                            "item_count": kwargs["item_count"],
+                            "executed_by_user_id": kwargs["executed_by_user_id"],
+                            "executed_at": "2026-05-29T13:31:00",
+                            "request_query_sha256": "b" * 64,
+                        }
+                    ],
+                }
+            )
+
+        def record_audit_event(self, **kwargs):
+            calls.setdefault("audit_events", []).append(kwargs)
+            return len(calls["audit_events"])
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr("sl_legal_rag.api.create_research_pack", fake_create_research_pack)
+    monkeypatch.setattr("sl_legal_rag.api.LegalWorkspaceRepository", FakeRepository)
+    monkeypatch.setattr("sl_legal_rag.api.session_scope", fake_session_scope)
+
+    target = "/v1/cases/case_1/drafts/draft_1/authority-expansion-plans/authplan_1/requests/0/execute"
+    response = TestClient(app).post(
+        target,
+        headers=signed_headers(monkeypatch, method="POST", target=target),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["child_pack_id"] == "pack_child"
+    assert data["authority_pack_expansion_plan"]["status"] == "executed"
+    assert data["authority_pack_expansion_plan"]["citable"] is False
+    assert calls["loaded_plan"]["draft_id"] == "draft_1"
+    assert calls["rate_limit"]["route_key"] == "research_pack.expand"
+    assert calls["saved_pack"]["purpose"] == "authority_candidate_pack_expansion"
+    assert calls["recorded_execution"]["executed_by_user_id"] == "user_1"
+    assert calls["audit_events"][-1]["event_type"] == "authority_pack_expansion.executed"
+    assert calls["audit_events"][-1]["after_state"]["citable"] is False
 
 
 def test_strategy_prompt_endpoint_returns_pack_bounded_messages_with_signed_auth(monkeypatch):

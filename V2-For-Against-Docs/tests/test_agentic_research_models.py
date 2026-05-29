@@ -240,3 +240,43 @@ def test_phase_21_authority_pack_expansion_plan_is_non_citable_and_official_only
                 "citable": True,
             }
         )
+
+
+def test_phase_22_executed_authority_expansion_plan_requires_matching_child_packs() -> None:
+    payload = {
+        "plan_id": "authplan_001",
+        "case_id": "case_001",
+        "draft_id": "draft_001",
+        "review_item_id": "review_001",
+        "parent_pack_id": "pack_001",
+        "status": "executed",
+        "candidate_ids": ["cand_001"],
+        "expansion_requests": [
+            {
+                "query": "SC Appeal No. 1/2020 Supreme Court trademark confusion",
+                "query_class": "case_law_lookup",
+                "filters": {"require_official": True, "authority_levels": [1, 3]},
+                "purpose": "authority_candidate_pack_expansion",
+            }
+        ],
+        "executed_pack_ids": ["pack_child_001"],
+        "execution_records": [
+            {
+                "request_index": 0,
+                "child_pack_id": "pack_child_001",
+                "child_pack_hash": "hash_001",
+                "item_count": 3,
+                "executed_by_user_id": "user_001",
+                "executed_at": "2026-05-29T13:31:00",
+                "request_query_sha256": "a" * 64,
+            }
+        ],
+    }
+
+    plan = AuthorityPackExpansionPlan.model_validate(payload)
+
+    assert plan.status == "executed"
+    assert plan.executed_pack_ids == ["pack_child_001"]
+
+    with pytest.raises(ValidationError, match="executed_pack_ids must match execution record child pack ids"):
+        AuthorityPackExpansionPlan.model_validate({**payload, "executed_pack_ids": ["pack_other"]})

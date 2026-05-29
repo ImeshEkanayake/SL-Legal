@@ -34,6 +34,7 @@ from .metrics import METRICS, monotonic_ms, render_prometheus_text
 from .models import (
     AuditEventListResponse,
     AuditEventStreamResponse,
+    AuthorityPackExpansionExecutionResponse,
     CaseWorkspaceSnapshot,
     CaseStructureRequest,
     ClaimEvidenceAssessmentRequest,
@@ -983,6 +984,101 @@ def record_review_decision(
         target_item_id=result.target_item_id,
         target_status=result.target_status,
         audit_event_id=result.audit_event_id,
+    ).model_dump(mode="json")
+
+
+@app.post(
+    "/v1/cases/{case_id}/drafts/{draft_id}/authority-expansion-plans/{plan_id}/requests/{request_index}/execute",
+    response_model=AuthorityPackExpansionExecutionResponse,
+)
+def execute_authority_pack_expansion_request(
+    case_id: str,
+    draft_id: str,
+    plan_id: str,
+    request_index: int,
+    auth: AuthContext = Depends(require_auth_context),
+) -> dict[str, object]:
+    try:
+        with session_scope() as session:
+            repo = LegalWorkspaceRepository(session)
+            _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+            plan = repo.get_authority_pack_expansion_plan(
+                case_id=case_id,
+                draft_id=draft_id,
+                plan_id=plan_id,
+            )
+        if plan is None:
+            raise HTTPException(status_code=404, detail=f"Authority expansion plan not found: {plan_id}")
+        if request_index < 0 or request_index >= len(plan.expansion_requests):
+            raise HTTPException(status_code=404, detail=f"Authority expansion request not found: {request_index}")
+        if any(record.request_index == request_index for record in plan.execution_records):
+            raise HTTPException(status_code=409, detail=f"Authority expansion request already executed: {request_index}")
+
+        research_request = plan.expansion_requests[request_index].to_research_query_request(
+            parent_pack_id=plan.parent_pack_id,
+            case_id=case_id,
+        )
+        pack_payload = _create_research_pack_response(
+            request=research_request,
+            auth=auth,
+            rate_limit_policy=RESEARCH_PACK_EXPAND_RATE_LIMIT,
+        )
+        child_pack = LegalResearchPack.model_validate(pack_payload)
+        child_pack_hash = research_pack_hash(child_pack)
+
+        with session_scope() as session:
+            repo = LegalWorkspaceRepository(session)
+            case_context = _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+            updated_plan = repo.record_authority_pack_expansion_execution(
+                case_id=case_id,
+                draft_id=draft_id,
+                plan_id=plan_id,
+                request_index=request_index,
+                child_pack_id=child_pack.pack_id,
+                child_pack_hash=child_pack_hash,
+                item_count=len(child_pack.items),
+                executed_by_user_id=auth.user_id,
+            )
+            repo.record_audit_event(
+                organization_id=case_context.organization_id,
+                case_id=case_id,
+                user_id=auth.user_id,
+                event_type="authority_pack_expansion.executed",
+                entity_type="draft",
+                entity_id=draft_id,
+                after_state={
+                    "plan_id": plan_id,
+                    "request_index": request_index,
+                    "parent_pack_id": updated_plan.parent_pack_id,
+                    "child_pack_id": child_pack.pack_id,
+                    "child_pack_hash": child_pack_hash,
+                    "item_count": len(child_pack.items),
+                    "status": updated_plan.status,
+                    "citable": updated_plan.citable,
+                },
+                metadata={
+                    "authority_candidates_are_citable": False,
+                    "promotion_boundary": "retrieval_only_requires_anchor_verify_seal",
+                },
+            )
+    except HTTPException:
+        raise
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return AuthorityPackExpansionExecutionResponse(
+        case_id=case_id,
+        draft_id=draft_id,
+        plan_id=plan_id,
+        request_index=request_index,
+        status=updated_plan.status,
+        parent_pack_id=updated_plan.parent_pack_id,
+        child_pack_id=child_pack.pack_id,
+        item_count=len(child_pack.items),
+        pack_hash=child_pack_hash,
+        authority_pack_expansion_plan=updated_plan,
     ).model_dump(mode="json")
 
 

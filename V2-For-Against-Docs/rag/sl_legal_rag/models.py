@@ -495,7 +495,18 @@ class ResearchPackExpansionRequest(BaseModel):
         )
 
 
-AuthorityPackExpansionStatus = Literal["planned", "executed", "cancelled"]
+AuthorityPackExpansionStatus = Literal["planned", "partially_executed", "executed", "cancelled"]
+
+
+class AuthorityPackExpansionExecutionRecord(BaseModel):
+    schema_version: str = "authority_pack_expansion_execution.v1"
+    request_index: int = Field(ge=0)
+    child_pack_id: str = Field(min_length=1)
+    child_pack_hash: str = Field(min_length=1)
+    item_count: int = Field(ge=0)
+    executed_by_user_id: str | None = None
+    executed_at: datetime
+    request_query_sha256: str = Field(min_length=64, max_length=64)
 
 
 class AuthorityPackExpansionPlan(BaseModel):
@@ -509,6 +520,8 @@ class AuthorityPackExpansionPlan(BaseModel):
     status: AuthorityPackExpansionStatus = "planned"
     candidate_ids: list[str] = Field(min_length=1)
     expansion_requests: list[ResearchPackExpansionRequest] = Field(min_length=1)
+    executed_pack_ids: list[str] = Field(default_factory=list)
+    execution_records: list[AuthorityPackExpansionExecutionRecord] = Field(default_factory=list)
     citable: bool = False
     reviewer_note: str = Field(
         default=(
@@ -524,6 +537,16 @@ class AuthorityPackExpansionPlan(BaseModel):
             raise ValueError("authority expansion plans must not be citable")
         if not self.candidate_ids:
             raise ValueError("authority expansion plans require candidate_ids")
+        if self.status == "executed" and not self.executed_pack_ids:
+            raise ValueError("executed authority expansion plans require executed_pack_ids")
+        executed_pack_ids = [record.child_pack_id for record in self.execution_records]
+        if self.executed_pack_ids != executed_pack_ids:
+            raise ValueError("executed_pack_ids must match execution record child pack ids")
+        request_indexes = [record.request_index for record in self.execution_records]
+        if len(request_indexes) != len(set(request_indexes)):
+            raise ValueError("authority expansion execution records require unique request indexes")
+        if any(index >= len(self.expansion_requests) for index in request_indexes):
+            raise ValueError("authority expansion execution record references unknown request index")
         for request in self.expansion_requests:
             if not request.filters.require_official:
                 raise ValueError("authority expansion requests must require official-source retrieval")
@@ -985,6 +1008,19 @@ class ReviewDecisionResponse(BaseModel):
     target_item_id: str
     target_status: str
     audit_event_id: int
+
+
+class AuthorityPackExpansionExecutionResponse(BaseModel):
+    case_id: str
+    draft_id: str
+    plan_id: str
+    request_index: int
+    status: AuthorityPackExpansionStatus
+    parent_pack_id: str
+    child_pack_id: str
+    item_count: int
+    pack_hash: str
+    authority_pack_expansion_plan: AuthorityPackExpansionPlan
 
 
 class DraftSummary(BaseModel):
