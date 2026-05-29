@@ -415,6 +415,11 @@ def test_authority_pack_expansion_execute_endpoint_records_child_pack(monkeypatc
         def save_research_pack(self, **kwargs):
             calls["saved_pack"] = kwargs
 
+        def authority_pack_expansion_request_executed(self, **kwargs):
+            calls["locked_recheck"] = kwargs
+            assert kwargs["lock_draft"] is True
+            return False
+
         def record_authority_pack_expansion_execution(self, **kwargs):
             calls["recorded_execution"] = kwargs
             assert kwargs["child_pack_id"] == "pack_child"
@@ -464,9 +469,117 @@ def test_authority_pack_expansion_execute_endpoint_records_child_pack(monkeypatc
     assert calls["loaded_plan"]["draft_id"] == "draft_1"
     assert calls["rate_limit"]["route_key"] == "research_pack.expand"
     assert calls["saved_pack"]["purpose"] == "authority_candidate_pack_expansion"
+    assert calls["locked_recheck"]["request_index"] == 0
     assert calls["recorded_execution"]["executed_by_user_id"] == "user_1"
     assert calls["audit_events"][-1]["event_type"] == "authority_pack_expansion.executed"
     assert calls["audit_events"][-1]["after_state"]["citable"] is False
+
+
+def test_authority_pack_expansion_execute_endpoint_rechecks_duplicate_under_lock(monkeypatch):
+    calls: dict[str, object] = {}
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_1",
+            "case_id": "case_1",
+            "draft_id": "draft_1",
+            "review_item_id": "review_1",
+            "parent_pack_id": "pack_parent",
+            "candidate_ids": ["authcand_1"],
+            "expansion_requests": [
+                {
+                    "query": "Supreme Court case-law on trademark confusion",
+                    "query_class": "case_law_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 3]},
+                    "max_pack_items": 4,
+                    "max_pack_tokens": 3000,
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+        }
+    )
+
+    def fake_create_research_pack(request: ResearchQueryRequest) -> LegalResearchPack:
+        calls["retrieval_request"] = request
+        return LegalResearchPack.model_validate(
+            {
+                "pack_id": "pack_child",
+                "query": request.query,
+                "query_class": request.query_class,
+                "filters": request.filters.model_dump(mode="json"),
+                "retrieval_config": {"max_tokens": request.max_pack_tokens},
+                "items": [
+                    {
+                        "pack_item_id": "pack_child_item_001",
+                        "chunk_id": "chunk_1",
+                        "document_id": "doc_1",
+                        "title": "Supreme Court Judgment",
+                        "document_type": "judgment",
+                        "source_id": "SC",
+                        "authority_level": 3,
+                        "citation": "SC Appeal No. 1/2020",
+                        "text": "Confusion must be assessed by reference to the mark and market context.",
+                        "fused_score": 1.0,
+                        "selection_reason": "test",
+                    }
+                ],
+            }
+        )
+
+    class FakeRepository:
+        def __init__(self, _session):
+            pass
+
+        def case_context(self, case_id: str):
+            return SimpleNamespace(organization_id="org_1", created_by_user_id="user_1")
+
+        def user_has_case_permission(self, *, case_id: str, user_id: str):
+            return True
+
+        def get_authority_pack_expansion_plan(self, **kwargs):
+            return plan
+
+        def research_pack_access_context(self, pack_id: str):
+            return SimpleNamespace(pack_id=pack_id, case_ids=("case_1",))
+
+        def next_child_research_pack_version(self, parent_pack_id: str):
+            return 2
+
+        def consume_rate_limit(self, **kwargs):
+            return allowed_rate_limit(kwargs["route_key"])
+
+        def save_research_pack(self, **kwargs):
+            calls["saved_pack"] = kwargs
+
+        def authority_pack_expansion_request_executed(self, **kwargs):
+            calls["locked_recheck"] = kwargs
+            return True
+
+        def record_authority_pack_expansion_execution(self, **kwargs):
+            raise AssertionError("duplicate execution must not be recorded")
+
+        def record_audit_event(self, **kwargs):
+            calls.setdefault("audit_events", []).append(kwargs)
+            return len(calls["audit_events"])
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr("sl_legal_rag.api.create_research_pack", fake_create_research_pack)
+    monkeypatch.setattr("sl_legal_rag.api.LegalWorkspaceRepository", FakeRepository)
+    monkeypatch.setattr("sl_legal_rag.api.session_scope", fake_session_scope)
+
+    target = "/v1/cases/case_1/drafts/draft_1/authority-expansion-plans/authplan_1/requests/0/execute"
+    response = TestClient(app).post(
+        target,
+        headers=signed_headers(monkeypatch, method="POST", target=target),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Authority expansion request already executed: 0"
+    assert calls["locked_recheck"]["lock_draft"] is True
+    assert calls["saved_pack"]["pack"].pack_id == "pack_child"
+    assert all(event["event_type"] != "authority_pack_expansion.executed" for event in calls["audit_events"])
 
 
 def test_strategy_prompt_endpoint_returns_pack_bounded_messages_with_signed_auth(monkeypatch):

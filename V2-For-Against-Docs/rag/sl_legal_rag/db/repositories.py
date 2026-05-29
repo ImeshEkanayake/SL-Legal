@@ -4043,6 +4043,30 @@ class LegalWorkspaceRepository:
                 return AuthorityPackExpansionPlan.model_validate(item)
         return None
 
+    def authority_pack_expansion_request_executed(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+        request_index: int,
+        lock_draft: bool = False,
+    ) -> bool:
+        draft_state = (
+            self._draft_state_for_update(case_id=case_id, draft_id=draft_id)
+            if lock_draft
+            else self._review_target_state(case_id=case_id, item_type="draft", item_id=draft_id)
+        )
+        if draft_state is None:
+            raise ValueError(f"Draft not found for authority expansion execution: {draft_id}")
+        metadata = dict(draft_state.get("metadata") or {})
+        for item in metadata.get("authority_pack_expansion_plans") or []:
+            if not isinstance(item, dict) or item.get("plan_id") != plan_id:
+                continue
+            plan = AuthorityPackExpansionPlan.model_validate(item)
+            return any(record.request_index == request_index for record in plan.execution_records)
+        raise ValueError(f"Authority expansion plan not found: {plan_id}")
+
     def record_authority_pack_expansion_execution(
         self,
         *,
@@ -4055,7 +4079,7 @@ class LegalWorkspaceRepository:
         item_count: int,
         executed_by_user_id: str | None,
     ) -> AuthorityPackExpansionPlan:
-        draft_state = self._review_target_state(case_id=case_id, item_type="draft", item_id=draft_id)
+        draft_state = self._draft_state_for_update(case_id=case_id, draft_id=draft_id)
         if draft_state is None:
             raise ValueError(f"Draft not found for authority expansion execution: {draft_id}")
         metadata = dict(draft_state.get("metadata") or {})
@@ -4552,6 +4576,34 @@ class LegalWorkspaceRepository:
                 """
             ),
             {"case_id": case_id, "review_item_id": review_item_id},
+        ).mappings().first()
+        return _plain_dict(row) if row is not None else None
+
+    def _draft_state_for_update(self, *, case_id: str, draft_id: str) -> dict[str, Any] | None:
+        row = self.session.execute(
+            text(
+                """
+                SELECT
+                    draft_id,
+                    case_id,
+                    thread_id,
+                    pack_id,
+                    draft_type,
+                    title,
+                    status,
+                    version,
+                    created_by_agent_run_id,
+                    created_by_user_id,
+                    metadata,
+                    created_at,
+                    updated_at
+                FROM drafts
+                WHERE case_id = :case_id
+                  AND draft_id = :draft_id
+                FOR UPDATE OF drafts
+                """
+            ),
+            {"case_id": case_id, "draft_id": draft_id},
         ).mappings().first()
         return _plain_dict(row) if row is not None else None
 

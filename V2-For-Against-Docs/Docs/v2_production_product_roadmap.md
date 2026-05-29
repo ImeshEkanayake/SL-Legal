@@ -560,6 +560,25 @@ Exit criteria:
 - Candidate authorities remain non-citable and unpromoted.
 - Tests cover endpoint behavior, repository metadata updates, schema validation, and UI type/display safety.
 
+### Phase 23: Authority Expansion Idempotency and Locking
+
+Outcome: authority expansion execution metadata is protected against concurrent duplicate writes.
+
+Deliverables:
+
+- Locked draft-row metadata read for execution recording.
+- API duplicate re-check under lock before execution metadata is written.
+- `409 Conflict` behavior for duplicate request execution.
+- Review-documented boundary for remaining pre-retrieval reservation work.
+
+Exit criteria:
+
+- Execution-record duplicate checks and metadata append occur while the draft row is locked.
+- API duplicate re-check uses the locked path.
+- Existing successful execution behavior remains green.
+- Duplicate execution conflict tests pass.
+- Candidate authorities remain non-citable and unpromoted.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

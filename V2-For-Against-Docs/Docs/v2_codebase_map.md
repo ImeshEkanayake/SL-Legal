@@ -432,6 +432,16 @@ Phase 22 executes planned authority expansion requests through the existing rese
 - `Docs/v2_phase_22_authority_pack_expansion_execution_contract.md`: execution contract and promotion boundary.
 - `Docs/releases/v2_phase_22_authority_pack_expansion_execution.md`: release note and validation evidence.
 
+## V2 Phase 23 Authority Expansion Idempotency
+
+Phase 23 fixes authority expansion execution race conditions from review. The active implementation uses:
+
+- `rag/sl_legal_rag/db/repositories.py`: locked draft metadata reads for execution recording and duplicate checks.
+- `rag/sl_legal_rag/api.py`: locked duplicate re-check before execution metadata is recorded.
+- `tests/test_api_research_pack_endpoint.py`: duplicate execution conflict coverage.
+- `Docs/v2_phase_23_authority_expansion_idempotency_contract.md`: locking contract and remaining reservation boundary.
+- `Docs/releases/v2_phase_23_authority_expansion_idempotency.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

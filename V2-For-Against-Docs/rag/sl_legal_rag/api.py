@@ -1029,6 +1029,14 @@ def execute_authority_pack_expansion_request(
         with session_scope() as session:
             repo = LegalWorkspaceRepository(session)
             case_context = _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+            if repo.authority_pack_expansion_request_executed(
+                case_id=case_id,
+                draft_id=draft_id,
+                plan_id=plan_id,
+                request_index=request_index,
+                lock_draft=True,
+            ):
+                raise HTTPException(status_code=409, detail=f"Authority expansion request already executed: {request_index}")
             updated_plan = repo.record_authority_pack_expansion_execution(
                 case_id=case_id,
                 draft_id=draft_id,
