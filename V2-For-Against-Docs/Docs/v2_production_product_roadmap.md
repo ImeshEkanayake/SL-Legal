@@ -791,6 +791,27 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 33 validation gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 34: Real Backend and DB Staging Validation
+
+Outcome: hosted staging proves that V2 is running against the real backend and a controlled read-only staging DB path before production cutover planning continues.
+
+Deliverables:
+
+- Machine-readable backend DB staging validation manifest.
+- Validation report builder that produces `awaiting_backend_db_staging_evidence`, `backend_db_staging_validated`, or `blocked`.
+- Detached `backend-db-staging-validation` mode.
+- Required evidence list covering Phase 33 validation, hosted API health, signed workspace API smoke, read-only DB health, zero-write DB audit, authority workflow, document source viewer, and operator DB acceptance.
+- Operator runbook for attaching backend and DB staging evidence without committing secrets, raw data, DB URLs, or signed session material.
+
+Exit criteria:
+
+- Local validation returns `awaiting_backend_db_staging_evidence`.
+- Hosted validation can return `backend_db_staging_validated` only after Phase 33 is validated and all backend/DB evidence passes.
+- DB evidence proves `access_mode=read_only`, `write_count=0`, `migration_count=0`, and `raw_data_uploaded=false`.
+- Failed backend evidence, nonzero writes, migration evidence, or raw data upload evidence blocks production planning.
+- Detached backend tests, frontend quality gate, Phase 34 validation gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

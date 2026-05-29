@@ -1793,6 +1793,16 @@ def load_hosted_staging_validation_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _json_field_matches(payload: dict[str, Any], field_path: str, expected: Any) -> tuple[bool, Any]:
+    current: Any = payload
+    for part in field_path.split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        else:
+            return False, None
+    return current == expected, current
+
+
 def evaluate_hosted_staging_validation_item(
     item: dict[str, Any],
     project_root: Path,
@@ -1845,6 +1855,9 @@ def evaluate_hosted_staging_validation_item(
             "status": "verified" if text.strip() else "failed",
             "summary": "evidence file is present" if text.strip() else "evidence file is empty",
         }
+    required_fields = item.get("required_fields") or {}
+    if not isinstance(required_fields, dict):
+        raise ValueError(f"{evidence_id} required_fields must be an object when provided")
     payload = json.loads(path.read_text(encoding="utf-8"))
     actual_status = str(payload.get("status") or payload.get("decision") or "").strip()
     accepted_statuses = [
@@ -1865,13 +1878,31 @@ def evaluate_hosted_staging_validation_item(
         status = "verified"
     else:
         status = "failed"
+    field_mismatches = []
+    for field_path, expected in required_fields.items():
+        matches, actual = _json_field_matches(payload, str(field_path), expected)
+        if not matches:
+            field_mismatches.append(
+                {
+                    "field": str(field_path),
+                    "expected": expected,
+                    "actual": actual,
+                }
+            )
+    if status == "verified" and field_mismatches:
+        status = "failed"
+    summary = f"json status={actual_status}"
+    if field_mismatches:
+        summary = f"{summary}; required field mismatch"
     return {
         **result,
         "status": status,
         "actual_status": actual_status,
         "accepted_statuses": accepted_statuses,
         "pending_statuses": pending_statuses,
-        "summary": f"json status={actual_status}",
+        "required_fields": required_fields,
+        "field_mismatches": field_mismatches,
+        "summary": summary,
     }
 
 
@@ -1932,6 +1963,83 @@ def build_hosted_staging_validation_report(
             "verified_hosted_evidence": sum(1 for item in hosted_evidence if item["status"] == "verified"),
             "pending_hosted_evidence": len(pending_hosted),
             "failed_hosted_evidence": sum(1 for item in hosted_evidence if item["status"] == "failed"),
+            "blockers": len(blockers),
+        },
+    }
+
+
+def load_backend_db_staging_validation_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase34_backend_db_staging_validation.v1":
+        raise ValueError("backend DB staging validation manifest schema_version must be phase34_backend_db_staging_validation.v1")
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("backend DB staging validation manifest must contain a non-empty prerequisites array")
+    staging_evidence = payload.get("staging_evidence")
+    if not isinstance(staging_evidence, list) or not staging_evidence:
+        raise ValueError("backend DB staging validation manifest must contain a non-empty staging_evidence array")
+    return payload
+
+
+def build_backend_db_staging_validation_report(
+    validation_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(validation_payload.get("target_release_tag") or "").strip()
+    repo = str(validation_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in validation_payload["prerequisites"]
+    ]
+    staging_evidence = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+        for item in validation_payload["staging_evidence"]
+    ]
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    staging_failures = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in staging_evidence
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_staging = [
+        item for item in staging_evidence if item["required"] and item["status"] == "pending"
+    ]
+    blockers = [*prerequisite_blockers, *staging_failures]
+    if blockers:
+        status = "blocked"
+    elif pending_staging:
+        status = "awaiting_backend_db_staging_evidence"
+    else:
+        status = "backend_db_staging_validated"
+    return {
+        "schema_version": "phase34_backend_db_staging_validation.v1",
+        "source_schema_version": validation_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(validation_payload.get("execution_environment") or "staging"),
+        "database_mode": str(validation_payload.get("database_mode") or "read_only_validation"),
+        "prerequisites": prerequisites,
+        "staging_evidence": staging_evidence,
+        "pending_staging_evidence": pending_staging,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_staging_evidence": len(staging_evidence),
+            "verified_staging_evidence": sum(1 for item in staging_evidence if item["status"] == "verified"),
+            "pending_staging_evidence": len(pending_staging),
+            "failed_staging_evidence": sum(1 for item in staging_evidence if item["status"] == "failed"),
             "blockers": len(blockers),
         },
     }
