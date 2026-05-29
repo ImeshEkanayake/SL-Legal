@@ -689,7 +689,7 @@ Outcome: the authority workflow UI is validated in a real browser against a repr
 
 Deliverables:
 
-- Browser workflow validation runner using the real Next workspace and a temporary signed fake backend.
+- Browser workflow validation runner using the real Next workspace and a temporary signed local backend.
 - Representative case fixture covering reasoning pack, authority expansion plan, executed child pack, verification record, and promotion record.
 - Chrome-driven Execute -> Verify -> Promote validation.
 - Local screenshot, JSON report, Markdown summary, and Next dev log evidence under `logs/phase29-browser-workflow`.
@@ -703,6 +703,28 @@ Exit criteria:
 - Promotion sends only the verified pack item ID.
 - No React hydration mismatch is observed with browser extensions disabled.
 - Detached backend tests, frontend quality gate, and Phase 29 browser workflow validation pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
+### Phase 30: UI Deployment Readiness
+
+Outcome: the validated authority workflow UI has a repeatable deployment-readiness gate before any hosted staging or production cutover.
+
+Deliverables:
+
+- Machine-readable readiness manifest for UI deployment evidence and hosted environment requirements.
+- Readiness report builder that produces `ready_for_hosted_env_review`, `ready_for_deployment_review`, or `blocked`.
+- Detached local readiness gate that verifies Phase 29 browser evidence and workflow wiring.
+- Optional hosted environment gate that checks required variables without printing secret values.
+- Staging/production guard that blocks development-only `SL_LEGAL_UI_USER_ID`.
+- Operator runbook for local readiness and hosted environment review.
+
+Exit criteria:
+
+- Phase 29 browser workflow evidence is present and passing.
+- `phase29:e2e` and `phase29-browser-workflow` remain wired.
+- Required UI environment variables are documented in `.env.example`.
+- Hosted environment checks do not expose secret values.
+- Detached backend tests, frontend quality gate, Phase 30 readiness gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
 ## Phase 8 Production Evidence Requirements

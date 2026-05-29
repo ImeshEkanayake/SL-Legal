@@ -521,13 +521,27 @@ Phase 28 wires the existing authority expansion, verification, and promotion bac
 
 Phase 29 adds repeatable browser evidence for the authority workflow UI without using the shared database or raw corpus. The active implementation uses:
 
-- `web/scripts/run-phase29-browser-workflow.mjs`: starts a temporary signed fake backend, starts the real Next app, launches system Chrome through Playwright Core, and clicks Execute -> Verify -> Promote.
+- `web/scripts/run-phase29-browser-workflow.mjs`: starts a temporary signed local backend, starts the real Next app, launches system Chrome through Playwright Core, and clicks Execute -> Verify -> Promote.
 - `web/package.json`: `phase29:e2e` script for local browser workflow validation.
 - `web/package-lock.json`: locks `playwright-core` for deterministic browser automation without bundled browser downloads.
 - `scripts/run_detached_quality_gate.sh`: `phase29-browser-workflow` detached mode.
 - `logs/phase29-browser-workflow`: ignored local evidence output containing screenshot, JSON report, Markdown summary, and Next dev log.
 - `Docs/v2_phase_29_browser_workflow_validation_contract.md`: browser validation contract.
 - `Docs/releases/v2_phase_29_browser_workflow_validation.md`: release note and validation evidence.
+
+## V2 Phase 30 UI Deployment Readiness
+
+Phase 30 adds a non-mutating readiness gate for deploying the V2 lawyer workspace UI after browser validation. The active implementation uses:
+
+- `rag/evals/phase30_ui_deployment_readiness.json`: readiness manifest for Phase 29 evidence and hosted UI environment requirements.
+- `rag/sl_legal_rag/operations.py`: `load_ui_deployment_readiness_manifest` and `build_ui_deployment_readiness_report`.
+- `scripts/build_phase30_ui_deployment_readiness.py`: report builder for local and hosted environment readiness.
+- `scripts/run_detached_quality_gate.sh`: `ui-deployment-readiness` and `ui-deployment-readiness-env` detached modes.
+- `tests/test_phase30_ui_deployment_readiness.py`: coverage for manifest loading, evidence validation, hosted secret checks, dev-only blockers, and CLI output.
+- `.env.example`: local UI environment variable examples.
+- `Docs/v2_phase_30_ui_deployment_readiness_contract.md`: readiness contract.
+- `Docs/v2_phase_30_ui_deployment_readiness_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_30_ui_deployment_readiness.md`: release note and validation evidence.
 
 ## Data Boundary
 

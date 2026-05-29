@@ -1,0 +1,88 @@
+{
+  "schema_version": "phase30_ui_deployment_readiness.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-29-browser-workflow-validation",
+  "phase_name": "V2 Phase 30: UI Deployment Readiness",
+  "description": "Deployment readiness manifest for the V2 lawyer workspace UI after browser workflow validation.",
+  "required_environment": [
+    {
+      "name": "SL_LEGAL_API_BASE_URL",
+      "category": "api",
+      "required": true,
+      "secret": false,
+      "url": true
+    },
+    {
+      "name": "SL_LEGAL_AUTH_HMAC_SECRET",
+      "category": "api_auth",
+      "required": true,
+      "secret": true,
+      "min_length": 32
+    },
+    {
+      "name": "SL_LEGAL_UI_SESSION_SECRET",
+      "category": "session",
+      "required": true,
+      "secret": true,
+      "min_length": 32
+    },
+    {
+      "name": "SL_LEGAL_UI_SESSION_COOKIE_NAME",
+      "category": "session",
+      "required": false,
+      "secret": false
+    }
+  ],
+  "dev_only_environment": [
+    "SL_LEGAL_UI_USER_ID"
+  ],
+  "staging_smoke_command": "scripts/run_detached_quality_gate.sh phase29-browser-workflow phase30-staging-browser-smoke",
+  "evidence": [
+    {
+      "id": "phase29_browser_workflow",
+      "title": "Phase 29 browser workflow detached run",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase29-browser-workflow-validation.log",
+      "required": true
+    },
+    {
+      "id": "phase29_browser_contract",
+      "title": "Phase 29 browser workflow contract",
+      "type": "document",
+      "path": "Docs/v2_phase_29_browser_workflow_validation_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase29_release_note",
+      "title": "Phase 29 browser workflow release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_29_browser_workflow_validation.md",
+      "required": true
+    },
+    {
+      "id": "phase29_npm_script",
+      "title": "Phase 29 browser workflow npm script",
+      "type": "package_script",
+      "path": "web/package.json",
+      "script_name": "phase29:e2e",
+      "expected_contains": "run-phase29-browser-workflow.mjs",
+      "required": true
+    },
+    {
+      "id": "phase29_detached_mode",
+      "title": "Phase 29 browser workflow detached mode",
+      "type": "detached_mode",
+      "path": "scripts/run_detached_quality_gate.sh",
+      "mode_name": "phase29-browser-workflow",
+      "expected_contains": "npm --prefix web run phase29:e2e",
+      "required": true
+    },
+    {
+      "id": "ui_environment_example",
+      "title": "UI deployment environment example",
+      "type": "file",
+      "path": ".env.example",
+      "required": true
+    }
+  ]
+}

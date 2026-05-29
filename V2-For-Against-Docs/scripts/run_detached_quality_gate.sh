@@ -28,6 +28,12 @@ case "${MODE}" in
   phase29-browser-workflow)
     COMMAND="npm --prefix web ci; npm --prefix web run phase29:e2e -- --output-dir logs/phase29-browser-workflow"
     ;;
+  ui-deployment-readiness)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase30_ui_deployment_readiness.py --output logs/readiness/phase30-ui-deployment-readiness.json"
+    ;;
+  ui-deployment-readiness-env)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase30_ui_deployment_readiness.py --include-environment --output logs/readiness/phase30-ui-deployment-readiness-env.json"
+    ;;
   load)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase6_load_tests.py"
     ;;
@@ -66,7 +72,7 @@ case "${MODE}" in
     ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend|phase29-browser-workflow|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance|release-attestation|signing-readiness|signing-plan] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|phase29-browser-workflow|ui-deployment-readiness|ui-deployment-readiness-env|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance|release-attestation|signing-readiness|signing-plan] [run-id]" >&2
     exit 2
     ;;
 esac

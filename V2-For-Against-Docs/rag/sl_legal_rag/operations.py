@@ -1262,6 +1262,216 @@ def build_readiness_pack(
     }
 
 
+def load_ui_deployment_readiness_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase30_ui_deployment_readiness.v1":
+        raise ValueError("UI deployment readiness manifest schema_version must be phase30_ui_deployment_readiness.v1")
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        raise ValueError("UI deployment readiness manifest must contain a non-empty evidence array")
+    required_env = payload.get("required_environment")
+    if not isinstance(required_env, list) or not required_env:
+        raise ValueError("UI deployment readiness manifest must contain required_environment")
+    return payload
+
+
+def evaluate_ui_deployment_evidence(item: dict[str, Any], project_root: Path) -> dict[str, Any]:
+    evidence_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    evidence_type = str(item.get("type") or "").strip()
+    path_value = str(item.get("path") or "").strip()
+    required = bool(item.get("required", True))
+    if not evidence_id:
+        raise ValueError("UI deployment evidence id is required")
+    if not title:
+        raise ValueError(f"{evidence_id} title is required")
+    if evidence_type not in {"detached_log", "document", "package_script", "detached_mode", "file"}:
+        raise ValueError(f"{evidence_id} has unsupported UI deployment evidence type: {evidence_type}")
+    if not path_value:
+        raise ValueError(f"{evidence_id} path is required")
+    evidence_path = Path(path_value)
+    if not evidence_path.is_absolute():
+        evidence_path = project_root / evidence_path
+    base = {
+        "id": evidence_id,
+        "title": title,
+        "type": evidence_type,
+        "path": path_value,
+        "required": required,
+        "exists": evidence_path.is_file(),
+    }
+    if not evidence_path.is_file():
+        return {**base, "status": "missing", "summary": "evidence file is not present"}
+    if evidence_type == "detached_log":
+        text = evidence_path.read_text(encoding="utf-8", errors="replace")
+        passed = "exit_status=0" in text
+        return {
+            **base,
+            "status": "verified" if passed else "failed",
+            "summary": "detached run exited 0" if passed else "detached run did not exit 0",
+        }
+    if evidence_type == "package_script":
+        script_name = str(item.get("script_name") or "").strip()
+        expected_contains = str(item.get("expected_contains") or "").strip()
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+        command = str((payload.get("scripts") or {}).get(script_name) or "")
+        verified = bool(script_name and command and (not expected_contains or expected_contains in command))
+        return {
+            **base,
+            "script_name": script_name,
+            "status": "verified" if verified else "failed",
+            "summary": f"script {script_name} {'contains expected command' if verified else 'is missing or unexpected'}",
+        }
+    text = evidence_path.read_text(encoding="utf-8", errors="replace")
+    if evidence_type == "detached_mode":
+        mode_name = str(item.get("mode_name") or "").strip()
+        expected_contains = str(item.get("expected_contains") or "").strip()
+        verified = bool(mode_name and mode_name in text and (not expected_contains or expected_contains in text))
+        return {
+            **base,
+            "mode_name": mode_name,
+            "status": "verified" if verified else "failed",
+            "summary": f"detached mode {mode_name} {'is present' if verified else 'is missing or unexpected'}",
+        }
+    return {
+        **base,
+        "status": "verified" if text.strip() else "failed",
+        "summary": "file is present" if text.strip() else "file is empty",
+    }
+
+
+def evaluate_ui_deployment_environment(
+    payload: dict[str, Any],
+    *,
+    environment: dict[str, str],
+    include_environment: bool,
+    deployment_environment: str,
+) -> dict[str, Any]:
+    required = payload.get("required_environment") or []
+    dev_only = [str(item).strip() for item in payload.get("dev_only_environment") or [] if str(item).strip()]
+    checks: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    if not include_environment:
+        for item in required:
+            name = str(item.get("name") or "").strip()
+            checks.append(
+                {
+                    "name": name,
+                    "category": str(item.get("category") or ""),
+                    "required": bool(item.get("required", True)),
+                    "secret": bool(item.get("secret", False)),
+                    "status": "not_evaluated",
+                    "summary": "hosted environment values were not inspected",
+                }
+            )
+        return {
+            "deployment_environment": deployment_environment,
+            "included": False,
+            "checks": checks,
+            "dev_only_environment": [{"name": name, "status": "not_evaluated"} for name in dev_only],
+            "blockers": [],
+            "summary": "Hosted environment values require deployment-console review before cutover.",
+        }
+    for item in required:
+        name = str(item.get("name") or "").strip()
+        min_length = int(item.get("min_length") or 1)
+        value = environment.get(name, "")
+        required_flag = bool(item.get("required", True))
+        secret = bool(item.get("secret", False))
+        url_required = bool(item.get("url", False))
+        present = bool(value)
+        length_ok = len(value) >= min_length if present else False
+        url_ok = value.startswith(("https://", "http://")) if url_required and present else not url_required
+        status = "verified" if (not required_flag or (present and length_ok and url_ok)) else "missing"
+        check = {
+            "name": name,
+            "category": str(item.get("category") or ""),
+            "required": required_flag,
+            "secret": secret,
+            "status": status,
+            "present": present,
+            "meets_min_length": length_ok if secret else None,
+            "url_scheme_ok": url_ok if url_required else None,
+            "summary": "environment value is present and valid" if status == "verified" else "environment value is missing or invalid",
+        }
+        checks.append(check)
+        if status != "verified" and required_flag:
+            blockers.append({"id": f"env:{name}", "status": status, "summary": check["summary"]})
+    dev_only_checks = []
+    for name in dev_only:
+        present = bool(environment.get(name))
+        status = "failed" if deployment_environment in {"staging", "production"} and present else "verified"
+        dev_check = {
+            "name": name,
+            "status": status,
+            "present": present,
+            "summary": "dev-only environment variable is absent" if status == "verified" else "dev-only environment variable must not be set",
+        }
+        dev_only_checks.append(dev_check)
+        if status == "failed":
+            blockers.append({"id": f"dev_env:{name}", "status": status, "summary": dev_check["summary"]})
+    return {
+        "deployment_environment": deployment_environment,
+        "included": True,
+        "checks": checks,
+        "dev_only_environment": dev_only_checks,
+        "blockers": blockers,
+        "summary": "Hosted environment values were evaluated without exposing secret contents.",
+    }
+
+
+def build_ui_deployment_readiness_report(
+    readiness_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    environment: dict[str, str] | None = None,
+    include_environment: bool = False,
+    deployment_environment: str = "staging",
+) -> dict[str, Any]:
+    evidence = [
+        evaluate_ui_deployment_evidence(item, project_root)
+        for item in readiness_payload["evidence"]
+    ]
+    env_report = evaluate_ui_deployment_environment(
+        readiness_payload,
+        environment=environment or {},
+        include_environment=include_environment,
+        deployment_environment=deployment_environment,
+    )
+    evidence_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in evidence
+        if item["required"] and item["status"] != "verified"
+    ]
+    blockers = [*evidence_blockers, *env_report["blockers"]]
+    if blockers:
+        status = "blocked"
+    elif include_environment:
+        status = "ready_for_deployment_review"
+    else:
+        status = "ready_for_hosted_env_review"
+    return {
+        "schema_version": "phase30_ui_deployment_readiness_report.v1",
+        "source_schema_version": readiness_payload["schema_version"],
+        "target_release_tag": readiness_payload.get("target_release_tag"),
+        "status": status,
+        "deployment_environment": deployment_environment,
+        "environment_included": include_environment,
+        "evidence": evidence,
+        "environment": env_report,
+        "blockers": blockers,
+        "summary": {
+            "total_evidence": len(evidence),
+            "verified_evidence": sum(1 for item in evidence if item["status"] == "verified"),
+            "failed_evidence": sum(1 for item in evidence if item["status"] == "failed"),
+            "missing_evidence": sum(1 for item in evidence if item["status"] == "missing"),
+            "environment_checks": len(env_report["checks"]),
+            "blockers": len(blockers),
+        },
+    }
+
+
 def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:
     name = str(item.get("name") or "").strip()
     command = item.get("command")
