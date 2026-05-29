@@ -727,6 +727,28 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 30 readiness gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 31: Staging Cutover Dry Run
+
+Outcome: the UI deployment readiness gate is converted into a staging cutover dry-run plan with explicit smoke commands, hosted environment boundary, approvals, and rollback steps.
+
+Deliverables:
+
+- Machine-readable staging cutover dry-run manifest.
+- Dry-run report builder that produces `ready_for_hosted_env_setup`, `ready_for_staging_cutover`, or `blocked`.
+- Detached `staging-cutover-dry-run` mode.
+- Smoke-test plan for hosted env readiness, browser workflow, backend tests, and frontend quality.
+- Manual approval and rollback checklist for staging cutover.
+- Operator runbook for local and hosted staging execution.
+
+Exit criteria:
+
+- Phase 30 readiness report is present and accepted.
+- Local dry run returns `ready_for_hosted_env_setup`.
+- Hosted staging can return `ready_for_staging_cutover` only after environment inspection passes.
+- Smoke commands and expected evidence paths are emitted without secret values.
+- Detached backend tests, frontend quality gate, Phase 31 dry run, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

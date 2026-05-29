@@ -1472,6 +1472,183 @@ def build_ui_deployment_readiness_report(
     }
 
 
+def load_staging_cutover_dry_run_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase31_staging_cutover_dry_run.v1":
+        raise ValueError("staging cutover manifest schema_version must be phase31_staging_cutover_dry_run.v1")
+    required_reports = payload.get("required_reports")
+    if not isinstance(required_reports, list) or not required_reports:
+        raise ValueError("staging cutover manifest must contain a non-empty required_reports array")
+    smoke_tests = payload.get("smoke_tests")
+    if not isinstance(smoke_tests, list) or not smoke_tests:
+        raise ValueError("staging cutover manifest must contain a non-empty smoke_tests array")
+    rollback_steps = payload.get("rollback_steps")
+    if not isinstance(rollback_steps, list) or not rollback_steps:
+        raise ValueError("staging cutover manifest must contain rollback_steps")
+    return payload
+
+
+def evaluate_staging_cutover_report(item: dict[str, Any], project_root: Path) -> dict[str, Any]:
+    report_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    report_type = str(item.get("type") or "").strip()
+    path_value = str(item.get("path") or "").strip()
+    required = bool(item.get("required", True))
+    if not report_id:
+        raise ValueError("staging cutover report id is required")
+    if not title:
+        raise ValueError(f"{report_id} title is required")
+    if report_type not in {"json_status", "document", "file"}:
+        raise ValueError(f"{report_id} has unsupported staging cutover report type: {report_type}")
+    if not path_value:
+        raise ValueError(f"{report_id} path is required")
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = project_root / path
+    base = {
+        "id": report_id,
+        "title": title,
+        "type": report_type,
+        "path": path_value,
+        "required": required,
+        "exists": path.is_file(),
+    }
+    if not path.is_file():
+        return {**base, "status": "missing", "summary": "required cutover evidence is not present"}
+    result = {
+        **base,
+        "size_bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+    }
+    if report_type in {"document", "file"}:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return {
+            **result,
+            "status": "verified" if text.strip() else "failed",
+            "summary": "evidence file is present" if text.strip() else "evidence file is empty",
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    actual_status = str(payload.get("status") or payload.get("decision") or "").strip()
+    accepted_statuses = [
+        str(status).strip()
+        for status in item.get("accepted_statuses", [])
+        if str(status).strip()
+    ]
+    verified = actual_status in accepted_statuses if accepted_statuses else bool(actual_status)
+    return {
+        **result,
+        "status": "verified" if verified else "failed",
+        "actual_status": actual_status,
+        "accepted_statuses": accepted_statuses,
+        "summary": f"json status={actual_status}",
+    }
+
+
+def staging_cutover_smoke_test_from_mapping(item: dict[str, Any]) -> dict[str, Any]:
+    smoke_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    command = item.get("command")
+    if not smoke_id:
+        raise ValueError("staging cutover smoke test id is required")
+    if not title:
+        raise ValueError(f"{smoke_id} title is required")
+    if not isinstance(command, list) or not command or not all(str(part).strip() for part in command):
+        raise ValueError(f"{smoke_id} command must be a non-empty string array")
+    requires_hosted = bool(item.get("requires_hosted_environment", False))
+    required_before_cutover = bool(item.get("required_before_cutover", True))
+    return {
+        "id": smoke_id,
+        "title": title,
+        "command": [str(part) for part in command],
+        "command_line": " ".join(shlex.quote(str(part)) for part in command),
+        "requires_hosted_environment": requires_hosted,
+        "required_before_cutover": required_before_cutover,
+        "expected_evidence": str(item.get("expected_evidence") or "").strip(),
+        "status": "requires_hosted_environment" if requires_hosted else "ready_to_run",
+    }
+
+
+def build_staging_cutover_dry_run(
+    cutover_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(cutover_payload.get("target_release_tag") or "").strip()
+    repo = str(cutover_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    reports = [
+        evaluate_staging_cutover_report(item, project_root)
+        for item in cutover_payload["required_reports"]
+    ]
+    smoke_tests = [staging_cutover_smoke_test_from_mapping(item) for item in cutover_payload["smoke_tests"]]
+    rollback_steps = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "title": str(item.get("title") or "").strip(),
+            "action": str(item.get("action") or "").strip(),
+            "owner": str(item.get("owner") or "operator").strip(),
+        }
+        for item in cutover_payload.get("rollback_steps", [])
+    ]
+    approvals = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "title": str(item.get("title") or "").strip(),
+            "required": bool(item.get("required", True)),
+        }
+        for item in cutover_payload.get("manual_approvals", [])
+    ]
+    blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in reports
+        if item["required"] and item["status"] != "verified"
+    ]
+    for item in rollback_steps:
+        if not item["id"] or not item["title"] or not item["action"]:
+            blockers.append({"id": "rollback_step", "status": "failed", "summary": "rollback step is incomplete"})
+    for item in approvals:
+        if item["required"] and (not item["id"] or not item["title"]):
+            blockers.append({"id": "manual_approval", "status": "failed", "summary": "manual approval is incomplete"})
+    phase30_status = ""
+    for item in reports:
+        if item["id"] == "phase30_readiness_report":
+            phase30_status = str(item.get("actual_status") or "")
+    if blockers:
+        status = "blocked"
+    elif phase30_status == "ready_for_deployment_review":
+        status = "ready_for_staging_cutover"
+    else:
+        status = "ready_for_hosted_env_setup"
+    return {
+        "schema_version": "phase31_staging_cutover_dry_run.v1",
+        "source_schema_version": cutover_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "cutover_environment": str(cutover_payload.get("cutover_environment") or "staging"),
+        "required_reports": reports,
+        "smoke_tests": smoke_tests,
+        "manual_approvals": approvals,
+        "rollback_steps": rollback_steps,
+        "blockers": blockers,
+        "summary": {
+            "total_reports": len(reports),
+            "verified_reports": sum(1 for item in reports if item["status"] == "verified"),
+            "failed_reports": sum(1 for item in reports if item["status"] == "failed"),
+            "missing_reports": sum(1 for item in reports if item["status"] == "missing"),
+            "smoke_tests": len(smoke_tests),
+            "hosted_smoke_tests": sum(1 for item in smoke_tests if item["requires_hosted_environment"]),
+            "rollback_steps": len(rollback_steps),
+            "manual_approvals": len(approvals),
+            "blockers": len(blockers),
+        },
+    }
+
+
 def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:
     name = str(item.get("name") or "").strip()
     command = item.get("command")

@@ -543,6 +543,19 @@ Phase 30 adds a non-mutating readiness gate for deploying the V2 lawyer workspac
 - `Docs/v2_phase_30_ui_deployment_readiness_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_30_ui_deployment_readiness.md`: release note and validation evidence.
 
+## V2 Phase 31 Staging Cutover Dry Run
+
+Phase 31 adds a non-mutating staging cutover dry-run gate for the V2 lawyer workspace UI. The active implementation uses:
+
+- `rag/evals/phase31_staging_cutover_dry_run.json`: cutover manifest with required reports, smoke commands, approvals, and rollback steps.
+- `rag/sl_legal_rag/operations.py`: `load_staging_cutover_dry_run_manifest` and `build_staging_cutover_dry_run`.
+- `scripts/build_phase31_staging_cutover_dry_run.py`: report builder for local and hosted staging dry runs.
+- `scripts/run_detached_quality_gate.sh`: `staging-cutover-dry-run` detached mode.
+- `tests/test_phase31_staging_cutover_dry_run.py`: coverage for accepted Phase 30 statuses, missing evidence blockers, rollback validation, and CLI output.
+- `Docs/v2_phase_31_staging_cutover_dry_run_contract.md`: cutover contract.
+- `Docs/v2_phase_31_staging_cutover_dry_run_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_31_staging_cutover_dry_run.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

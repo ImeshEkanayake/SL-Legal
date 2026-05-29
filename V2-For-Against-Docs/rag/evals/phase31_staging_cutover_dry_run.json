@@ -1,0 +1,131 @@
+{
+  "schema_version": "phase31_staging_cutover_dry_run.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-30-ui-deployment-readiness",
+  "phase_name": "V2 Phase 31: Staging Cutover Dry Run",
+  "cutover_environment": "staging",
+  "description": "Non-mutating staging cutover dry run for the V2 lawyer workspace UI.",
+  "required_reports": [
+    {
+      "id": "phase30_readiness_report",
+      "title": "Phase 30 UI deployment readiness report",
+      "type": "json_status",
+      "path": "logs/readiness/phase30-ui-deployment-readiness.json",
+      "accepted_statuses": [
+        "ready_for_hosted_env_review",
+        "ready_for_deployment_review"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase30_manifest",
+      "title": "Phase 30 readiness manifest",
+      "type": "file",
+      "path": "rag/evals/phase30_ui_deployment_readiness.json",
+      "required": true
+    },
+    {
+      "id": "phase30_contract",
+      "title": "Phase 30 readiness contract",
+      "type": "document",
+      "path": "Docs/v2_phase_30_ui_deployment_readiness_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase30_runbook",
+      "title": "Phase 30 readiness runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_30_ui_deployment_readiness_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase30_release_note",
+      "title": "Phase 30 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_30_ui_deployment_readiness.md",
+      "required": true
+    }
+  ],
+  "smoke_tests": [
+    {
+      "id": "phase31_hosted_env_gate",
+      "title": "Hosted environment readiness gate",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "ui-deployment-readiness-env",
+        "phase31-staging-env-readiness"
+      ],
+      "expected_evidence": "logs/test-runs/phase31-staging-env-readiness.log",
+      "requires_hosted_environment": true,
+      "required_before_cutover": true
+    },
+    {
+      "id": "phase31_browser_smoke",
+      "title": "Representative browser workflow smoke",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "phase29-browser-workflow",
+        "phase31-staging-browser-smoke"
+      ],
+      "expected_evidence": "logs/test-runs/phase31-staging-browser-smoke.log",
+      "requires_hosted_environment": false,
+      "required_before_cutover": true
+    },
+    {
+      "id": "phase31_backend_regression",
+      "title": "Backend regression suite",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "tests",
+        "phase31-staging-tests"
+      ],
+      "expected_evidence": "logs/test-runs/phase31-staging-tests.log",
+      "requires_hosted_environment": false,
+      "required_before_cutover": true
+    },
+    {
+      "id": "phase31_frontend_quality",
+      "title": "Frontend quality gate",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "frontend",
+        "phase31-staging-frontend"
+      ],
+      "expected_evidence": "logs/test-runs/phase31-staging-frontend.log",
+      "requires_hosted_environment": false,
+      "required_before_cutover": true
+    }
+  ],
+  "manual_approvals": [
+    {
+      "id": "lawyer_owner_acceptance",
+      "title": "Lawyer-owner acceptance of staging smoke output",
+      "required": true
+    },
+    {
+      "id": "operator_env_review",
+      "title": "Operator confirms hosted secrets are configured only in the deployment platform",
+      "required": true
+    }
+  ],
+  "rollback_steps": [
+    {
+      "id": "rollback_ui_release",
+      "title": "Rollback UI deployment",
+      "action": "Restore the previous stable UI deployment or previous platform deployment alias.",
+      "owner": "operator"
+    },
+    {
+      "id": "disable_staging_access",
+      "title": "Disable staging access if smoke checks fail",
+      "action": "Remove staging route exposure or revoke the staging session cookie until the fault is corrected.",
+      "owner": "operator"
+    },
+    {
+      "id": "preserve_failure_evidence",
+      "title": "Preserve failed smoke evidence",
+      "action": "Keep detached logs, browser screenshots, and readiness reports for diagnosis without uploading raw corpus data.",
+      "owner": "operator"
+    }
+  ]
+}
