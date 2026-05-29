@@ -499,6 +499,7 @@ AuthorityPackExpansionStatus = Literal["planned", "partially_executed", "execute
 AuthorityPackExpansionReservationStatus = Literal["reserved", "completed", "failed"]
 AuthorityPackVerificationStatus = Literal["verified", "needs_lawyer_review", "failed"]
 AuthorityPackItemVerificationStatus = Literal["verified", "requires_lawyer_review"]
+AuthorityPackPromotionApprovalBasis = Literal["verified_child_pack"]
 
 
 class AuthorityPackExpansionReservationRecord(BaseModel):
@@ -604,6 +605,82 @@ class AuthorityPackVerificationRecord(BaseModel):
         return self
 
 
+class AuthorityPackPromotionRequest(BaseModel):
+    pack_item_ids: list[str] = Field(default_factory=list)
+    reviewer_note: str = Field(
+        default="Promote verified authority items into matter memory for lawyer-approved citation use.",
+        min_length=1,
+    )
+
+    @field_validator("pack_item_ids")
+    @classmethod
+    def validate_unique_pack_item_ids(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("promotion request pack_item_ids must be unique")
+        return value
+
+
+class AuthorityPackPromotionItem(BaseModel):
+    schema_version: str = "authority_pack_promotion_item.v1"
+    child_pack_id: str = Field(min_length=1)
+    pack_item_id: str = Field(min_length=1)
+    document_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    document_type: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    authority_level: int = Field(ge=1)
+    citation: str = Field(min_length=1)
+    anchor_count: int = Field(ge=1)
+    citable: bool = True
+
+    @model_validator(mode="after")
+    def validate_promoted_item(self) -> "AuthorityPackPromotionItem":
+        if not self.citable:
+            raise ValueError("authority promotion items must be citable")
+        return self
+
+
+class AuthorityPackPromotionRecord(BaseModel):
+    schema_version: str = "authority_pack_promotion.v1"
+    promotion_id: str = Field(min_length=1)
+    plan_id: str = Field(min_length=1)
+    request_index: int = Field(ge=0)
+    child_pack_id: str = Field(min_length=1)
+    child_pack_hash: str = Field(min_length=1)
+    promoted_pack_item_ids: list[str] = Field(min_length=1)
+    promoted_item_count: int = Field(ge=1)
+    promoted_by_user_id: str | None = None
+    promoted_at: datetime
+    approval_basis: AuthorityPackPromotionApprovalBasis = "verified_child_pack"
+    citable: bool = True
+    items: list[AuthorityPackPromotionItem] = Field(min_length=1)
+    reviewer_note: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_promotion_record(self) -> "AuthorityPackPromotionRecord":
+        if not self.citable:
+            raise ValueError("authority promotion records must be citable")
+        item_ids = [item.pack_item_id for item in self.items]
+        if len(item_ids) != len(set(item_ids)):
+            raise ValueError("authority promotion items require unique pack item ids")
+        if self.promoted_pack_item_ids != item_ids:
+            raise ValueError("promoted_pack_item_ids must match promotion items")
+        if self.promoted_item_count != len(self.items):
+            raise ValueError("promoted_item_count must match promotion items")
+        if any(item.child_pack_id != self.child_pack_id for item in self.items):
+            raise ValueError("authority promotion items must match child_pack_id")
+        return self
+
+
+class AuthorityPackPromotionResponse(BaseModel):
+    case_id: str = Field(min_length=1)
+    draft_id: str = Field(min_length=1)
+    plan_id: str = Field(min_length=1)
+    child_pack_id: str = Field(min_length=1)
+    promotion_record: AuthorityPackPromotionRecord
+    authority_pack_expansion_plan: "AuthorityPackExpansionPlan"
+
+
 class AuthorityPackExpansionPlan(BaseModel):
     schema_version: str = "authority_pack_expansion_plan.v1"
     plan_id: str = Field(min_length=1)
@@ -619,6 +696,7 @@ class AuthorityPackExpansionPlan(BaseModel):
     executed_pack_ids: list[str] = Field(default_factory=list)
     execution_records: list[AuthorityPackExpansionExecutionRecord] = Field(default_factory=list)
     verification_records: list[AuthorityPackVerificationRecord] = Field(default_factory=list)
+    promotion_records: list[AuthorityPackPromotionRecord] = Field(default_factory=list)
     citable: bool = False
     reviewer_note: str = Field(
         default=(
@@ -663,6 +741,30 @@ class AuthorityPackExpansionPlan(BaseModel):
                 raise ValueError("authority pack verification records must match execution request index")
             if record.child_pack_hash != execution_record.child_pack_hash:
                 raise ValueError("authority pack verification records must match execution child pack hash")
+        promotion_pack_ids = [record.child_pack_id for record in self.promotion_records]
+        if len(promotion_pack_ids) != len(set(promotion_pack_ids)):
+            raise ValueError("authority pack promotion records require unique child pack ids")
+        verification_by_pack_id = {record.child_pack_id: record for record in self.verification_records}
+        for record in self.promotion_records:
+            verification_record = verification_by_pack_id.get(record.child_pack_id)
+            execution_record = execution_by_pack_id.get(record.child_pack_id)
+            if verification_record is None or execution_record is None:
+                raise ValueError("authority pack promotion records require executed and verified child packs")
+            if verification_record.status != "verified":
+                raise ValueError("authority pack promotion records require verified child packs")
+            if record.plan_id != self.plan_id:
+                raise ValueError("authority pack promotion records must match plan_id")
+            if record.request_index != execution_record.request_index:
+                raise ValueError("authority pack promotion records must match execution request index")
+            if record.child_pack_hash != execution_record.child_pack_hash:
+                raise ValueError("authority pack promotion records must match execution child pack hash")
+            verified_item_ids = {
+                item.pack_item_id
+                for item in verification_record.items
+                if item.verification_status == "verified" and not item.requires_lawyer_review
+            }
+            if any(pack_item_id not in verified_item_ids for pack_item_id in record.promoted_pack_item_ids):
+                raise ValueError("authority pack promotion records can only promote verified pack items")
         executed_indexes = set(request_indexes)
         incomplete_reservations = [
             record.request_index

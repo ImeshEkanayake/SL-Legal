@@ -473,6 +473,22 @@ Phase 25 verifies executed authority expansion child packs before any candidate 
 - `Docs/v2_phase_25_child_pack_authority_verification_contract.md`: verification contract.
 - `Docs/releases/v2_phase_25_child_pack_authority_verification.md`: release note and validation evidence.
 
+## V2 Phase 26 Controlled Authority Promotion
+
+Phase 26 promotes only verified authority expansion child-pack items into citable matter-memory references. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `authority_pack_promotion.v1` request, item, record, and response contracts.
+- `rag/sl_legal_rag/db/repositories.py`: locked promotion persistence and matter-memory candidate updates.
+- `rag/sl_legal_rag/api.py`: child-pack promotion endpoint and audit event.
+- `web/src/lib/workspace-types.ts`: frontend promotion record types.
+- `web/src/components/DocumentWorkspace.tsx`: promotion status display for authority expansion plans.
+- `web/src/components/CaseWorkspace.test.tsx`: fixture coverage for promotion metadata shape.
+- `tests/test_agentic_research_models.py`: promotion validation coverage.
+- `tests/test_api_research_pack_endpoint.py`: promotion endpoint coverage.
+- `tests/test_db_access_layer.py`: verification-to-promotion persistence coverage.
+- `Docs/v2_phase_26_controlled_authority_promotion_contract.md`: promotion contract.
+- `Docs/releases/v2_phase_26_controlled_authority_promotion.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

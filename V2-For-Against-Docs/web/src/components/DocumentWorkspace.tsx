@@ -1218,6 +1218,25 @@ function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: Authorit
           ))}
         </div>
       ) : null}
+      {expansionPlan.promotion_records?.length ? (
+        <div className="mt-3 space-y-2">
+          {expansionPlan.promotion_records.map((record) => (
+            <div key={record.promotion_id} className="rounded-md border border-[#b7d3bd] bg-[#f6fbf6] p-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase text-[#285336]">promotion</p>
+                  <p className="mt-1 text-xs font-bold text-[#1c1c1a]">{record.promotion_id}</p>
+                </div>
+                <StatusPill tone={record.citable ? "green" : "rose"}>{record.citable ? "citable" : "blocked"}</StatusPill>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <StatusPill tone="green">{record.promoted_item_count} promoted</StatusPill>
+                <StatusPill tone="blue">{record.approval_basis}</StatusPill>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {expansionPlan.expansion_requests.map((request, index) => (
           <div key={`${expansionPlan.plan_id}-${index}`} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">

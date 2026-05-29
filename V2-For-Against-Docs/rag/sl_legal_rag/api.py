@@ -35,6 +35,8 @@ from .models import (
     AuditEventListResponse,
     AuditEventStreamResponse,
     AuthorityPackExpansionExecutionResponse,
+    AuthorityPackPromotionRequest,
+    AuthorityPackPromotionResponse,
     AuthorityPackVerificationRecord,
     CaseWorkspaceSnapshot,
     CaseStructureRequest,
@@ -1165,6 +1167,75 @@ def verify_authority_expansion_child_pack(
         raise HTTPException(status_code=422, detail=message) from exc
 
     return verification_record.model_dump(mode="json")
+
+
+@app.post(
+    "/v1/cases/{case_id}/drafts/{draft_id}/authority-expansion-plans/{plan_id}/child-packs/{child_pack_id}/promote",
+    response_model=AuthorityPackPromotionResponse,
+)
+def promote_authority_expansion_child_pack(
+    case_id: str,
+    draft_id: str,
+    plan_id: str,
+    child_pack_id: str,
+    request: AuthorityPackPromotionRequest | None = None,
+    auth: AuthContext = Depends(require_auth_context),
+) -> dict[str, object]:
+    promotion_request = request or AuthorityPackPromotionRequest()
+    try:
+        with session_scope() as session:
+            repo = LegalWorkspaceRepository(session)
+            case_context = _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+            updated_plan, promotion_record = repo.promote_authority_expansion_child_pack(
+                case_id=case_id,
+                draft_id=draft_id,
+                plan_id=plan_id,
+                child_pack_id=child_pack_id,
+                pack_item_ids=promotion_request.pack_item_ids,
+                reviewer_note=promotion_request.reviewer_note,
+                promoted_by_user_id=auth.user_id,
+            )
+            repo.record_audit_event(
+                organization_id=case_context.organization_id,
+                case_id=case_id,
+                user_id=auth.user_id,
+                event_type="authority_pack_expansion.promoted",
+                entity_type="draft",
+                entity_id=draft_id,
+                after_state={
+                    "plan_id": plan_id,
+                    "child_pack_id": child_pack_id,
+                    "promotion_id": promotion_record.promotion_id,
+                    "promoted_pack_item_ids": promotion_record.promoted_pack_item_ids,
+                    "promoted_item_count": promotion_record.promoted_item_count,
+                    "citable": promotion_record.citable,
+                },
+                metadata={
+                    "approval_basis": promotion_record.approval_basis,
+                    "authority_candidates_are_citable": True,
+                    "promotion_boundary": "verified_child_pack_only",
+                },
+            )
+    except HTTPException:
+        raise
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        message = str(exc)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=404, detail=message) from exc
+        if "already promoted" in message.lower():
+            raise HTTPException(status_code=409, detail=message) from exc
+        raise HTTPException(status_code=422, detail=message) from exc
+
+    return AuthorityPackPromotionResponse(
+        case_id=case_id,
+        draft_id=draft_id,
+        plan_id=plan_id,
+        child_pack_id=child_pack_id,
+        promotion_record=promotion_record,
+        authority_pack_expansion_plan=updated_plan,
+    ).model_dump(mode="json")
 
 
 @app.get("/v1/cases/{case_id}/drafts", response_model=DraftListResponse)

@@ -7,6 +7,7 @@ from sl_legal_rag.models import (
     AgentResearchPlan,
     AgentToolTrace,
     AuthorityPackExpansionPlan,
+    AuthorityPackPromotionRecord,
     AuthorityPackItemVerification,
     AuthorityPackVerificationRecord,
     AuthorityExpansionCandidate,
@@ -421,3 +422,107 @@ def test_phase_25_verified_authority_item_rejects_missing_anchor() -> None:
                 "reviewer_note": "Invalid verified record.",
             }
         )
+
+
+def test_phase_26_authority_pack_promotion_requires_verified_items() -> None:
+    verified_item = {
+        "child_pack_id": "pack_child_001",
+        "pack_item_id": "pack_item_001",
+        "document_id": "doc_001",
+        "title": "Supreme Court Judgment",
+        "document_type": "judgment",
+        "source_id": "SC",
+        "authority_level": 3,
+        "citation": "SC Appeal No. 1/2020",
+        "anchor_status": "anchored",
+        "anchor_count": 1,
+        "page_text_available": True,
+        "verification_status": "verified",
+        "requires_lawyer_review": False,
+        "issues": [],
+        "reviewer_note": "Anchored authority candidate; still non-citable until controlled promotion.",
+    }
+    promotion = AuthorityPackPromotionRecord.model_validate(
+        {
+            "promotion_id": "authpromote_001",
+            "plan_id": "authplan_001",
+            "request_index": 0,
+            "child_pack_id": "pack_child_001",
+            "child_pack_hash": "hash_001",
+            "promoted_pack_item_ids": ["pack_item_001"],
+            "promoted_item_count": 1,
+            "promoted_by_user_id": "user_001",
+            "promoted_at": "2026-05-30T09:00:00",
+            "items": [
+                {
+                    "child_pack_id": "pack_child_001",
+                    "pack_item_id": "pack_item_001",
+                    "document_id": "doc_001",
+                    "title": "Supreme Court Judgment",
+                    "document_type": "judgment",
+                    "source_id": "SC",
+                    "authority_level": 3,
+                    "citation": "SC Appeal No. 1/2020",
+                    "anchor_count": 1,
+                    "citable": True,
+                }
+            ],
+            "reviewer_note": "Promote verified authority for legal citation use.",
+        }
+    )
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_001",
+            "case_id": "case_001",
+            "draft_id": "draft_001",
+            "review_item_id": "review_001",
+            "parent_pack_id": "pack_001",
+            "status": "executed",
+            "candidate_ids": ["cand_001"],
+            "expansion_requests": [
+                {
+                    "query": "SC Appeal No. 1/2020 Supreme Court trademark confusion",
+                    "query_class": "case_law_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 3]},
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+            "executed_pack_ids": ["pack_child_001"],
+            "execution_records": [
+                {
+                    "request_index": 0,
+                    "child_pack_id": "pack_child_001",
+                    "child_pack_hash": "hash_001",
+                    "item_count": 1,
+                    "executed_by_user_id": "user_001",
+                    "executed_at": "2026-05-30T08:40:00",
+                    "request_query_sha256": "e" * 64,
+                }
+            ],
+            "verification_records": [
+                {
+                    "plan_id": "authplan_001",
+                    "request_index": 0,
+                    "child_pack_id": "pack_child_001",
+                    "child_pack_hash": "hash_001",
+                    "item_count": 1,
+                    "verified_item_count": 1,
+                    "needs_review_item_count": 0,
+                    "status": "verified",
+                    "verified_by_user_id": "user_001",
+                    "verified_at": "2026-05-30T08:50:00",
+                    "items": [verified_item],
+                }
+            ],
+            "promotion_records": [promotion.model_dump(mode="json")],
+        }
+    )
+
+    assert plan.promotion_records[0].citable is True
+    assert plan.promotion_records[0].promoted_pack_item_ids == ["pack_item_001"]
+
+    rejected = plan.model_dump(mode="json")
+    rejected["promotion_records"][0]["promoted_pack_item_ids"] = ["pack_item_other"]
+    rejected["promotion_records"][0]["items"][0]["pack_item_id"] = "pack_item_other"
+    with pytest.raises(ValidationError, match="authority pack promotion records can only promote verified pack items"):
+        AuthorityPackExpansionPlan.model_validate(rejected)

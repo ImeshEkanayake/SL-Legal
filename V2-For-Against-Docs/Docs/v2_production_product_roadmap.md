@@ -620,6 +620,27 @@ Exit criteria:
 - Candidate authorities remain non-citable and unpromoted.
 - No V1 changes, raw data upload, or database migration.
 
+### Phase 26: Controlled Authority Promotion
+
+Outcome: verified authority expansion child-pack items can be promoted into citable matter-memory authority references under lawyer-controlled approval.
+
+Deliverables:
+
+- `authority_pack_promotion.v1` metadata records on authority expansion plans.
+- Promotion API endpoint for verified child packs.
+- Promotion validators that require executed, verified, anchored pack items.
+- Matter-memory updates for `promoted_to_sealed_pack` authority candidates.
+- Workspace display of promoted authority item counts and citable state.
+
+Exit criteria:
+
+- Promotion rejects unverified, partially verified, unanchored, or unknown pack items.
+- Promotion records are citable only when backed by verified child-pack items.
+- Candidate authorities receive `promoted_pack_item_ids` only after promotion.
+- Matter memory records the child pack as sealed and citable.
+- Duplicate promotion attempts are rejected.
+- No V1 changes, raw data upload, or database migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

@@ -25,6 +25,7 @@ from ..models import (
     AgentResearchPlan,
     AuthorityPackItemVerification,
     AuthorityPackExpansionPlan,
+    AuthorityPackPromotionRecord,
     AuthorityPackVerificationRecord,
     ClaimEvidenceAssessment,
     ClaimEvidenceAssessmentRequest,
@@ -4429,6 +4430,167 @@ class LegalWorkspaceRepository:
             },
         )
         return verification_record
+
+    def promote_authority_expansion_child_pack(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+        child_pack_id: str,
+        pack_item_ids: list[str],
+        reviewer_note: str,
+        promoted_by_user_id: str | None,
+    ) -> tuple[AuthorityPackExpansionPlan, AuthorityPackPromotionRecord]:
+        draft_state = self._draft_state_for_update(case_id=case_id, draft_id=draft_id)
+        if draft_state is None:
+            raise ValueError(f"Draft not found for authority promotion: {draft_id}")
+        metadata = dict(draft_state.get("metadata") or {})
+        plans = [
+            dict(item)
+            for item in metadata.get("authority_pack_expansion_plans") or []
+            if isinstance(item, dict)
+        ]
+        plan_index = next((index for index, item in enumerate(plans) if item.get("plan_id") == plan_id), None)
+        if plan_index is None:
+            raise ValueError(f"Authority expansion plan not found: {plan_id}")
+        plan = AuthorityPackExpansionPlan.model_validate(plans[plan_index])
+        if any(record.child_pack_id == child_pack_id for record in plan.promotion_records):
+            raise ValueError(f"Authority expansion child pack already promoted: {child_pack_id}")
+        verification_record = next(
+            (record for record in plan.verification_records if record.child_pack_id == child_pack_id),
+            None,
+        )
+        if verification_record is None:
+            raise ValueError(f"Authority expansion child pack is not verified: {child_pack_id}")
+        if verification_record.status != "verified":
+            raise ValueError("Only fully verified authority child packs can be promoted")
+
+        verified_items = {
+            item.pack_item_id: item
+            for item in verification_record.items
+            if item.verification_status == "verified" and not item.requires_lawyer_review
+        }
+        selected_item_ids = pack_item_ids or list(verified_items.keys())
+        if len(selected_item_ids) != len(set(selected_item_ids)):
+            raise ValueError("Authority promotion pack_item_ids must be unique")
+        unknown_item_ids = sorted(pack_item_id for pack_item_id in selected_item_ids if pack_item_id not in verified_items)
+        if unknown_item_ids:
+            raise ValueError(f"Authority promotion can only use verified pack items: {', '.join(unknown_item_ids)}")
+
+        promotion_record = AuthorityPackPromotionRecord.model_validate(
+            {
+                "promotion_id": new_id("authpromote"),
+                "plan_id": plan.plan_id,
+                "request_index": verification_record.request_index,
+                "child_pack_id": child_pack_id,
+                "child_pack_hash": verification_record.child_pack_hash,
+                "promoted_pack_item_ids": selected_item_ids,
+                "promoted_item_count": len(selected_item_ids),
+                "promoted_by_user_id": promoted_by_user_id,
+                "promoted_at": datetime.utcnow().isoformat(),
+                "approval_basis": "verified_child_pack",
+                "citable": True,
+                "items": [
+                    {
+                        "child_pack_id": child_pack_id,
+                        "pack_item_id": verified_items[pack_item_id].pack_item_id,
+                        "document_id": verified_items[pack_item_id].document_id,
+                        "title": verified_items[pack_item_id].title,
+                        "document_type": verified_items[pack_item_id].document_type,
+                        "source_id": verified_items[pack_item_id].source_id,
+                        "authority_level": verified_items[pack_item_id].authority_level,
+                        "citation": verified_items[pack_item_id].citation,
+                        "anchor_count": verified_items[pack_item_id].anchor_count,
+                        "citable": True,
+                    }
+                    for pack_item_id in selected_item_ids
+                ],
+                "reviewer_note": reviewer_note,
+            }
+        )
+        updated_plan = AuthorityPackExpansionPlan.model_validate(
+            {
+                **plan.model_dump(mode="json"),
+                "promotion_records": [
+                    *[record.model_dump(mode="json") for record in plan.promotion_records],
+                    promotion_record.model_dump(mode="json"),
+                ],
+            }
+        )
+
+        matter_memory = dict(metadata.get("matter_memory") or {})
+        candidate_authorities = [
+            self._promoted_authority_candidate(
+                candidate=candidate,
+                candidate_ids=set(plan.candidate_ids),
+                promoted_pack_item_ids=selected_item_ids,
+                promotion_record=promotion_record,
+            )
+            for candidate in matter_memory.get("candidate_authorities") or []
+        ]
+        sealed_pack_ids = list(dict.fromkeys([*(matter_memory.get("sealed_pack_ids") or []), child_pack_id]))
+        selected_authority_ids = list(dict.fromkeys([*(matter_memory.get("selected_authority_ids") or []), *plan.candidate_ids]))
+        review_state = dict(matter_memory.get("review_state") or {})
+        review_state.update(
+            {
+                "authority_candidates_are_citable": True,
+                "authority_pack_promotion_status": "promoted",
+                "latest_authority_pack_promotion_id": promotion_record.promotion_id,
+                "latest_authority_pack_promotion_child_pack_id": child_pack_id,
+            }
+        )
+        matter_memory.update(
+            {
+                "candidate_authorities": candidate_authorities,
+                "sealed_pack_ids": sealed_pack_ids,
+                "selected_authority_ids": selected_authority_ids,
+                "review_state": review_state,
+            }
+        )
+        metadata["matter_memory"] = matter_memory
+        self._store_authority_pack_expansion_plan_metadata(
+            case_id=case_id,
+            draft_id=draft_id,
+            metadata=metadata,
+            plans=plans,
+            plan_index=plan_index,
+            updated_plan=updated_plan,
+            review_state_updates=review_state,
+        )
+        return updated_plan, promotion_record
+
+    @staticmethod
+    def _promoted_authority_candidate(
+        *,
+        candidate: Any,
+        candidate_ids: set[str],
+        promoted_pack_item_ids: list[str],
+        promotion_record: AuthorityPackPromotionRecord,
+    ) -> dict[str, Any]:
+        candidate_data = dict(candidate) if isinstance(candidate, dict) else {"candidate_id": str(candidate)}
+        if candidate_data.get("candidate_id") not in candidate_ids:
+            return candidate_data
+        metadata = dict(candidate_data.get("metadata") or {})
+        metadata.update(
+            {
+                "promotion_id": promotion_record.promotion_id,
+                "promoted_child_pack_id": promotion_record.child_pack_id,
+                "promoted_at": promotion_record.promoted_at.isoformat(),
+                "approval_basis": promotion_record.approval_basis,
+            }
+        )
+        candidate_data.update(
+            {
+                "source_boundary": "official_source",
+                "status": "promoted_to_sealed_pack",
+                "verification_status": "verified",
+                "promoted_pack_item_ids": promoted_pack_item_ids,
+                "reviewer_note": promotion_record.reviewer_note,
+                "metadata": metadata,
+            }
+        )
+        return candidate_data
 
     def _store_authority_pack_expansion_plan_metadata(
         self,

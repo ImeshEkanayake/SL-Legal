@@ -883,6 +883,18 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert verification_record.citable is False
             assert verification_record.items[0].anchor_status == "anchored"
             assert verification_record.items[0].citable is False
+            promoted_plan, promotion_record = repo.promote_authority_expansion_child_pack(
+                case_id=workspace.case_id,
+                draft_id=persisted_strategy.draft_id,
+                plan_id=expansion_plans[0]["plan_id"],
+                child_pack_id=child_pack_id,
+                pack_item_ids=[verification_record.items[0].pack_item_id],
+                reviewer_note="Promote verified authority for legal citation use.",
+                promoted_by_user_id=workspace.user_id,
+            )
+            assert promoted_plan.promotion_records[0].schema_version == "authority_pack_promotion.v1"
+            assert promotion_record.citable is True
+            assert promotion_record.promoted_pack_item_ids == [verification_record.items[0].pack_item_id]
             executed_draft = repo.get_draft_detail(case_id=workspace.case_id, draft_id=persisted_strategy.draft_id)
             assert executed_draft is not None
             assert (
@@ -894,7 +906,20 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 == "verified"
             )
             assert executed_draft["metadata"]["authority_pack_expansion_plans"][0]["verification_records"][0]["citable"] is False
-            assert executed_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"] == "candidate_unverified"
+            assert executed_draft["metadata"]["authority_pack_expansion_plans"][0]["promotion_records"][0]["citable"] is True
+            assert (
+                executed_draft["metadata"]["matter_memory"]["review_state"]["latest_authority_pack_promotion_id"]
+                == promotion_record.promotion_id
+            )
+            assert (
+                executed_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"]
+                == "promoted_to_sealed_pack"
+            )
+            assert (
+                executed_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["promoted_pack_item_ids"]
+                == [verification_record.items[0].pack_item_id]
+            )
+            assert child_pack_id in executed_draft["metadata"]["matter_memory"]["sealed_pack_ids"]
             assert repo.list_review_items(case_id=workspace.case_id, status="pending") == []
 
             audit_count = session.execute(

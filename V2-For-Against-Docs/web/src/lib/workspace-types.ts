@@ -333,6 +333,37 @@ export type AuthorityPackVerificationRecord = {
   reviewer_note: string;
 };
 
+export type AuthorityPackPromotionItem = {
+  schema_version: string;
+  child_pack_id: string;
+  pack_item_id: string;
+  document_id: string;
+  title: string;
+  document_type: string;
+  source_id: string;
+  authority_level: number;
+  citation: string;
+  anchor_count: number;
+  citable: boolean;
+};
+
+export type AuthorityPackPromotionRecord = {
+  schema_version: string;
+  promotion_id: string;
+  plan_id: string;
+  request_index: number;
+  child_pack_id: string;
+  child_pack_hash: string;
+  promoted_pack_item_ids: string[];
+  promoted_item_count: number;
+  promoted_by_user_id?: string | null;
+  promoted_at: string;
+  approval_basis: string;
+  citable: boolean;
+  items: AuthorityPackPromotionItem[];
+  reviewer_note: string;
+};
+
 export type AuthorityPackExpansionPlan = {
   schema_version: string;
   plan_id: string;
@@ -348,6 +379,7 @@ export type AuthorityPackExpansionPlan = {
   executed_pack_ids: string[];
   execution_records: AuthorityPackExpansionExecutionRecord[];
   verification_records: AuthorityPackVerificationRecord[];
+  promotion_records: AuthorityPackPromotionRecord[];
   citable: boolean;
   reviewer_note: string;
 };

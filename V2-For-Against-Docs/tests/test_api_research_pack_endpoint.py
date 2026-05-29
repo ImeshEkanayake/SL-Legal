@@ -14,6 +14,7 @@ from sl_legal_rag.api import CASE_STRUCTURE_BODY_LIMIT_BYTES, app
 from sl_legal_rag.metrics import METRICS
 from sl_legal_rag.models import (
     AuthorityPackExpansionPlan,
+    AuthorityPackPromotionRecord,
     AuthorityPackVerificationRecord,
     LegalResearchPack,
     PackItemSourceResponse,
@@ -556,6 +557,158 @@ def test_authority_pack_expansion_verify_endpoint_records_source_anchoring(monke
     assert calls["verification"]["child_pack_id"] == "pack_child"
     assert calls["audit_event"]["event_type"] == "authority_pack_expansion.verified"
     assert calls["audit_event"]["after_state"]["citable"] is False
+
+
+def test_authority_pack_expansion_promote_endpoint_records_citable_items(monkeypatch):
+    calls: dict[str, object] = {}
+    promotion_record = AuthorityPackPromotionRecord.model_validate(
+        {
+            "promotion_id": "authpromote_1",
+            "plan_id": "authplan_1",
+            "request_index": 0,
+            "child_pack_id": "pack_child",
+            "child_pack_hash": "hash_child",
+            "promoted_pack_item_ids": ["pack_child_item_001"],
+            "promoted_item_count": 1,
+            "promoted_by_user_id": "user_1",
+            "promoted_at": "2026-05-30T09:15:00",
+            "items": [
+                {
+                    "child_pack_id": "pack_child",
+                    "pack_item_id": "pack_child_item_001",
+                    "document_id": "doc_1",
+                    "title": "Supreme Court Judgment",
+                    "document_type": "judgment",
+                    "source_id": "SC",
+                    "authority_level": 3,
+                    "citation": "SC Appeal No. 1/2020",
+                    "anchor_count": 1,
+                    "citable": True,
+                }
+            ],
+            "reviewer_note": "Promote verified authority for legal citation use.",
+        }
+    )
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_1",
+            "case_id": "case_1",
+            "draft_id": "draft_1",
+            "review_item_id": "review_1",
+            "parent_pack_id": "pack_parent",
+            "status": "executed",
+            "candidate_ids": ["authcand_1"],
+            "expansion_requests": [
+                {
+                    "query": "Supreme Court case-law on trademark confusion",
+                    "query_class": "case_law_lookup",
+                    "filters": {"require_official": True, "authority_levels": [1, 3]},
+                    "max_pack_items": 4,
+                    "max_pack_tokens": 3000,
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+            "executed_pack_ids": ["pack_child"],
+            "execution_records": [
+                {
+                    "request_index": 0,
+                    "child_pack_id": "pack_child",
+                    "child_pack_hash": "hash_child",
+                    "item_count": 1,
+                    "executed_by_user_id": "user_1",
+                    "executed_at": "2026-05-30T09:05:00",
+                    "request_query_sha256": "f" * 64,
+                }
+            ],
+            "verification_records": [
+                {
+                    "plan_id": "authplan_1",
+                    "request_index": 0,
+                    "child_pack_id": "pack_child",
+                    "child_pack_hash": "hash_child",
+                    "item_count": 1,
+                    "verified_item_count": 1,
+                    "needs_review_item_count": 0,
+                    "status": "verified",
+                    "verified_by_user_id": "user_1",
+                    "verified_at": "2026-05-30T09:10:00",
+                    "items": [
+                        {
+                            "child_pack_id": "pack_child",
+                            "pack_item_id": "pack_child_item_001",
+                            "document_id": "doc_1",
+                            "title": "Supreme Court Judgment",
+                            "document_type": "judgment",
+                            "source_id": "SC",
+                            "authority_level": 3,
+                            "citation": "SC Appeal No. 1/2020",
+                            "anchor_status": "anchored",
+                            "anchor_count": 1,
+                            "page_text_available": True,
+                            "verification_status": "verified",
+                            "requires_lawyer_review": False,
+                            "issues": [],
+                            "reviewer_note": "Anchored authority candidate; still non-citable until controlled promotion.",
+                        }
+                    ],
+                }
+            ],
+            "promotion_records": [promotion_record.model_dump(mode="json")],
+        }
+    )
+
+    class FakeRepository:
+        def __init__(self, _session):
+            pass
+
+        def case_context(self, case_id: str):
+            assert case_id == "case_1"
+            return SimpleNamespace(organization_id="org_1", created_by_user_id="user_1")
+
+        def user_has_case_permission(self, *, case_id: str, user_id: str):
+            assert case_id == "case_1"
+            assert user_id == "user_1"
+            return True
+
+        def promote_authority_expansion_child_pack(self, **kwargs):
+            calls["promotion"] = kwargs
+            assert kwargs["pack_item_ids"] == ["pack_child_item_001"]
+            assert kwargs["promoted_by_user_id"] == "user_1"
+            return plan, promotion_record
+
+        def record_audit_event(self, **kwargs):
+            calls["audit_event"] = kwargs
+            return 1
+
+    @contextmanager
+    def fake_session_scope():
+        yield object()
+
+    monkeypatch.setattr("sl_legal_rag.api.LegalWorkspaceRepository", FakeRepository)
+    monkeypatch.setattr("sl_legal_rag.api.session_scope", fake_session_scope)
+
+    target = "/v1/cases/case_1/drafts/draft_1/authority-expansion-plans/authplan_1/child-packs/pack_child/promote"
+    body = {
+        "pack_item_ids": ["pack_child_item_001"],
+        "reviewer_note": "Promote verified authority for legal citation use.",
+    }
+    body_bytes = json.dumps(body).encode("utf-8")
+    response = TestClient(app).post(
+        target,
+        content=body_bytes,
+        headers={
+            **signed_headers(monkeypatch, method="POST", target=target, body=body_bytes),
+            "Content-Type": "application/json",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["promotion_record"]["schema_version"] == "authority_pack_promotion.v1"
+    assert data["promotion_record"]["citable"] is True
+    assert data["promotion_record"]["promoted_pack_item_ids"] == ["pack_child_item_001"]
+    assert calls["audit_event"]["event_type"] == "authority_pack_expansion.promoted"
+    assert calls["audit_event"]["after_state"]["citable"] is True
 
 
 def test_authority_pack_expansion_execute_endpoint_reserves_before_retrieval(monkeypatch):
