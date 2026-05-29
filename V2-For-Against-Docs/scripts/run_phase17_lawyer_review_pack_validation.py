@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import signal
 import sys
 import time
@@ -33,8 +34,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--report-json", default=str(DEFAULT_REPORT_JSON))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--case-id", default="industrial_disputes_union_bargaining")
-    parser.add_argument("--top-documents", type=int, default=10)
-    parser.add_argument("--chunk-chars", type=int, default=1800)
+    parser.add_argument("--top-documents", type=int, default=25)
+    parser.add_argument("--chunk-chars", type=int, default=4000)
     parser.add_argument("--max-completion-tokens", type=int, default=12000)
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--azure-env-file", default=None)
@@ -78,6 +79,71 @@ def clean_text(value: object, *, max_chars: int | None = None) -> str:
     return text
 
 
+def authority_identifier_for_document(document: dict[str, Any]) -> dict[str, str]:
+    document_type = str(document.get("document_type") or "Unknown")
+    title = clean_text(document.get("title")) or "Retrieved authority"
+    year = str(document.get("year") or "undated")
+    lower_type = document_type.lower()
+    if "gazette" in lower_type:
+        match = re.search(r"\b(?:extraordinary\s+|ordinary\s+)?gazette\s+(\d{3,4}/\d{1,3})\b", title, re.IGNORECASE)
+        identifier = f"Gazette No. {match.group(1)}" if match else clean_text(title, max_chars=140)
+        return {
+            "authority_type": document_type,
+            "authority_identifier": identifier,
+            "citation_label": f"{document_type} {identifier.replace('Gazette ', '')} ({year})",
+        }
+    if "supreme court" in lower_type:
+        case_number = extract_case_number(title)
+        identifier = case_number or clean_text(title, max_chars=140)
+        return {
+            "authority_type": "Supreme Court",
+            "authority_identifier": identifier,
+            "citation_label": f"Supreme Court {identifier}",
+        }
+    if "court of appeal" in lower_type:
+        case_number = extract_case_number(title)
+        identifier = case_number or clean_text(title, max_chars=140)
+        return {
+            "authority_type": "Court of Appeal",
+            "authority_identifier": identifier,
+            "citation_label": f"Court of Appeal {identifier}",
+        }
+    if "law report" in lower_type:
+        case_number = extract_case_number(title)
+        identifier = case_number or clean_text(title, max_chars=140)
+        return {
+            "authority_type": "Law Report",
+            "authority_identifier": identifier,
+            "citation_label": f"Law Report {identifier}",
+        }
+    if lower_type == "act" or "ordinance" in lower_type:
+        act_match = re.search(r"\b([A-Z][A-Za-z,()' -]+(?:Act|Ordinance)(?:\s+No\.?\s+\d+\s+of\s+\d{4})?)", title)
+        identifier = clean_text(act_match.group(1) if act_match else title, max_chars=140)
+        return {
+            "authority_type": document_type,
+            "authority_identifier": identifier,
+            "citation_label": identifier,
+        }
+    return {
+        "authority_type": document_type,
+        "authority_identifier": clean_text(title, max_chars=140),
+        "citation_label": f"{document_type}: {clean_text(title, max_chars=140)}",
+    }
+
+
+def extract_case_number(title: str) -> str | None:
+    patterns = [
+        r"\b(?:SC|S\.C\.|Supreme Court)\s*(?:FR|SPL|Appeal|Application|Reference|TAB)?\s*(?:No\.?)?\s*[\w./-]+(?:\s*(?:of|/)\s*\d{4})?",
+        r"\b(?:CA|C\.A\.|Court of Appeal)\s*(?:Writ|Appeal|Application|Revision)?\s*(?:No\.?)?\s*[\w./-]+(?:\s*(?:of|/)\s*\d{4})?",
+        r"\bCase\s+No\.?\s*[\w./-]+(?:\s*(?:of|/)\s*\d{4})?",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, title, re.IGNORECASE)
+        if match:
+            return clean_text(match.group(0))
+    return None
+
+
 def document_chunks(document: dict[str, Any]) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -100,13 +166,12 @@ def document_chunks(document: dict[str, Any]) -> list[dict[str, Any]]:
 
 def text_for_document(document: dict[str, Any], *, chunk_chars: int) -> str:
     pieces: list[str] = []
-    for chunk in document_chunks(document)[:2]:
-        page_start = chunk.get("page_start")
-        page_end = chunk.get("page_end") or page_start
-        heading = f"Pages {page_start}-{page_end}: " if page_start else ""
+    chunks = document_chunks(document)
+    per_chunk_chars = max(800, chunk_chars // max(1, min(3, len(chunks))))
+    for chunk in chunks[:3]:
         text = chunk.get("chunk_text") or chunk.get("excerpt") or ""
         if text:
-            pieces.append(heading + clean_text(text, max_chars=chunk_chars // 2))
+            pieces.append(clean_text(text, max_chars=per_chunk_chars))
     if not pieces:
         pieces.append(clean_text(document.get("summary_search_excerpt"), max_chars=chunk_chars))
     return clean_text(" ".join(pieces), max_chars=chunk_chars)
@@ -125,6 +190,7 @@ def pack_from_case(case: dict[str, Any], *, top_documents: int, chunk_chars: int
     for index, document in enumerate(case.get("top_documents", [])[:top_documents], start=1):
         document_type = str(document.get("document_type") or "Unknown")
         title = clean_text(document.get("title")) or f"Retrieved document {index}"
+        authority = authority_identifier_for_document(document)
         chunk = (document_chunks(document) or [{}])[0]
         text = text_for_document(document, chunk_chars=chunk_chars)
         items.append(
@@ -137,7 +203,7 @@ def pack_from_case(case: dict[str, Any], *, top_documents: int, chunk_chars: int
                 source_id=str(document.get("source_id") or "unknown"),
                 authority_level=authority_level_for_document_type(document_type),
                 year=document.get("year"),
-                citation=f"{title} ({document.get('year') or 'undated'})",
+                citation=authority["citation_label"],
                 page_start=chunk.get("page_start"),
                 page_end=chunk.get("page_end"),
                 text=text,
@@ -158,6 +224,9 @@ def pack_from_case(case: dict[str, Any], *, top_documents: int, chunk_chars: int
                 metadata={
                     "phase": "phase17_lawyer_review_pack_validation",
                     "expected_document": bool(document.get("expected_document")),
+                    "authority_type": authority["authority_type"],
+                    "authority_identifier": authority["authority_identifier"],
+                    "authority_citation_label": authority["citation_label"],
                 },
             )
         )
@@ -212,6 +281,18 @@ def write_summary(case: dict[str, Any], draft: Any | None, report: dict[str, Any
         lines.extend(["## Result", "", report.get("error") or "No reasoning pack was generated.", ""])
     else:
         reasoning = draft.reasoning_pack
+        lines.extend(["## Pack Sources", ""])
+        for item in report.get("pack_sources", []):
+            lines.append(
+                f"- `{item['pack_item_id']}`: {item['authority_type']} - {item['authority_identifier']} "
+                f"(`{item['document_id']}`)"
+            )
+        source_lookup = {
+            str(item["pack_item_id"]): f"{item['authority_type']} - {item['authority_identifier']}"
+            for item in report.get("pack_sources", [])
+            if item.get("pack_item_id")
+        }
+        lines.append("")
         lines.extend(
             [
                 "## For / Against Brief",
@@ -229,6 +310,18 @@ def write_summary(case: dict[str, Any], draft: Any | None, report: dict[str, Any
                     f"- Strength: `{argument.strength}`",
                     f"- Confidence: `{argument.confidence}`",
                     f"- Lawyer verification required: `{argument.requires_lawyer_verification}`",
+                    "",
+                    "Cited authorities:",
+                    *(
+                        f"- `{pack_item_id}`: {source_lookup.get(pack_item_id, 'unknown authority')}"
+                        for pack_item_id in argument.pack_item_ids
+                    ),
+                    "",
+                    "Legal basis:",
+                    *(
+                        f"- {basis.authority}; section/reference: {basis.section}; pack IDs: {', '.join(basis.pack_item_ids)}"
+                        for basis in argument.legal_basis
+                    ),
                     "",
                     "Weaknesses:",
                     *(f"- {item}" for item in argument.weaknesses),
@@ -282,6 +375,17 @@ def main(argv: list[str]) -> int:
         "case_id": args.case_id,
         "pack_path": str(pack_path),
         "pack_item_count": len(pack.items),
+        "pack_sources": [
+            {
+                "pack_item_id": item.pack_item_id,
+                "document_id": item.document_id,
+                "document_type": item.document_type,
+                "authority_type": str(item.metadata.get("authority_type") or item.document_type),
+                "authority_identifier": str(item.metadata.get("authority_identifier") or item.citation),
+                "citation_label": item.citation,
+            }
+            for item in pack.items
+        ],
         "requested_output": "lawyer_review_pack",
         "draft_path": None,
         "summary_path": str(output_dir / "phase17_lawyer_review_pack_summary.md"),

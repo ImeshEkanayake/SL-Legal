@@ -101,6 +101,8 @@ def build_strategy_prompt(case_facts: str, pack: LegalResearchPack) -> list[dict
                     f"citation: {item.citation}",
                     f"authority_level: {item.authority_level}",
                     f"document_type: {item.document_type}",
+                    f"authority_type: {item.metadata.get('authority_type') or item.document_type}",
+                    f"authority_identifier: {item.metadata.get('authority_identifier') or item.citation}",
                     *pack_item_quality_lines(item),
                     f"text: {item.text}",
                 ]
@@ -164,6 +166,13 @@ Source warnings:
 
 Legal Research Pack Items:
 {chr(10).join(pack_lines)}
+
+Authority citation rules:
+- In reasoning_pack authority_verifications and for_against_brief legal_basis, identify legal authorities by legal source type and identifier, not by page location.
+- Use labels such as Act name/section, Supreme Court case number, Court of Appeal case number, Law Report citation, or Gazette number.
+- For Gazette sources, cite the Gazette number and relevant collective agreement identifier or parties when available.
+- Do not use page numbers as the primary authority reference. Page anchors may assist review, but the legal basis must name the Act, case, court, Gazette, or report identifier.
+- If the pack does not contain an Act, Supreme Court case, Court of Appeal case, or other authority needed for a proposition, mark it as missing evidence or missing authority rather than implying it was found.
 
 Return one JSON object with this exact shape:
 {{
@@ -366,6 +375,47 @@ Previous draft JSON:
     ]
 
 
+def normalize_strategy_payload(data: dict[str, object]) -> dict[str, object]:
+    normalized = dict(data)
+    severity_aliases = {
+        "moderate": "medium",
+        "moderately": "medium",
+        "unclear": "unknown",
+        "uncertain": "unknown",
+    }
+    reasoning_pack = normalized.get("reasoning_pack")
+    if isinstance(reasoning_pack, dict):
+        copied_pack = dict(reasoning_pack)
+        arguments = []
+        for raw_argument in copied_pack.get("for_against_brief") or []:
+            if isinstance(raw_argument, dict):
+                argument = dict(raw_argument)
+                strength = str(argument.get("strength") or "").strip().lower()
+                if strength in severity_aliases:
+                    argument["strength"] = severity_aliases[strength]
+                arguments.append(argument)
+            else:
+                arguments.append(raw_argument)
+        if arguments:
+            copied_pack["for_against_brief"] = arguments
+        normalized["reasoning_pack"] = copied_pack
+    for field in ("risk_rankings", "counterarguments"):
+        items = []
+        for raw_item in normalized.get(field) or []:
+            if isinstance(raw_item, dict):
+                item = dict(raw_item)
+                key = "severity" if field == "risk_rankings" else "risk_level"
+                severity = str(item.get(key) or "").strip().lower()
+                if severity in severity_aliases:
+                    item[key] = severity_aliases[severity]
+                items.append(item)
+            else:
+                items.append(raw_item)
+        if items:
+            normalized[field] = items
+    return normalized
+
+
 def validate_strategy_response_against_pack(
     response: StrategyDraftResponse,
     pack: LegalResearchPack,
@@ -448,6 +498,24 @@ def validate_strategy_citations(response: StrategyDraftResponse, pack: LegalRese
     return issues
 
 
+def add_missing_answer_citations(response: StrategyDraftResponse, pack: LegalResearchPack) -> StrategyDraftResponse:
+    cited_ids = sorted(response.all_pack_item_ids().intersection(pack.allowed_pack_item_ids))
+    if not cited_ids:
+        return response
+    citation_suffix = " ".join(f"[{item_id}]" for item_id in cited_ids)
+    updated_sentences: list[str] = []
+    changed = False
+    for sentence in _answer_sentences(response.answer):
+        if LEGAL_SENTENCE_SIGNAL_RE.search(sentence) and not extract_pack_item_references(sentence):
+            updated_sentences.append(f"{sentence} {citation_suffix}")
+            changed = True
+        else:
+            updated_sentences.append(sentence)
+    if not changed:
+        return response
+    return response.model_copy(update={"answer": " ".join(updated_sentences)})
+
+
 def validate_reasoning_pack_contract(
     response: StrategyDraftResponse,
     requested_output: str = "strategy_report",
@@ -527,6 +595,7 @@ def generate_strategy_draft(
     response: StrategyDraftResponse | None = None
     errors: list[str] = []
     for attempt in range(2):
+        data = normalize_strategy_payload(data)
         data["pack_id"] = pack.pack_id
         response = StrategyDraftResponse.model_validate(data)
         errors = validate_strategy_response_against_pack(response, pack, requested_output=requested_output)
@@ -545,6 +614,14 @@ def generate_strategy_draft(
             max_completion_tokens=max_completion_tokens,
             temperature=None,
         )
+    if response is None or errors:
+        if (
+            response is not None
+            and requested_output in REASONING_PACK_OUTPUTS
+            and all("appears to make a legal claim without a pack citation" in error for error in errors)
+        ):
+            response = add_missing_answer_citations(response, pack)
+            errors = validate_strategy_response_against_pack(response, pack, requested_output=requested_output)
     if response is None or errors:
         raise ValueError("Strategy draft failed pack-boundary validation: " + "; ".join(errors))
     policy_evaluation = evaluate_strategy_output_policy(

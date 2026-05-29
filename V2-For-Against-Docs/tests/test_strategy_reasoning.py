@@ -7,6 +7,7 @@ from sl_legal_rag.strategy import (
     build_citation_validation_summary,
     extract_pack_item_references,
     generate_strategy_draft,
+    normalize_strategy_payload,
     validate_reasoning_pack_contract,
     validate_strategy_response_against_pack,
     validate_strategy_citations,
@@ -424,6 +425,58 @@ def test_phase_4_generation_repairs_pack_boundary_validation_errors_once():
     assert draft.citation_validation["valid"] is True
     assert len(client.calls) == 2
     assert "failed validation" in client.calls[1]["messages"][1]["content"]
+
+
+def test_phase_4_generation_autocites_answer_after_repair_leaves_uncited_answer_sentence():
+    pack = reasoning_pack()
+    invalid = {
+        "pack_id": pack.pack_id,
+        "answer": "The retrieved authority may support the union.",
+        "claims": [
+            {
+                "claim": "The retrieved authority may support the union.",
+                "pack_item_ids": ["pack_reasoning_item_001"],
+            }
+        ],
+        "reasoning_pack": reasoning_pack_output(),
+        "counterarguments": [],
+        "risk_rankings": [],
+        "next_retrieval_questions": [],
+        "missing_authorities": [],
+        "warnings": [],
+    }
+    client = SequenceJsonClient([invalid, invalid])
+
+    draft = generate_strategy_draft(
+        case_facts="The employer refused to bargain.",
+        pack=pack,
+        client=client,
+        requested_output="lawyer_review_pack",
+    )
+
+    assert draft.citation_validation["valid"] is True
+    assert draft.answer.endswith("[pack_reasoning_item_001]")
+    assert len(client.calls) == 2
+
+
+def test_phase_4_generation_normalizes_common_strength_aliases():
+    payload = {
+        "reasoning_pack": {
+            "for_against_brief": [
+                {
+                    "strength": "moderate",
+                }
+            ]
+        },
+        "risk_rankings": [{"severity": "moderate"}],
+        "counterarguments": [{"risk_level": "moderate"}],
+    }
+
+    normalized = normalize_strategy_payload(payload)
+
+    assert normalized["reasoning_pack"]["for_against_brief"][0]["strength"] == "medium"
+    assert normalized["risk_rankings"][0]["severity"] == "medium"
+    assert normalized["counterarguments"][0]["risk_level"] == "medium"
 
 
 def test_phase_4_reasoning_pack_rejects_out_of_pack_citations():

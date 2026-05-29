@@ -17,6 +17,7 @@ class AzureChatConfig:
     chat_completions_url: str
     api_key: str
     api_version: str = "2025-04-01-preview"
+    timeout_seconds: int = 120
 
 
 class AzureChatClient:
@@ -57,7 +58,7 @@ class AzureChatClient:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
+            with urllib.request.urlopen(request, timeout=self.config.timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", "replace")
@@ -143,4 +144,5 @@ def load_azure_chat_config(
         chat_completions_url=required["AZURE_OPENAI_CHAT_COMPLETIONS_URL"],
         api_key=required["AZURE_OPENAI_API_KEY"],
         api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
+        timeout_seconds=int(os.getenv("AZURE_OPENAI_TIMEOUT_SECONDS", "120")),
     )
