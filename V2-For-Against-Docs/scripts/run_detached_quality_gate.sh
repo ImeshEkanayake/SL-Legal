@@ -46,6 +46,9 @@ case "${MODE}" in
   backend-db-staging-validation)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase34_backend_db_staging_validation.py --output logs/readiness/phase34-backend-db-staging-validation.json"
     ;;
+  hosted-evidence-capture-plan)
+    COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/build_phase35_hosted_evidence_capture_plan.py --output logs/readiness/phase35-hosted-evidence-capture-plan.json"
+    ;;
   load)
     COMMAND="PYTHONPATH=rag uv run --with pydantic python scripts/run_phase6_load_tests.py"
     ;;
@@ -84,7 +87,7 @@ case "${MODE}" in
     ;;
   *)
     echo "Unknown mode: ${MODE}" >&2
-    echo "Usage: $0 [full|backend|tests|frontend|phase29-browser-workflow|ui-deployment-readiness|ui-deployment-readiness-env|staging-cutover-dry-run|hosted-staging-execution-pack|hosted-staging-validation|backend-db-staging-validation|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance|release-attestation|signing-readiness|signing-plan] [run-id]" >&2
+    echo "Usage: $0 [full|backend|tests|frontend|phase29-browser-workflow|ui-deployment-readiness|ui-deployment-readiness-env|staging-cutover-dry-run|hosted-staging-execution-pack|hosted-staging-validation|backend-db-staging-validation|hosted-evidence-capture-plan|load|load-plan|readiness-pack|readiness-pack-production|artifact-report|artifact-report-production|asset-publication-plan|asset-verification|release-provenance|release-attestation|signing-readiness|signing-plan] [run-id]" >&2
     exit 2
     ;;
 esac

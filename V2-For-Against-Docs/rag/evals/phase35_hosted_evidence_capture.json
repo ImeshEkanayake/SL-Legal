@@ -1,0 +1,179 @@
+{
+  "schema_version": "phase35_hosted_evidence_capture.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-34-backend-db-staging-validation",
+  "phase_name": "V2 Phase 35: Hosted Evidence Capture Plan",
+  "execution_environment": "staging",
+  "description": "Secret-safe hosted capture plan for gathering Phase 34 real-backend and DB staging evidence without committing logs, raw data, signed sessions, or DB URLs.",
+  "prerequisites": [
+    {
+      "id": "phase34_validation_gate",
+      "title": "Phase 34 backend DB staging validation gate",
+      "type": "json_status",
+      "path": "logs/readiness/phase34-backend-db-staging-validation.json",
+      "accepted_statuses": [
+        "awaiting_backend_db_staging_evidence",
+        "backend_db_staging_validated"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase34_manifest",
+      "title": "Phase 34 backend DB staging validation manifest",
+      "type": "file",
+      "path": "rag/evals/phase34_backend_db_staging_validation.json",
+      "required": true
+    },
+    {
+      "id": "phase34_contract",
+      "title": "Phase 34 backend DB staging validation contract",
+      "type": "document",
+      "path": "Docs/v2_phase_34_backend_db_staging_validation_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase34_runbook",
+      "title": "Phase 34 backend DB staging validation runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_34_backend_db_staging_validation_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase34_release_note",
+      "title": "Phase 34 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_34_backend_db_staging_validation.md",
+      "required": true
+    }
+  ],
+  "required_environment": [
+    {
+      "name": "SL_LEGAL_STAGING_API_BASE_URL",
+      "category": "staging_api",
+      "required": true,
+      "url": true
+    },
+    {
+      "name": "SL_LEGAL_STAGING_USER_ID",
+      "category": "staging_auth",
+      "required": true
+    },
+    {
+      "name": "SL_LEGAL_AUTH_HMAC_SECRET",
+      "category": "staging_auth",
+      "required": true,
+      "secret": true,
+      "min_length": 32
+    },
+    {
+      "name": "SL_LEGAL_STAGING_CASE_ID",
+      "category": "staging_fixture",
+      "required": true
+    },
+    {
+      "name": "SL_LEGAL_STAGING_DOCUMENT_ID",
+      "category": "staging_fixture",
+      "required": true
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_DB_READONLY_CONFIRMED",
+      "category": "db_operator_confirmation",
+      "required": true,
+      "expected_value": "true"
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_DB_DOMAIN_WRITE_COUNT",
+      "category": "db_operator_confirmation",
+      "required": true,
+      "expected_value": "0"
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_DB_MIGRATION_COUNT",
+      "category": "db_operator_confirmation",
+      "required": true,
+      "expected_value": "0"
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_RAW_DATA_UPLOADED",
+      "category": "data_operator_confirmation",
+      "required": true,
+      "expected_value": "false"
+    }
+  ],
+  "capture_tasks": [
+    {
+      "id": "api_health_capture",
+      "title": "Capture hosted API health",
+      "type": "http_check",
+      "method": "GET",
+      "path_template": "/health",
+      "phase34_evidence_id": "api_health_real_backend",
+      "evidence_output": "logs/hosted-staging/phase34-api-health.json",
+      "writes_database": false,
+      "instructions": "Capture the API health response and add operator-confirmed backend and DB connectivity fields required by Phase 34."
+    },
+    {
+      "id": "signed_workspace_snapshot_smoke",
+      "title": "Capture signed workspace API smoke",
+      "type": "signed_http_check",
+      "method": "GET",
+      "path_template": "/v1/ui/cases/{case_id}/workspace",
+      "phase34_evidence_id": "signed_workspace_api_smoke",
+      "evidence_output": "logs/test-runs/phase34-platform-signed-workspace-smoke.log",
+      "writes_database": true,
+      "write_classification": "audit_event_only",
+      "instructions": "Run against a staging fixture case and record only status, route, response class, and exit_status=0."
+    },
+    {
+      "id": "authority_workflow_smoke",
+      "title": "Capture authority workflow smoke",
+      "type": "signed_http_check",
+      "method": "GET",
+      "path_template": "/v1/ui/cases/{case_id}/workspace",
+      "phase34_evidence_id": "authority_workflow_real_backend",
+      "evidence_output": "logs/test-runs/phase34-platform-authority-workflow.log",
+      "writes_database": true,
+      "write_classification": "audit_event_only",
+      "instructions": "Confirm workspace payload contains authority workflow metadata without promoting or executing candidate authorities."
+    },
+    {
+      "id": "document_source_status_smoke",
+      "title": "Capture document source status smoke",
+      "type": "signed_http_check",
+      "method": "GET",
+      "path_template": "/v1/ui/cases/{case_id}/documents/{document_id}/status",
+      "phase34_evidence_id": "document_source_real_backend",
+      "evidence_output": "logs/test-runs/phase34-platform-document-source-smoke.log",
+      "writes_database": true,
+      "write_classification": "audit_event_only",
+      "instructions": "Confirm document status/source metadata is retrievable without caching, uploading, or mutating document content."
+    },
+    {
+      "id": "db_readonly_health_template",
+      "title": "Prepare read-only DB health evidence",
+      "type": "operator_json",
+      "phase34_evidence_id": "db_readonly_health",
+      "evidence_output": "logs/hosted-staging/phase34-db-readonly-health.json",
+      "writes_database": false,
+      "instructions": "Operator records status=healthy, access_mode=read_only, and migration_applied=false after reviewing hosted DB configuration."
+    },
+    {
+      "id": "db_write_guard_template",
+      "title": "Prepare DB write guard evidence",
+      "type": "operator_json",
+      "phase34_evidence_id": "db_write_guard",
+      "evidence_output": "logs/hosted-staging/phase34-db-write-guard.json",
+      "writes_database": false,
+      "instructions": "Operator records no unintended domain writes, migration_count=0, and raw_data_uploaded=false."
+    },
+    {
+      "id": "operator_db_acceptance_template",
+      "title": "Prepare operator DB acceptance evidence",
+      "type": "operator_json",
+      "phase34_evidence_id": "operator_db_acceptance",
+      "evidence_output": "logs/hosted-staging/phase34-operator-db-acceptance.json",
+      "writes_database": false,
+      "instructions": "Operator accepts DB evidence after confirming no migration, no raw data upload, and write review completion."
+    }
+  ]
+}

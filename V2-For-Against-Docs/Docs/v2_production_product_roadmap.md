@@ -520,6 +520,50 @@ Exit criteria:
 - Citation validators reject out-of-pack citations and uncited legal conclusions.
 - No database migration is applied unless separately reviewed and approved.
 
+### Phase 19: Agentic Workspace Visibility
+
+Outcome: Phase 18 agentic metadata is visible in the lawyer workspace without changing the database schema.
+
+Deliverables:
+
+- Workspace draft summaries expose `agenticResearchPlan` and `matterMemory`.
+- Reasoning tab renders tool routes, clarification needs, authority candidates, matter memory, and sealed-pack boundaries.
+- TypeScript contracts cover tool traces, authority candidates, clarification needs, agentic plans, and matter memory.
+- Backend snapshot coverage confirms agentic metadata is read from existing draft metadata.
+- UI rendering coverage confirms candidate authorities remain visually separate from citable sealed-pack items.
+
+Exit criteria:
+
+- Agentic metadata appears in workspace draft summaries.
+- Clarification blockers are visible before preliminary opinions.
+- Tool traces show source boundary and status.
+- Candidate authorities are not shown as citable unless later promoted.
+- Frontend lint, component tests, backend metadata tests, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or final legal advice generation.
+
+### Phase 20: Agentic Review Queue Actions
+
+Outcome: agentic workflow metadata becomes actionable through existing review queue decisions while promotion and clarification-answering remain separate workflows.
+
+Deliverables:
+
+- `clarification_need` review items for unresolved blocking clarifications.
+- `authority_candidate` review items for non-citable authority candidates.
+- Existing review decision endpoint accepts the new review item types.
+- Audit events are written for the new review decisions.
+- Review queue UI and fixtures cover the new item types.
+- Contract documents the boundary that review decisions do not promote candidates or answer clarifications.
+
+Exit criteria:
+
+- Blocking clarification needs create high-priority review items.
+- Authority candidates create high-priority review items.
+- Review decisions work and are audited for both new item types.
+- Draft status is not mutated by clarification or authority-candidate decisions.
+- Candidate authorities remain non-citable and unpromoted.
+- Existing draft, claim, adverse, and missing-evidence review behavior remains green.
+- No V1 changes, raw data upload, database migration, official-source web execution, or final legal advice generation.
+
 ### Phase 21: Authority Pack Expansion Planning
 
 Outcome: approved authority-candidate reviews produce explicit pack-expansion plans that can be executed in a later phase, while candidate authorities remain non-citable until retrieved, anchored, verified, and sealed.
@@ -810,6 +854,29 @@ Exit criteria:
 - DB evidence proves `access_mode=read_only`, `write_count=0`, `migration_count=0`, and `raw_data_uploaded=false`.
 - Failed backend evidence, nonzero writes, migration evidence, or raw data upload evidence blocks production planning.
 - Detached backend tests, frontend quality gate, Phase 34 validation gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
+### Phase 35: Hosted Evidence Capture Plan
+
+Outcome: the Phase 34 backend/DB staging evidence is converted into a repeatable hosted capture plan with environment validation, signed smoke-test boundaries, and DB write classification before any real hosted evidence is attached.
+
+Deliverables:
+
+- Machine-readable hosted evidence capture manifest.
+- Capture-plan report builder that produces `ready_for_hosted_capture_configuration`, `ready_for_capture_execution`, or `blocked`.
+- Detached `hosted-evidence-capture-plan` mode.
+- Secret-safe environment gate for staging API base URL, staging user ID, case ID, document ID, auth signing secret, and operator DB confirmations.
+- Capture task list for `/health`, signed workspace smoke, authority workflow smoke, document-source smoke, read-only DB evidence, DB write guard evidence, and operator DB acceptance.
+- Write classification rules distinguishing read-only checks, allowed audit-event-only smoke checks, and prohibited domain writes.
+- Operator runbook for gathering Phase 34 evidence under ignored `logs/` paths.
+
+Exit criteria:
+
+- Local validation returns `ready_for_hosted_capture_configuration`.
+- Hosted environment validation can return `ready_for_capture_execution` only when required variables and operator confirmations are present.
+- Any capture task that can write to the DB must declare an allowed write classification.
+- The capture plan never prints secret values or writes Phase 34 evidence from local execution.
+- Detached backend tests, frontend quality gate, Phase 35 capture-plan gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
 ## Phase 8 Production Evidence Requirements

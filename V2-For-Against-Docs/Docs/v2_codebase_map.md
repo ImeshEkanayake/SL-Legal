@@ -596,6 +596,19 @@ Phase 34 adds the backend DB staging validation gate that consumes hosted eviden
 - `Docs/v2_phase_34_backend_db_staging_validation_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_34_backend_db_staging_validation.md`: release note and validation evidence.
 
+## V2 Phase 35 Hosted Evidence Capture Plan
+
+Phase 35 adds the hosted evidence capture plan for gathering Phase 34 backend/DB staging evidence. The active implementation uses:
+
+- `rag/evals/phase35_hosted_evidence_capture.json`: capture manifest with prerequisites, hosted environment requirements, and capture tasks.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_evidence_capture_manifest` and `build_hosted_evidence_capture_plan`.
+- `scripts/build_phase35_hosted_evidence_capture_plan.py`: report builder for local configuration and hosted execution readiness.
+- `scripts/run_detached_quality_gate.sh`: `hosted-evidence-capture-plan` detached mode.
+- `tests/test_phase35_hosted_evidence_capture.py`: coverage for local readiness, hosted environment validation, write-classification blockers, missing prerequisites, and CLI output.
+- `Docs/v2_phase_35_hosted_evidence_capture_contract.md`: capture contract.
+- `Docs/v2_phase_35_hosted_evidence_capture_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_35_hosted_evidence_capture.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

@@ -2045,6 +2045,192 @@ def build_backend_db_staging_validation_report(
     }
 
 
+def load_hosted_evidence_capture_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase35_hosted_evidence_capture.v1":
+        raise ValueError("hosted evidence capture manifest schema_version must be phase35_hosted_evidence_capture.v1")
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted evidence capture manifest must contain a non-empty prerequisites array")
+    required_environment = payload.get("required_environment")
+    if not isinstance(required_environment, list) or not required_environment:
+        raise ValueError("hosted evidence capture manifest must contain a non-empty required_environment array")
+    capture_tasks = payload.get("capture_tasks")
+    if not isinstance(capture_tasks, list) or not capture_tasks:
+        raise ValueError("hosted evidence capture manifest must contain a non-empty capture_tasks array")
+    return payload
+
+
+def evaluate_hosted_capture_environment(
+    payload: dict[str, Any],
+    *,
+    environment: dict[str, str],
+    include_environment: bool,
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = []
+    for item in payload.get("required_environment", []):
+        name = str(item.get("name") or "").strip()
+        if not name:
+            raise ValueError("hosted evidence capture environment name is required")
+        required = bool(item.get("required", True))
+        secret = bool(item.get("secret", False))
+        min_length = int(item.get("min_length") or 1)
+        expected_value = item.get("expected_value")
+        url_required = bool(item.get("url", False))
+        if not include_environment:
+            checks.append(
+                {
+                    "name": name,
+                    "category": str(item.get("category") or ""),
+                    "required": required,
+                    "secret": secret,
+                    "status": "not_evaluated",
+                    "summary": "hosted capture environment was not inspected",
+                }
+            )
+            continue
+        value = environment.get(name, "")
+        present = bool(value)
+        length_ok = len(value) >= min_length if present else False
+        url_ok = value.startswith(("https://", "http://")) if url_required and present else not url_required
+        expected_ok = str(value).strip().lower() == str(expected_value).strip().lower() if expected_value is not None else True
+        verified = (not required or present) and (not present or length_ok) and url_ok and expected_ok
+        status = "verified" if verified else "missing"
+        check = {
+            "name": name,
+            "category": str(item.get("category") or ""),
+            "required": required,
+            "secret": secret,
+            "status": status,
+            "present": present,
+            "meets_min_length": length_ok if secret else None,
+            "url_scheme_ok": url_ok if url_required else None,
+            "expected_value_matched": expected_ok if expected_value is not None else None,
+            "summary": "environment value is present and valid" if status == "verified" else "environment value is missing or invalid",
+        }
+        checks.append(check)
+        if required and status != "verified":
+            blockers.append({"id": f"env:{name}", "status": status, "summary": check["summary"]})
+    return {
+        "included": include_environment,
+        "checks": checks,
+        "blockers": blockers,
+        "summary": "Hosted capture environment evaluated without exposing secret values."
+        if include_environment
+        else "Hosted capture environment values were not inspected.",
+    }
+
+
+def hosted_capture_task_from_mapping(item: dict[str, Any], *, environment_ready: bool) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    task_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    task_type = str(item.get("type") or "").strip()
+    evidence_output = str(item.get("evidence_output") or "").strip()
+    if not task_id:
+        raise ValueError("hosted evidence capture task id is required")
+    if not title:
+        raise ValueError(f"{task_id} title is required")
+    if task_type not in {"http_check", "signed_http_check", "operator_json"}:
+        raise ValueError(f"{task_id} has unsupported hosted evidence capture task type: {task_type}")
+    if not evidence_output:
+        raise ValueError(f"{task_id} evidence_output is required")
+    writes_database = bool(item.get("writes_database", False))
+    write_classification = str(item.get("write_classification") or "").strip()
+    blockers: list[dict[str, str]] = []
+    if writes_database and write_classification not in {"audit_event_only"}:
+        blockers.append(
+            {
+                "id": task_id,
+                "status": "failed",
+                "summary": "DB-writing capture tasks must declare an allowed write classification",
+            }
+        )
+    method = str(item.get("method") or "").strip().upper()
+    path_template = str(item.get("path_template") or "").strip()
+    if task_type in {"http_check", "signed_http_check"} and (method not in {"GET", "POST"} or not path_template):
+        blockers.append({"id": task_id, "status": "failed", "summary": "HTTP capture task is incomplete"})
+    return {
+        "id": task_id,
+        "title": title,
+        "type": task_type,
+        "method": method,
+        "path_template": path_template,
+        "requires_signed_auth": task_type == "signed_http_check",
+        "writes_database": writes_database,
+        "write_classification": write_classification or None,
+        "evidence_output": evidence_output,
+        "phase34_evidence_id": str(item.get("phase34_evidence_id") or "").strip(),
+        "instructions": str(item.get("instructions") or "").strip(),
+        "status": "ready_for_hosted_execution" if environment_ready else "requires_hosted_environment",
+    }, blockers
+
+
+def build_hosted_evidence_capture_plan(
+    capture_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    environment: dict[str, str] | None = None,
+    include_environment: bool = False,
+) -> dict[str, Any]:
+    target_tag = str(capture_payload.get("target_release_tag") or "").strip()
+    repo = str(capture_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in capture_payload["prerequisites"]
+    ]
+    env_report = evaluate_hosted_capture_environment(
+        capture_payload,
+        environment=environment or {},
+        include_environment=include_environment,
+    )
+    environment_ready = include_environment and not env_report["blockers"]
+    capture_tasks: list[dict[str, Any]] = []
+    task_blockers: list[dict[str, str]] = []
+    for item in capture_payload["capture_tasks"]:
+        task, blockers = hosted_capture_task_from_mapping(item, environment_ready=environment_ready)
+        capture_tasks.append(task)
+        task_blockers.extend(blockers)
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    blockers = [*prerequisite_blockers, *env_report["blockers"], *task_blockers]
+    if blockers:
+        status = "blocked"
+    elif environment_ready:
+        status = "ready_for_capture_execution"
+    else:
+        status = "ready_for_hosted_capture_configuration"
+    return {
+        "schema_version": "phase35_hosted_evidence_capture.v1",
+        "source_schema_version": capture_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(capture_payload.get("execution_environment") or "staging"),
+        "prerequisites": prerequisites,
+        "environment": env_report,
+        "capture_tasks": capture_tasks,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "environment_checks": len(env_report["checks"]),
+            "capture_tasks": len(capture_tasks),
+            "signed_capture_tasks": sum(1 for item in capture_tasks if item["requires_signed_auth"]),
+            "db_writing_capture_tasks": sum(1 for item in capture_tasks if item["writes_database"]),
+            "blockers": len(blockers),
+        },
+    }
+
+
 def command_from_mapping(section: str, item: dict[str, Any]) -> OperationalCommand:
     name = str(item.get("name") or "").strip()
     command = item.get("command")
