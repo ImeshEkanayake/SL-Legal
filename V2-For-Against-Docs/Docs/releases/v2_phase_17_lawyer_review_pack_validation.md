@@ -15,12 +15,12 @@ Phase 17 validates the missing reasoning step after Phase 16 retrieval validatio
 Local validation completed on 2026-05-29:
 
 - Phase 17 lawyer-review pack runner:
-  - Log: `logs/test-runs/phase17-lawyer-review-pack-repair-20260528T181522Z.log`
+  - Log: `logs/test-runs/phase17-lawyer-review-pack-4docs-20260529T064712Z.log`
   - Result: `pass`.
-  - Pack items: `3`.
-  - Claims: `7`.
+  - Pack items: `4`.
+  - Claims: `6`.
   - For/against arguments: `2`.
-  - Missing evidence entries: `8`.
+  - Missing evidence entries: `11`.
   - Citation validation: `valid`, `0` issues.
 - Focused reasoning tests:
   - Command: `PYTHONPATH=rag uv run --with pytest --with pydantic --with pydantic-settings --with sqlalchemy --with 'psycopg[binary]' --with fastapi --with httpx --with pypdfium2 --with eval-type-backport python -m pytest tests/test_reasoning_pack_models.py tests/test_strategy_reasoning.py -q`
@@ -34,6 +34,11 @@ Generated outputs are local-only and intentionally ignored by Git:
 - `data/tracking/phase17_lawyer_review_pack_validation/phase17_lawyer_review_pack.json`
 - `data/tracking/phase17_lawyer_review_pack_validation/phase17_lawyer_review_pack_summary.md`
 - `data/tracking/phase17_lawyer_review_pack_validation/phase17_validation_report.json`
+- Corrected four-document validation artifacts are written under:
+  - `data/tracking/phase17_lawyer_review_pack_validation_4docs/phase17_research_pack.json`
+  - `data/tracking/phase17_lawyer_review_pack_validation_4docs/phase17_lawyer_review_pack.json`
+  - `data/tracking/phase17_lawyer_review_pack_validation_4docs/phase17_lawyer_review_pack_summary.md`
+  - `data/tracking/phase17_lawyer_review_pack_validation_4docs/phase17_validation_report.json`
 
 ## Boundary Notes
 
