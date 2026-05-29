@@ -3,6 +3,12 @@ import "server-only";
 import { createHash, createHmac } from "node:crypto";
 import {
   emptyWorkspaceSnapshot,
+  type AuthorityExpansionExecuteInput,
+  type AuthorityExpansionPromoteInput,
+  type AuthorityExpansionVerifyInput,
+  type AuthorityPackExpansionExecutionResponse,
+  type AuthorityPackPromotionResponse,
+  type AuthorityPackVerificationRecord,
   type ChatMessageCreateResult,
   type CreateCaseInput,
   type CreateCaseResult,
@@ -125,6 +131,54 @@ export async function recordWorkspaceReviewDecision(input: ReviewDecisionInput):
       },
     );
     return { ok: true, data: data.review_item };
+  } catch (error) {
+    return { ok: false, error: apiErrorMessage(error) };
+  }
+}
+
+export async function executeAuthorityExpansionRequest(
+  input: AuthorityExpansionExecuteInput,
+): Promise<WorkspaceActionResult<AuthorityPackExpansionExecutionResponse>> {
+  try {
+    const data = await signedJsonFetch<AuthorityPackExpansionExecutionResponse>(
+      `/v1/cases/${encodeURIComponent(input.caseId)}/drafts/${encodeURIComponent(input.draftId)}/authority-expansion-plans/${encodeURIComponent(input.planId)}/requests/${input.requestIndex}/execute`,
+      { method: "POST", json: {} },
+    );
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: apiErrorMessage(error) };
+  }
+}
+
+export async function verifyAuthorityExpansionChildPack(
+  input: AuthorityExpansionVerifyInput,
+): Promise<WorkspaceActionResult<AuthorityPackVerificationRecord>> {
+  try {
+    const data = await signedJsonFetch<AuthorityPackVerificationRecord>(
+      `/v1/cases/${encodeURIComponent(input.caseId)}/drafts/${encodeURIComponent(input.draftId)}/authority-expansion-plans/${encodeURIComponent(input.planId)}/child-packs/${encodeURIComponent(input.childPackId)}/verify`,
+      { method: "POST", json: {} },
+    );
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: apiErrorMessage(error) };
+  }
+}
+
+export async function promoteAuthorityExpansionChildPack(
+  input: AuthorityExpansionPromoteInput,
+): Promise<WorkspaceActionResult<AuthorityPackPromotionResponse>> {
+  try {
+    const data = await signedJsonFetch<AuthorityPackPromotionResponse>(
+      `/v1/cases/${encodeURIComponent(input.caseId)}/drafts/${encodeURIComponent(input.draftId)}/authority-expansion-plans/${encodeURIComponent(input.planId)}/child-packs/${encodeURIComponent(input.childPackId)}/promote`,
+      {
+        method: "POST",
+        json: {
+          pack_item_ids: input.packItemIds ?? [],
+          reviewer_note: input.reviewerNote?.trim() || "Promote verified authority items into matter memory for lawyer-approved citation use.",
+        },
+      },
+    );
+    return { ok: true, data };
   } catch (error) {
     return { ok: false, error: apiErrorMessage(error) };
   }

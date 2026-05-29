@@ -1,12 +1,27 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CaseWorkspace } from "./CaseWorkspace";
-import type { ChatMessageCreateResult, CreateCaseInput, CreateCaseResult, ReviewDecisionInput, ReviewItem, WorkspaceActionResult, WorkspaceSnapshot } from "@/lib/workspace-types";
+import type {
+  AuthorityExpansionExecuteInput,
+  AuthorityExpansionPromoteInput,
+  AuthorityExpansionVerifyInput,
+  AuthorityPackExpansionExecutionResponse,
+  AuthorityPackPromotionResponse,
+  AuthorityPackVerificationRecord,
+  ChatMessageCreateResult,
+  CreateCaseInput,
+  CreateCaseResult,
+  ReviewDecisionInput,
+  ReviewItem,
+  WorkspaceActionResult,
+  WorkspaceSnapshot,
+} from "@/lib/workspace-types";
 
 const routerPush = vi.fn();
+const routerRefresh = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: routerPush }),
+  useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
 }));
 
 const snapshot: WorkspaceSnapshot = {
@@ -361,10 +376,16 @@ function renderWorkspace({
   onCreateCase,
   onSendMessage,
   onReviewDecision,
+  onExecuteAuthorityExpansion,
+  onVerifyAuthorityExpansion,
+  onPromoteAuthorityExpansion,
 }: {
   onCreateCase?: (input: CreateCaseInput) => Promise<WorkspaceActionResult<CreateCaseResult>>;
   onSendMessage?: (input: { caseId: string; content: string; threadId?: string | null }) => Promise<WorkspaceActionResult<ChatMessageCreateResult>>;
   onReviewDecision?: (input: ReviewDecisionInput) => Promise<WorkspaceActionResult<ReviewItem>>;
+  onExecuteAuthorityExpansion?: (input: AuthorityExpansionExecuteInput) => Promise<WorkspaceActionResult<AuthorityPackExpansionExecutionResponse>>;
+  onVerifyAuthorityExpansion?: (input: AuthorityExpansionVerifyInput) => Promise<WorkspaceActionResult<AuthorityPackVerificationRecord>>;
+  onPromoteAuthorityExpansion?: (input: AuthorityExpansionPromoteInput) => Promise<WorkspaceActionResult<AuthorityPackPromotionResponse>>;
 } = {}) {
   return render(
     <CaseWorkspace
@@ -408,14 +429,144 @@ function renderWorkspace({
           },
         }))
       }
+      onExecuteAuthorityExpansion={
+        onExecuteAuthorityExpansion ??
+        vi.fn(async (input) => ({
+          ok: true,
+          data: {
+            case_id: input.caseId,
+            draft_id: input.draftId,
+            plan_id: input.planId,
+            request_index: input.requestIndex,
+            status: "executed",
+            parent_pack_id: "pack_1",
+            child_pack_id: "pack_child_1",
+            item_count: 1,
+            pack_hash: "hash_child_1",
+            authority_pack_expansion_plan: {
+              ...snapshot.drafts[0].authorityPackExpansionPlans![0],
+              status: "executed",
+              executed_pack_ids: ["pack_child_1"],
+              execution_records: [
+                {
+                  schema_version: "authority_pack_expansion_execution.v1",
+                  request_index: 0,
+                  child_pack_id: "pack_child_1",
+                  child_pack_hash: "hash_child_1",
+                  item_count: 1,
+                  executed_by_user_id: "user_1",
+                  executed_at: "2026-05-30T10:00:00Z",
+                  request_query_sha256: "a".repeat(64),
+                },
+              ],
+            },
+          },
+        }))
+      }
+      onVerifyAuthorityExpansion={
+        onVerifyAuthorityExpansion ??
+        vi.fn(async (input) => ({
+          ok: true,
+          data: authorityVerificationRecord(input.childPackId),
+        }))
+      }
+      onPromoteAuthorityExpansion={
+        onPromoteAuthorityExpansion ??
+        vi.fn(async (input) => ({
+          ok: true,
+          data: {
+            case_id: input.caseId,
+            draft_id: input.draftId,
+            plan_id: input.planId,
+            child_pack_id: input.childPackId,
+            promotion_record: authorityPromotionRecord(input.childPackId, input.packItemIds ?? ["pack_1_item_001"]),
+            authority_pack_expansion_plan: {
+              ...snapshot.drafts[0].authorityPackExpansionPlans![0],
+              promotion_records: [authorityPromotionRecord(input.childPackId, input.packItemIds ?? ["pack_1_item_001"])],
+            },
+          },
+        }))
+      }
     />,
   );
+}
+
+function authorityVerificationRecord(childPackId: string): AuthorityPackVerificationRecord {
+  return {
+    schema_version: "authority_pack_verification.v1",
+    plan_id: "authplan_1",
+    request_index: 0,
+    child_pack_id: childPackId,
+    child_pack_hash: "hash_child_1",
+    item_count: 1,
+    verified_item_count: 1,
+    needs_review_item_count: 0,
+    status: "verified",
+    verified_by_user_id: "user_1",
+    verified_at: "2026-05-30T10:05:00Z",
+    items: [
+      {
+        schema_version: "authority_pack_item_verification.v1",
+        child_pack_id: childPackId,
+        pack_item_id: "pack_1_item_001",
+        document_id: "doc_1",
+        title: "Industrial Disputes Act",
+        document_type: "Act",
+        source_id: "PARL_ACTS",
+        authority_level: 2,
+        citation: "Industrial Disputes Act s 1",
+        anchor_status: "anchored",
+        anchor_count: 1,
+        page_text_available: true,
+        verification_status: "verified",
+        requires_lawyer_review: false,
+        issues: [],
+        citable: false,
+        reviewer_note: "Anchored authority candidate; still non-citable until controlled promotion.",
+      },
+    ],
+    citable: false,
+    promotion_boundary: "verification_only_not_promoted",
+    reviewer_note: "Child pack verified for source anchoring only.",
+  };
+}
+
+function authorityPromotionRecord(childPackId: string, packItemIds: string[]) {
+  return {
+    schema_version: "authority_pack_promotion.v1",
+    promotion_id: "authpromote_1",
+    plan_id: "authplan_1",
+    request_index: 0,
+    child_pack_id: childPackId,
+    child_pack_hash: "hash_child_1",
+    promoted_pack_item_ids: packItemIds,
+    promoted_item_count: packItemIds.length,
+    promoted_by_user_id: "user_1",
+    promoted_at: "2026-05-30T10:10:00Z",
+    approval_basis: "verified_child_pack",
+    citable: true,
+    items: packItemIds.map((packItemId) => ({
+      schema_version: "authority_pack_promotion_item.v1",
+      child_pack_id: childPackId,
+      pack_item_id: packItemId,
+      document_id: "doc_1",
+      title: "Industrial Disputes Act",
+      document_type: "Act",
+      source_id: "PARL_ACTS",
+      authority_level: 2,
+      citation: "Industrial Disputes Act s 1",
+      anchor_count: 1,
+      citable: true,
+    })),
+    reviewer_note: "Promote verified authority items into matter memory for lawyer-approved citation use.",
+  };
 }
 
 describe("CaseWorkspace", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     routerPush.mockClear();
+    routerRefresh.mockClear();
   });
 
   it("renders Codex-like legal workspace regions from a snapshot", () => {
@@ -525,6 +676,115 @@ describe("CaseWorkspace", () => {
 
     expect(screen.getByRole("region", { name: "Research pack detail" })).toBeInTheDocument();
     expect(screen.getAllByText("Industrial Disputes Act s 1").length).toBeGreaterThan(0);
+  });
+
+  it("runs authority expansion workflow actions from the reasoning panel", async () => {
+    const executeAuthority = vi.fn(async (input: AuthorityExpansionExecuteInput) => ({
+      ok: true as const,
+      data: {
+        case_id: input.caseId,
+        draft_id: input.draftId,
+        plan_id: input.planId,
+        request_index: input.requestIndex,
+        status: "executed",
+        parent_pack_id: "pack_1",
+        child_pack_id: "pack_child_1",
+        item_count: 1,
+        pack_hash: "hash_child_1",
+        authority_pack_expansion_plan: {
+          ...snapshot.drafts[0].authorityPackExpansionPlans![0],
+          status: "executed",
+          executed_pack_ids: ["pack_child_1"],
+          execution_records: [
+            {
+              schema_version: "authority_pack_expansion_execution.v1",
+              request_index: 0,
+              child_pack_id: "pack_child_1",
+              child_pack_hash: "hash_child_1",
+              item_count: 1,
+              executed_by_user_id: "user_1",
+              executed_at: "2026-05-30T10:00:00Z",
+              request_query_sha256: "a".repeat(64),
+            },
+          ],
+        },
+      },
+    }));
+    const verifyAuthority = vi.fn(async (input: AuthorityExpansionVerifyInput) => ({
+      ok: true as const,
+      data: authorityVerificationRecord(input.childPackId),
+    }));
+    const promoteAuthority = vi.fn(async (input: AuthorityExpansionPromoteInput) => ({
+      ok: true as const,
+      data: {
+        case_id: input.caseId,
+        draft_id: input.draftId,
+        plan_id: input.planId,
+        child_pack_id: input.childPackId,
+        promotion_record: authorityPromotionRecord(input.childPackId, input.packItemIds ?? ["pack_1_item_001"]),
+        authority_pack_expansion_plan: {
+          ...snapshot.drafts[0].authorityPackExpansionPlans![0],
+          status: "executed",
+          executed_pack_ids: ["pack_child_1"],
+          execution_records: [
+            {
+              schema_version: "authority_pack_expansion_execution.v1",
+              request_index: 0,
+              child_pack_id: "pack_child_1",
+              child_pack_hash: "hash_child_1",
+              item_count: 1,
+              executed_by_user_id: "user_1",
+              executed_at: "2026-05-30T10:00:00Z",
+              request_query_sha256: "a".repeat(64),
+            },
+          ],
+          verification_records: [authorityVerificationRecord(input.childPackId)],
+          promotion_records: [authorityPromotionRecord(input.childPackId, input.packItemIds ?? ["pack_1_item_001"])],
+        },
+      },
+    }));
+    renderWorkspace({
+      onExecuteAuthorityExpansion: executeAuthority,
+      onVerifyAuthorityExpansion: verifyAuthority,
+      onPromoteAuthorityExpansion: promoteAuthority,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reasoning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Execute" }));
+
+    await waitFor(() =>
+      expect(executeAuthority).toHaveBeenCalledWith({
+        caseId: "case_1",
+        draftId: "draft_1",
+        planId: "authplan_1",
+        requestIndex: 0,
+      }),
+    );
+    expect(await screen.findByText("Created child pack pack_child_1.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await waitFor(() =>
+      expect(verifyAuthority).toHaveBeenCalledWith({
+        caseId: "case_1",
+        draftId: "draft_1",
+        planId: "authplan_1",
+        childPackId: "pack_child_1",
+      }),
+    );
+    expect(await screen.findByText("Verified 1 authority items in pack_child_1.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Promote" }));
+    await waitFor(() =>
+      expect(promoteAuthority).toHaveBeenCalledWith({
+        caseId: "case_1",
+        draftId: "draft_1",
+        planId: "authplan_1",
+        childPackId: "pack_child_1",
+        packItemIds: ["pack_1_item_001"],
+        reviewerNote: "Promote verified authority items into matter memory for lawyer-approved citation use.",
+      }),
+    );
+    expect(await screen.findByText("Promoted 1 authority items.")).toBeInTheDocument();
   });
 
   it("records review decisions from the review workspace", async () => {

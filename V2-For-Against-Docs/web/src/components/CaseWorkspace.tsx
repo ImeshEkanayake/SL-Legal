@@ -9,9 +9,17 @@ import { DocumentWorkspace, type WorkspaceTab } from "./DocumentWorkspace";
 import { ProjectRail } from "./ProjectRail";
 import { SourceInspector, type InspectorTab } from "./SourceInspector";
 import type {
+  AuthorityExpansionExecuteInput,
+  AuthorityExpansionPromoteInput,
+  AuthorityExpansionVerifyInput,
+  AuthorityPackExpansionExecutionResponse,
+  AuthorityPackExpansionPlan,
+  AuthorityPackPromotionResponse,
+  AuthorityPackVerificationRecord,
   ChatMessageCreateResult,
   CreateCaseInput,
   CreateCaseResult,
+  DraftSummary,
   ReviewDecisionInput,
   ReviewItem,
   WorkspaceActionResult,
@@ -27,9 +35,20 @@ type CaseWorkspaceProps = {
     threadId?: string | null;
   }) => Promise<WorkspaceActionResult<ChatMessageCreateResult>>;
   onReviewDecision: (input: ReviewDecisionInput) => Promise<WorkspaceActionResult<ReviewItem>>;
+  onExecuteAuthorityExpansion: (input: AuthorityExpansionExecuteInput) => Promise<WorkspaceActionResult<AuthorityPackExpansionExecutionResponse>>;
+  onVerifyAuthorityExpansion: (input: AuthorityExpansionVerifyInput) => Promise<WorkspaceActionResult<AuthorityPackVerificationRecord>>;
+  onPromoteAuthorityExpansion: (input: AuthorityExpansionPromoteInput) => Promise<WorkspaceActionResult<AuthorityPackPromotionResponse>>;
 };
 
-export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewDecision }: CaseWorkspaceProps) {
+export function CaseWorkspace({
+  snapshot,
+  onCreateCase,
+  onSendMessage,
+  onReviewDecision,
+  onExecuteAuthorityExpansion,
+  onVerifyAuthorityExpansion,
+  onPromoteAuthorityExpansion,
+}: CaseWorkspaceProps) {
   const router = useRouter();
   const firstDocumentId = snapshot.documents[0]?.documentId ?? null;
   const firstPackItemId = snapshot.researchPackItems[0]?.packItemId ?? null;
@@ -38,6 +57,7 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewD
   const [selectedPackItemId, setSelectedPackItemId] = useState(firstPackItemId);
   const [messages, setMessages] = useState(snapshot.messages);
   const [reviewItems, setReviewItems] = useState(snapshot.reviewItems);
+  const [drafts, setDrafts] = useState(snapshot.drafts);
   const [projectQuery, setProjectQuery] = useState("");
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -113,6 +133,63 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewD
     return result;
   }
 
+  async function executeAuthorityExpansion(input: AuthorityExpansionExecuteInput): Promise<WorkspaceActionResult<AuthorityPackExpansionExecutionResponse>> {
+    const result = await onExecuteAuthorityExpansion(input);
+    if (result.ok) {
+      replaceDraftAuthorityPlan(input.draftId, result.data.authority_pack_expansion_plan);
+      router.refresh();
+    }
+    return result;
+  }
+
+  async function verifyAuthorityExpansion(input: AuthorityExpansionVerifyInput): Promise<WorkspaceActionResult<AuthorityPackVerificationRecord>> {
+    const result = await onVerifyAuthorityExpansion(input);
+    if (result.ok) {
+      mergeDraftAuthorityPlanRecord(input.draftId, input.planId, "verification_records", result.data);
+      router.refresh();
+    }
+    return result;
+  }
+
+  async function promoteAuthorityExpansion(input: AuthorityExpansionPromoteInput): Promise<WorkspaceActionResult<AuthorityPackPromotionResponse>> {
+    const result = await onPromoteAuthorityExpansion(input);
+    if (result.ok) {
+      replaceDraftAuthorityPlan(input.draftId, result.data.authority_pack_expansion_plan);
+      router.refresh();
+    }
+    return result;
+  }
+
+  function replaceDraftAuthorityPlan(draftId: string, plan: AuthorityPackExpansionPlan) {
+    setDrafts((current) => updateDraftAuthorityPlan(current, draftId, plan));
+  }
+
+  function mergeDraftAuthorityPlanRecord(
+    draftId: string,
+    planId: string,
+    recordKey: "verification_records" | "promotion_records",
+    record: AuthorityPackVerificationRecord | AuthorityPackPromotionResponse["promotion_record"],
+  ) {
+    setDrafts((current) =>
+      current.map((draft) => {
+        if (draft.draftId !== draftId) {
+          return draft;
+        }
+        return {
+          ...draft,
+          authorityPackExpansionPlans: (draft.authorityPackExpansionPlans ?? []).map((plan) =>
+            plan.plan_id === planId
+              ? {
+                  ...plan,
+                  [recordKey]: [...((plan[recordKey] as unknown[]) ?? []).filter((item) => childPackIdForRecord(item) !== childPackIdForRecord(record)), record],
+                }
+              : plan,
+          ),
+        };
+      }),
+    );
+  }
+
   const workspaceHeading = workspaceViewHeading(activeWorkspaceView);
   const activeDocumentWorkspaceTab =
     activeWorkspaceView === "docs"
@@ -163,7 +240,7 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewD
                 activeCaseId={activeCaseId}
                 documents={snapshot.documents}
                 packItems={snapshot.researchPackItems}
-                drafts={snapshot.drafts}
+                drafts={drafts}
                 reviewItems={reviewItems}
                 selectedDocumentId={selectedDocumentId}
                 selectedPackItemId={selectedPackItemId}
@@ -174,6 +251,9 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewD
                 onSelectDocument={setSelectedDocumentId}
                 onSelectPackItem={selectPackItem}
                 onReviewDecision={recordReviewDecision}
+                onExecuteAuthorityExpansion={executeAuthorityExpansion}
+                onVerifyAuthorityExpansion={verifyAuthorityExpansion}
+                onPromoteAuthorityExpansion={promoteAuthorityExpansion}
               />
             )}
           </div>
@@ -181,7 +261,7 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewD
         <SourceInspector
           packItems={snapshot.researchPackItems}
           documents={snapshot.documents}
-          drafts={snapshot.drafts}
+          drafts={drafts}
           reviewItems={reviewItems}
           selectedPackItemId={selectedPackItemId}
           activeTab={activeWorkspaceView}
@@ -211,6 +291,29 @@ export function CaseWorkspace({ snapshot, onCreateCase, onSendMessage, onReviewD
       ) : null}
     </div>
   );
+}
+
+function updateDraftAuthorityPlan(drafts: DraftSummary[], draftId: string, plan: AuthorityPackExpansionPlan): DraftSummary[] {
+  return drafts.map((draft) => {
+    if (draft.draftId !== draftId) {
+      return draft;
+    }
+    const plans = draft.authorityPackExpansionPlans ?? [];
+    const exists = plans.some((candidate) => candidate.plan_id === plan.plan_id);
+    return {
+      ...draft,
+      authorityPackExpansionPlans: exists
+        ? plans.map((candidate) => (candidate.plan_id === plan.plan_id ? plan : candidate))
+        : [...plans, plan],
+    };
+  });
+}
+
+function childPackIdForRecord(record: unknown): string | undefined {
+  if (record && typeof record === "object" && "child_pack_id" in record) {
+    return String((record as { child_pack_id?: unknown }).child_pack_id ?? "");
+  }
+  return undefined;
 }
 
 function NewCaseDialog({

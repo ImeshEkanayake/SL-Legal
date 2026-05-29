@@ -662,6 +662,27 @@ Exit criteria:
 - Promotion eligibility includes Acts, Supreme Court/Court of Appeal/law-report authorities, and official Gazettes where applicable.
 - No V1 changes, raw data upload, or database migration.
 
+### Phase 28: Authority Workflow UI Integration
+
+Outcome: the lawyer workspace can drive the existing authority expansion, verification, and promotion backend workflow from the reasoning panel.
+
+Deliverables:
+
+- Server actions and signed API clients for authority expansion execution, child-pack verification, and controlled promotion.
+- Reasoning panel action controls for `Execute`, `Verify`, and `Promote`.
+- Workspace state refresh after each authority workflow action.
+- Inline display of child-pack IDs, verification item status, promoted authority items, and citable boundaries.
+- UI tests for the full Execute -> Verify -> Promote path.
+
+Exit criteria:
+
+- The UI calls the existing backend endpoints with case, draft, plan, request, child-pack, and pack-item identifiers.
+- Verified child-pack items remain non-citable until controlled promotion succeeds.
+- Promotion sends only verified, non-review pack item IDs.
+- Lawyer-facing status separates planned, executed, verified, promoted, citable, and not-citable states.
+- Detached backend tests and frontend quality gate pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

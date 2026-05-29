@@ -3,10 +3,19 @@
 import { revalidatePath } from "next/cache";
 import {
   createWorkspaceCase,
+  executeAuthorityExpansionRequest,
+  promoteAuthorityExpansionChildPack,
   recordWorkspaceReviewDecision,
   sendWorkspaceMessage,
+  verifyAuthorityExpansionChildPack,
 } from "@/lib/workspace-api";
 import type {
+  AuthorityExpansionExecuteInput,
+  AuthorityExpansionPromoteInput,
+  AuthorityExpansionVerifyInput,
+  AuthorityPackExpansionExecutionResponse,
+  AuthorityPackPromotionResponse,
+  AuthorityPackVerificationRecord,
   ChatMessageCreateResult,
   CreateCaseInput,
   CreateCaseResult,
@@ -37,6 +46,36 @@ export async function sendMessageAction(input: {
 
 export async function recordReviewDecisionAction(input: ReviewDecisionInput): Promise<WorkspaceActionResult<ReviewItem>> {
   const result = await recordWorkspaceReviewDecision(input);
+  if (result.ok) {
+    revalidatePath("/");
+  }
+  return result;
+}
+
+export async function executeAuthorityExpansionAction(
+  input: AuthorityExpansionExecuteInput,
+): Promise<WorkspaceActionResult<AuthorityPackExpansionExecutionResponse>> {
+  const result = await executeAuthorityExpansionRequest(input);
+  if (result.ok) {
+    revalidatePath("/");
+  }
+  return result;
+}
+
+export async function verifyAuthorityExpansionAction(
+  input: AuthorityExpansionVerifyInput,
+): Promise<WorkspaceActionResult<AuthorityPackVerificationRecord>> {
+  const result = await verifyAuthorityExpansionChildPack(input);
+  if (result.ok) {
+    revalidatePath("/");
+  }
+  return result;
+}
+
+export async function promoteAuthorityExpansionAction(
+  input: AuthorityExpansionPromoteInput,
+): Promise<WorkspaceActionResult<AuthorityPackPromotionResponse>> {
+  const result = await promoteAuthorityExpansionChildPack(input);
   if (result.ok) {
     revalidatePath("/");
   }

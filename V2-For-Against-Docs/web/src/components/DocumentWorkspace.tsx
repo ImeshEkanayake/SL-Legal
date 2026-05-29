@@ -9,6 +9,7 @@ import {
   Loader2,
   Maximize2,
   Network,
+  Play,
   RefreshCw,
   Scale,
   Search,
@@ -23,7 +24,13 @@ import { PdfDocumentViewer } from "./PdfDocumentViewer";
 import type {
   AgenticResearchPlan,
   AgentToolTrace,
+  AuthorityExpansionExecuteInput,
+  AuthorityExpansionPromoteInput,
+  AuthorityExpansionVerifyInput,
   AuthorityPackExpansionPlan,
+  AuthorityPackExpansionExecutionResponse,
+  AuthorityPackPromotionResponse,
+  AuthorityPackVerificationRecord,
   AuthorityExpansionCandidate,
   CaseDocument,
   ClarificationNeed,
@@ -55,6 +62,9 @@ type DocumentWorkspaceProps = {
   onSelectDocument: (documentId: string) => void;
   onSelectPackItem: (packItemId: string) => void;
   onReviewDecision: (input: ReviewDecisionInput) => Promise<{ ok: true; data: ReviewItem } | { ok: false; error: string }>;
+  onExecuteAuthorityExpansion: (input: AuthorityExpansionExecuteInput) => Promise<{ ok: true; data: AuthorityPackExpansionExecutionResponse } | { ok: false; error: string }>;
+  onVerifyAuthorityExpansion: (input: AuthorityExpansionVerifyInput) => Promise<{ ok: true; data: AuthorityPackVerificationRecord } | { ok: false; error: string }>;
+  onPromoteAuthorityExpansion: (input: AuthorityExpansionPromoteInput) => Promise<{ ok: true; data: AuthorityPackPromotionResponse } | { ok: false; error: string }>;
 };
 
 export function DocumentWorkspace({
@@ -72,6 +82,9 @@ export function DocumentWorkspace({
   onSelectDocument,
   onSelectPackItem,
   onReviewDecision,
+  onExecuteAuthorityExpansion,
+  onVerifyAuthorityExpansion,
+  onPromoteAuthorityExpansion,
 }: DocumentWorkspaceProps) {
   const selectedDocument = documents.find((document) => document.documentId === selectedDocumentId) ?? documents[0] ?? null;
   const selectedPackItem = packItems.find((item) => item.packItemId === selectedPackItemId) ?? packItems[0] ?? null;
@@ -112,6 +125,10 @@ export function DocumentWorkspace({
         <ReasoningTab
           drafts={drafts}
           packItems={packItems}
+          activeCaseId={activeCaseId}
+          onExecuteAuthorityExpansion={onExecuteAuthorityExpansion}
+          onVerifyAuthorityExpansion={onVerifyAuthorityExpansion}
+          onPromoteAuthorityExpansion={onPromoteAuthorityExpansion}
           onOpenPackItem={(packItemId) => {
             onSelectPackItem(packItemId);
             const item = packItems.find((candidate) => candidate.packItemId === packItemId);
@@ -919,10 +936,18 @@ function ResearchPackTab({
 function ReasoningTab({
   drafts,
   packItems,
+  activeCaseId,
+  onExecuteAuthorityExpansion,
+  onVerifyAuthorityExpansion,
+  onPromoteAuthorityExpansion,
   onOpenPackItem,
 }: {
   drafts: DraftSummary[];
   packItems: ResearchPackItem[];
+  activeCaseId: string | null;
+  onExecuteAuthorityExpansion: (input: AuthorityExpansionExecuteInput) => Promise<{ ok: true; data: AuthorityPackExpansionExecutionResponse } | { ok: false; error: string }>;
+  onVerifyAuthorityExpansion: (input: AuthorityExpansionVerifyInput) => Promise<{ ok: true; data: AuthorityPackVerificationRecord } | { ok: false; error: string }>;
+  onPromoteAuthorityExpansion: (input: AuthorityExpansionPromoteInput) => Promise<{ ok: true; data: AuthorityPackPromotionResponse } | { ok: false; error: string }>;
   onOpenPackItem: (packItemId: string) => void;
 }) {
   const [selectedDraftId, setSelectedDraftId] = useState(drafts[0]?.draftId ?? null);
@@ -980,7 +1005,12 @@ function ReasoningTab({
                 plan={selectedDraft.agenticResearchPlan ?? null}
                 memory={selectedDraft.matterMemory ?? null}
                 expansionPlans={selectedDraft.authorityPackExpansionPlans ?? []}
+                activeCaseId={activeCaseId}
+                draftId={selectedDraft.draftId}
                 packItems={packItems}
+                onExecuteAuthorityExpansion={onExecuteAuthorityExpansion}
+                onVerifyAuthorityExpansion={onVerifyAuthorityExpansion}
+                onPromoteAuthorityExpansion={onPromoteAuthorityExpansion}
                 onOpenPackItem={onOpenPackItem}
               />
             ) : null}
@@ -1007,13 +1037,23 @@ function AgenticResearchDetail({
   plan,
   memory,
   expansionPlans,
+  activeCaseId,
+  draftId,
   packItems,
+  onExecuteAuthorityExpansion,
+  onVerifyAuthorityExpansion,
+  onPromoteAuthorityExpansion,
   onOpenPackItem,
 }: {
   plan: AgenticResearchPlan | null;
   memory: MatterMemory | null;
   expansionPlans: AuthorityPackExpansionPlan[];
+  activeCaseId: string | null;
+  draftId: string;
   packItems: ResearchPackItem[];
+  onExecuteAuthorityExpansion: (input: AuthorityExpansionExecuteInput) => Promise<{ ok: true; data: AuthorityPackExpansionExecutionResponse } | { ok: false; error: string }>;
+  onVerifyAuthorityExpansion: (input: AuthorityExpansionVerifyInput) => Promise<{ ok: true; data: AuthorityPackVerificationRecord } | { ok: false; error: string }>;
+  onPromoteAuthorityExpansion: (input: AuthorityExpansionPromoteInput) => Promise<{ ok: true; data: AuthorityPackPromotionResponse } | { ok: false; error: string }>;
   onOpenPackItem: (packItemId: string) => void;
 }) {
   const traces = plan?.tool_traces ?? memory?.tool_traces ?? [];
@@ -1101,7 +1141,15 @@ function AgenticResearchDetail({
         <ReasoningSection title="Authority expansion plans" count={expansionPlans.length}>
           <div className="space-y-2">
             {expansionPlans.map((expansionPlan) => (
-              <AuthorityExpansionPlanCard key={expansionPlan.plan_id} expansionPlan={expansionPlan} />
+              <AuthorityExpansionPlanCard
+                key={expansionPlan.plan_id}
+                activeCaseId={activeCaseId}
+                draftId={draftId}
+                expansionPlan={expansionPlan}
+                onExecuteAuthorityExpansion={onExecuteAuthorityExpansion}
+                onVerifyAuthorityExpansion={onVerifyAuthorityExpansion}
+                onPromoteAuthorityExpansion={onPromoteAuthorityExpansion}
+              />
             ))}
           </div>
         </ReasoningSection>
@@ -1176,7 +1224,96 @@ function AuthorityCandidateCard({
   );
 }
 
-function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: AuthorityPackExpansionPlan }) {
+function AuthorityExpansionPlanCard({
+  activeCaseId,
+  draftId,
+  expansionPlan,
+  onExecuteAuthorityExpansion,
+  onVerifyAuthorityExpansion,
+  onPromoteAuthorityExpansion,
+}: {
+  activeCaseId: string | null;
+  draftId: string;
+  expansionPlan: AuthorityPackExpansionPlan;
+  onExecuteAuthorityExpansion: (input: AuthorityExpansionExecuteInput) => Promise<{ ok: true; data: AuthorityPackExpansionExecutionResponse } | { ok: false; error: string }>;
+  onVerifyAuthorityExpansion: (input: AuthorityExpansionVerifyInput) => Promise<{ ok: true; data: AuthorityPackVerificationRecord } | { ok: false; error: string }>;
+  onPromoteAuthorityExpansion: (input: AuthorityExpansionPromoteInput) => Promise<{ ok: true; data: AuthorityPackPromotionResponse } | { ok: false; error: string }>;
+}) {
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const executionByRequest = new Map(expansionPlan.execution_records.map((record) => [record.request_index, record]));
+  const verificationByChildPack = new Map(expansionPlan.verification_records.map((record) => [record.child_pack_id, record]));
+  const promotionByChildPack = new Map(expansionPlan.promotion_records.map((record) => [record.child_pack_id, record]));
+
+  function runAction(action: () => Promise<{ ok: true; message: string } | { ok: false; error: string }>) {
+    setActionMessage(null);
+    startTransition(async () => {
+      const result = await action();
+      setActionMessage(result.ok ? result.message : result.error);
+    });
+  }
+
+  function executeRequest(requestIndex: number) {
+    if (!activeCaseId) {
+      setActionMessage("Open a matter before executing authority expansion.");
+      return;
+    }
+    runAction(async () => {
+      const result = await onExecuteAuthorityExpansion({
+        caseId: activeCaseId,
+        draftId,
+        planId: expansionPlan.plan_id,
+        requestIndex,
+      });
+      return result.ok
+        ? { ok: true, message: `Created child pack ${result.data.child_pack_id}.` }
+        : result;
+    });
+  }
+
+  function verifyChildPack(childPackId: string) {
+    if (!activeCaseId) {
+      setActionMessage("Open a matter before verifying authority sources.");
+      return;
+    }
+    runAction(async () => {
+      const result = await onVerifyAuthorityExpansion({
+        caseId: activeCaseId,
+        draftId,
+        planId: expansionPlan.plan_id,
+        childPackId,
+      });
+      return result.ok
+        ? { ok: true, message: `Verified ${result.data.verified_item_count} authority items in ${childPackId}.` }
+        : result;
+    });
+  }
+
+  function promoteChildPack(childPackId: string) {
+    if (!activeCaseId) {
+      setActionMessage("Open a matter before promoting verified authorities.");
+      return;
+    }
+    const verification = verificationByChildPack.get(childPackId);
+    const packItemIds =
+      verification?.items
+        .filter((item) => item.verification_status === "verified" && !item.requires_lawyer_review)
+        .map((item) => item.pack_item_id) ?? [];
+    runAction(async () => {
+      const result = await onPromoteAuthorityExpansion({
+        caseId: activeCaseId,
+        draftId,
+        planId: expansionPlan.plan_id,
+        childPackId,
+        packItemIds,
+        reviewerNote: "Promote verified authority items into matter memory for lawyer-approved citation use.",
+      });
+      return result.ok
+        ? { ok: true, message: `Promoted ${result.data.promotion_record.promoted_item_count} authority items.` }
+        : result;
+    });
+  }
+
   return (
     <article className="rounded-md border border-[#c3c6d6] bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1196,6 +1333,44 @@ function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: Authorit
           ))}
         </div>
       ) : null}
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {expansionPlan.expansion_requests.map((request, index) => {
+          const execution = executionByRequest.get(index);
+          return (
+            <div key={`${expansionPlan.plan_id}-${index}`} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase text-[#003d9b]">{request.query_class}</p>
+                  <p className="mt-1 text-xs leading-5 text-[#1c1c1a]">{request.query}</p>
+                </div>
+                <StatusPill tone={execution ? "green" : "blue"}>{execution ? "executed" : "planned"}</StatusPill>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <StatusPill tone={request.filters.require_official ? "green" : "rose"}>
+                  {request.filters.require_official ? "official required" : "official missing"}
+                </StatusPill>
+                <StatusPill tone="neutral">{request.max_pack_items} items</StatusPill>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#003d9b] px-2.5 text-xs font-bold text-white hover:bg-[#002d73] disabled:bg-slate-300"
+                  type="button"
+                  disabled={isPending || Boolean(execution)}
+                  onClick={() => executeRequest(index)}
+                >
+                  {isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                  Execute
+                </button>
+                {execution ? (
+                  <span className="inline-flex h-8 max-w-full items-center rounded-md bg-[#f0edea] px-2.5 text-xs font-bold text-[#434654]">
+                    <span className="truncate">{execution.child_pack_id}</span>
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
       {expansionPlan.verification_records?.length ? (
         <div className="mt-3 space-y-2">
           {expansionPlan.verification_records.map((record) => (
@@ -1214,6 +1389,16 @@ function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: Authorit
                 </StatusPill>
                 <StatusPill tone={record.citable ? "rose" : "blue"}>{record.citable ? "citable" : "not citable"}</StatusPill>
               </div>
+              {record.items.length ? (
+                <div className="mt-2 grid gap-1">
+                  {record.items.slice(0, 4).map((item) => (
+                    <div key={item.pack_item_id} className="rounded-md bg-white px-2 py-1.5 text-xs leading-5 text-[#434654]">
+                      <span className="font-bold text-[#1c1c1a]">{item.citation || item.title}</span>
+                      <span> | {item.anchor_count} anchors | {item.verification_status}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -1233,24 +1418,49 @@ function AuthorityExpansionPlanCard({ expansionPlan }: { expansionPlan: Authorit
                 <StatusPill tone="green">{record.promoted_item_count} promoted</StatusPill>
                 <StatusPill tone="blue">{record.approval_basis}</StatusPill>
               </div>
+              {record.items.length ? (
+                <div className="mt-2 grid gap-1">
+                  {record.items.slice(0, 4).map((item) => (
+                    <div key={item.pack_item_id} className="rounded-md bg-white px-2 py-1.5 text-xs leading-5 text-[#285336]">
+                      <span className="font-bold">{item.citation}</span>
+                      <span> | {item.document_type} | {item.anchor_count} anchors</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
       ) : null}
-      <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {expansionPlan.expansion_requests.map((request, index) => (
-          <div key={`${expansionPlan.plan_id}-${index}`} className="rounded-md border border-[#d8dbe7] bg-[#fbfcff] p-2">
-            <p className="text-xs font-bold uppercase text-[#003d9b]">{request.query_class}</p>
-            <p className="mt-1 text-xs leading-5 text-[#1c1c1a]">{request.query}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <StatusPill tone={request.filters.require_official ? "green" : "rose"}>
-                {request.filters.require_official ? "official required" : "official missing"}
-              </StatusPill>
-              <StatusPill tone="neutral">{request.max_pack_items} items</StatusPill>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {expansionPlan.execution_records.map((execution) => {
+          const verification = verificationByChildPack.get(execution.child_pack_id);
+          const promotion = promotionByChildPack.get(execution.child_pack_id);
+          return (
+            <div key={execution.child_pack_id} className="flex flex-wrap gap-2">
+              <button
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#c3c6d6] bg-white px-2.5 text-xs font-bold text-[#003d9b] hover:border-[#003d9b] disabled:text-slate-400"
+                type="button"
+                disabled={isPending || Boolean(verification)}
+                onClick={() => verifyChildPack(execution.child_pack_id)}
+              >
+                {isPending ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                Verify
+              </button>
+              <button
+                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#0f766e] px-2.5 text-xs font-bold text-white hover:bg-[#115e59] disabled:bg-slate-300"
+                type="button"
+                disabled={isPending || !verification || verification.status !== "verified" || Boolean(promotion)}
+                onClick={() => promoteChildPack(execution.child_pack_id)}
+              >
+                {isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Promote
+              </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {actionMessage ? <p className="mt-3 rounded-md bg-[#f0edea] px-2 py-1.5 text-xs leading-5 text-[#434654]">{actionMessage}</p> : null}
     </article>
   );
 }

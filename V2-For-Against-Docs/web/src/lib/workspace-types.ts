@@ -384,6 +384,28 @@ export type AuthorityPackExpansionPlan = {
   reviewer_note: string;
 };
 
+export type AuthorityPackExpansionExecutionResponse = {
+  case_id: string;
+  draft_id: string;
+  plan_id: string;
+  request_index: number;
+  status: string;
+  parent_pack_id: string;
+  child_pack_id: string;
+  item_count: number;
+  pack_hash: string;
+  authority_pack_expansion_plan: AuthorityPackExpansionPlan;
+};
+
+export type AuthorityPackPromotionResponse = {
+  case_id: string;
+  draft_id: string;
+  plan_id: string;
+  child_pack_id: string;
+  promotion_record: AuthorityPackPromotionRecord;
+  authority_pack_expansion_plan: AuthorityPackExpansionPlan;
+};
+
 export type DraftSummary = {
   draftId: string;
   title: string;
@@ -412,6 +434,29 @@ export type ReviewDecisionInput = {
   reviewItemId: string;
   decision: Exclude<ReviewStatus, "pending">;
   comment?: string;
+};
+
+export type AuthorityExpansionExecuteInput = {
+  caseId: string;
+  draftId: string;
+  planId: string;
+  requestIndex: number;
+};
+
+export type AuthorityExpansionVerifyInput = {
+  caseId: string;
+  draftId: string;
+  planId: string;
+  childPackId: string;
+};
+
+export type AuthorityExpansionPromoteInput = {
+  caseId: string;
+  draftId: string;
+  planId: string;
+  childPackId: string;
+  packItemIds?: string[];
+  reviewerNote?: string;
 };
 
 export type WorkspaceSnapshot = {

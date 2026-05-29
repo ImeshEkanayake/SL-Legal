@@ -503,6 +503,20 @@ Phase 27 validates V2 across the full tuned 10-case set after the authority veri
 - `Docs/v2_phase_27_full_case_validation_contract.md`: validation contract.
 - `Docs/releases/v2_phase_27_full_case_validation.md`: release note and validation evidence.
 
+## V2 Phase 28 Authority Workflow UI Integration
+
+Phase 28 wires the existing authority expansion, verification, and promotion backend into the lawyer workspace UI without changing the database schema. The active implementation uses:
+
+- `web/src/lib/workspace-types.ts`: frontend input, response, verification, and promotion contracts for authority workflow actions.
+- `web/src/lib/workspace-api.ts`: signed backend clients for authority expansion execution, child-pack verification, and controlled promotion.
+- `web/src/app/actions.ts`: server actions that call the signed clients and revalidate the workspace.
+- `web/src/app/page.tsx`: passes authority workflow actions into the workspace shell.
+- `web/src/components/CaseWorkspace.tsx`: local draft-plan state updates and refresh after authority workflow actions.
+- `web/src/components/DocumentWorkspace.tsx`: reasoning-panel controls for `Execute`, `Verify`, and `Promote`, plus child-pack verification and promotion summaries.
+- `web/src/components/CaseWorkspace.test.tsx`: UI coverage for the full Execute -> Verify -> Promote path.
+- `Docs/v2_phase_28_authority_workflow_ui_contract.md`: UI integration contract.
+- `Docs/releases/v2_phase_28_authority_workflow_ui.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
