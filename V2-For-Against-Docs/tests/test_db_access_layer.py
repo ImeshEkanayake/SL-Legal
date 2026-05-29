@@ -613,6 +613,8 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             assert workspace_snapshot["drafts"][0]["draftId"] == persisted_strategy.draft_id
             assert workspace_snapshot["drafts"][0]["requestedOutput"] == "lawyer_review_pack"
             assert workspace_snapshot["drafts"][0]["reasoningPack"]["schema_version"] == "reasoning_pack.v1"
+            assert workspace_snapshot["drafts"][0]["agenticResearchPlan"]["schema_version"] == "agent_research_plan.v1"
+            assert workspace_snapshot["drafts"][0]["matterMemory"]["schema_version"] == "matter_memory.v1"
             assert {item["itemType"] for item in workspace_snapshot["reviewItems"]} == {
                 "draft",
                 "legal_claim",

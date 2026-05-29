@@ -207,6 +207,87 @@ const snapshot: WorkspaceSnapshot = {
         lawyer_verification_required: true,
         warnings: ["Pack-bounded draft only."],
       },
+      agenticResearchPlan: {
+        schema_version: "agent_research_plan.v1",
+        plan_id: "plan_1",
+        matter_id: "case_1",
+        requested_output: "lawyer_review_pack",
+        reviewer_summary: "Agentic research plan uses sealed pack pack_1 with 1 item.",
+        tool_traces: [
+          {
+            schema_version: "agent_tool_trace.v1",
+            trace_id: "trace_search_database",
+            tool_name: "search_database",
+            purpose: "Use the sealed database research pack.",
+            source_boundary: "database",
+            input_summary: { pack_id: "pack_1" },
+            result_count: 1,
+            status: "completed",
+            selected_outputs: [{ pack_id: "pack_1" }],
+            reviewer_note: "Database retrieval is the first authority source.",
+          },
+          {
+            schema_version: "agent_tool_trace.v1",
+            trace_id: "trace_expand_authorities",
+            tool_name: "expand_authorities",
+            purpose: "Convert missing authority tasks into candidates.",
+            source_boundary: "candidate_authorities",
+            input_summary: { missing_authority_count: 1 },
+            result_count: 1,
+            status: "completed",
+            selected_outputs: [{ authority_candidate_count: 1 }],
+            reviewer_note: "Candidates are not citations until promoted.",
+          },
+        ],
+        clarification_needs: [
+          {
+            clarification_id: "clarify_1",
+            category: "registration_number",
+            question: "What is the union registration number?",
+            reason: "Registration is needed before a stronger opinion.",
+            blocks_preliminary_opinion: true,
+          },
+        ],
+        authority_candidates: [
+          {
+            schema_version: "authority_expansion_candidate.v1",
+            candidate_id: "authcand_1",
+            title: "Current Act verification",
+            authority_type: "Act",
+            citation_or_identifier: "Current Act verification.",
+            source_boundary: "candidate_authorities",
+            originating_tool_trace_id: "trace_expand_authorities",
+            source_hint: "Missing evidence task",
+            status: "candidate_unverified",
+            verification_status: "requires_lawyer_review",
+            promoted_pack_item_ids: [],
+            reviewer_note: "Candidate only; retrieve, anchor, verify, and seal before citing as law.",
+          },
+        ],
+      },
+      matterMemory: {
+        schema_version: "matter_memory.v1",
+        matter_id: "case_1",
+        case_id: "case_1",
+        client_position: "union",
+        selected_authority_ids: ["AUTH_001"],
+        sealed_pack_ids: ["pack_1"],
+        candidate_authorities: [],
+        client_facts: ["The employer refused to bargain."],
+        adverse_material: ["The opposing party may argue the union was not qualifying."],
+        missing_evidence_tasks: ["Union registration certificate."],
+        clarification_needs: [
+          {
+            clarification_id: "clarify_1",
+            category: "registration_number",
+            question: "What is the union registration number?",
+            reason: "Registration is needed before a stronger opinion.",
+            blocks_preliminary_opinion: true,
+          },
+        ],
+        tool_traces: [],
+        review_state: { lawyer_review_required: true },
+      },
     },
   ],
   reviewItems: [
@@ -326,6 +407,12 @@ describe("CaseWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reasoning" }));
     expect(screen.getAllByRole("heading", { name: "Reasoning Pack" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "Reasoning pack detail" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Agentic research workflow" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tool route and matter memory" })).toBeInTheDocument();
+    expect(screen.getByText("search_database")).toBeInTheDocument();
+    expect(screen.getByText("What is the union registration number?")).toBeInTheDocument();
+    expect(screen.getByText("Current Act verification")).toBeInTheDocument();
+    expect(screen.getAllByText("The opposing party may argue the union was not qualifying.").length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "Preliminary opinion" })).toBeInTheDocument();
     expect(screen.getAllByText("Whether refusal to bargain is prohibited.").length).toBeGreaterThan(0);
 

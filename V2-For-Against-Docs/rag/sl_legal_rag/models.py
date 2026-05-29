@@ -1161,6 +1161,8 @@ class WorkspaceDraftSummary(BaseModel):
     contentPreview: str
     claimCount: int = Field(ge=0)
     reasoningPack: ReasoningPackOutput | None = None
+    agenticResearchPlan: AgentResearchPlan | None = None
+    matterMemory: MatterMemory | None = None
 
 
 class WorkspaceReviewItem(BaseModel):

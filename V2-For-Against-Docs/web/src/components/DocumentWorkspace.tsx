@@ -20,7 +20,19 @@ import {
 import type { FormEvent, ReactNode } from "react";
 import { useMemo, useState, useTransition } from "react";
 import { PdfDocumentViewer } from "./PdfDocumentViewer";
-import type { CaseDocument, DraftSummary, ReasoningPack, ResearchPackItem, ReviewDecisionInput, ReviewItem } from "@/lib/workspace-types";
+import type {
+  AgenticResearchPlan,
+  AgentToolTrace,
+  AuthorityExpansionCandidate,
+  CaseDocument,
+  ClarificationNeed,
+  DraftSummary,
+  MatterMemory,
+  ReasoningPack,
+  ResearchPackItem,
+  ReviewDecisionInput,
+  ReviewItem,
+} from "@/lib/workspace-types";
 
 export type WorkspaceTab = "documents" | "pack" | "drafts" | "reasoning" | "review";
 type DocumentCategoryId = "all" | "acts" | "gazettes" | "supreme_court" | "court_of_appeal" | "high_court" | "hazards" | "other";
@@ -940,6 +952,7 @@ function ReasoningTab({
                   <span className="mt-2 flex flex-wrap gap-1">
                     <StatusPill tone="blue">{draft.reasoningPack.issue_matrix.length} issues</StatusPill>
                     <StatusPill tone="rose">{draft.reasoningPack.missing_evidence_checklist.length} missing</StatusPill>
+                    {draft.agenticResearchPlan ? <StatusPill tone="green">{draft.agenticResearchPlan.tool_traces.length} tools</StatusPill> : null}
                   </span>
                 ) : null}
               </button>
@@ -957,8 +970,18 @@ function ReasoningTab({
                 <StatusPill tone="blue">{selectedDraft.claimCount} claims</StatusPill>
                 <StatusPill tone="neutral">Review {selectedDraft.reviewStatus ?? "open"}</StatusPill>
                 {selectedPack ? <StatusPill tone="green">{selectedPack.schema_version}</StatusPill> : null}
+                {selectedDraft.agenticResearchPlan ? <StatusPill tone="blue">{selectedDraft.agenticResearchPlan.schema_version}</StatusPill> : null}
               </div>
             </header>
+
+            {selectedDraft.agenticResearchPlan || selectedDraft.matterMemory ? (
+              <AgenticResearchDetail
+                plan={selectedDraft.agenticResearchPlan ?? null}
+                memory={selectedDraft.matterMemory ?? null}
+                packItems={packItems}
+                onOpenPackItem={onOpenPackItem}
+              />
+            ) : null}
 
             {selectedPack ? (
               <ReasoningPackDetail pack={selectedPack} packItems={packItems} onOpenPackItem={onOpenPackItem} />
@@ -975,6 +998,166 @@ function ReasoningTab({
         )}
       </section>
     </div>
+  );
+}
+
+function AgenticResearchDetail({
+  plan,
+  memory,
+  packItems,
+  onOpenPackItem,
+}: {
+  plan: AgenticResearchPlan | null;
+  memory: MatterMemory | null;
+  packItems: ResearchPackItem[];
+  onOpenPackItem: (packItemId: string) => void;
+}) {
+  const traces = plan?.tool_traces ?? memory?.tool_traces ?? [];
+  const clarificationNeeds = plan?.clarification_needs ?? memory?.clarification_needs ?? [];
+  const candidates = plan?.authority_candidates ?? memory?.candidate_authorities ?? [];
+  const promotedPackItemIds = candidates.flatMap((candidate) => candidate.promoted_pack_item_ids);
+
+  return (
+    <section className="space-y-4 rounded-md border border-[#c3c6d6] bg-[#f8fbff] p-4" aria-label="Agentic research workflow">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase text-[#003d9b]">Agentic workflow</p>
+          <h3 className="mt-1 text-lg font-semibold text-[#1c1c1a]">Tool route and matter memory</h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#434654]">
+            {plan?.reviewer_summary ?? "Matter memory is available for this draft."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <StatusPill tone="blue">{traces.length} tool steps</StatusPill>
+          <StatusPill tone={clarificationNeeds.some((need) => need.blocks_preliminary_opinion) ? "rose" : "green"}>
+            {clarificationNeeds.length} clarifications
+          </StatusPill>
+          <StatusPill tone="neutral">{candidates.length} candidates</StatusPill>
+        </div>
+      </div>
+
+      <section className="grid gap-3 xl:grid-cols-3" aria-label="Agentic metrics">
+        <Metric label="Sealed packs" value={String(memory?.sealed_pack_ids.length ?? 0)} />
+        <Metric label="Adverse memory" value={String(memory?.adverse_material.length ?? 0)} />
+        <Metric label="Missing tasks" value={String(memory?.missing_evidence_tasks.length ?? 0)} />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ReasoningSection title="Tool route" count={traces.length}>
+          <div className="space-y-2">
+            {traces.map((trace, index) => (
+              <ToolTraceRow key={trace.trace_id} index={index + 1} trace={trace} />
+            ))}
+          </div>
+        </ReasoningSection>
+
+        <ReasoningSection title="Clarification needs" count={clarificationNeeds.length}>
+          {clarificationNeeds.length === 0 ? (
+            <EmptyPanel text="No clarification blockers were recorded for this draft." />
+          ) : (
+            <div className="space-y-2">
+              {clarificationNeeds.map((need) => (
+                <ClarificationCard key={need.clarification_id} need={need} />
+              ))}
+            </div>
+          )}
+        </ReasoningSection>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ReasoningSection title="Authority candidates" count={candidates.length}>
+          {candidates.length === 0 ? (
+            <EmptyPanel text="No wider authority candidates were recorded." />
+          ) : (
+            <div className="space-y-2">
+              {candidates.map((candidate) => (
+                <AuthorityCandidateCard key={candidate.candidate_id} candidate={candidate} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+              ))}
+            </div>
+          )}
+        </ReasoningSection>
+
+        <ReasoningSection title="Matter memory" count={(memory?.client_facts.length ?? 0) + (memory?.missing_evidence_tasks.length ?? 0)}>
+          {memory ? (
+            <div className="space-y-3">
+              <ListBlock title="Client position" values={memory.client_position ? [memory.client_position] : []} tone="blue" />
+              <ListBlock title="Client facts" values={memory.client_facts.slice(0, 4)} />
+              <ListBlock title="Adverse material" values={memory.adverse_material.slice(0, 4)} tone="rose" />
+              <ListBlock title="Missing tasks" values={memory.missing_evidence_tasks.slice(0, 6)} tone="blue" />
+              <PackItemButtons packItemIds={promotedPackItemIds} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+            </div>
+          ) : (
+            <EmptyPanel text="Matter memory has not been recorded for this draft." />
+          )}
+        </ReasoningSection>
+      </section>
+    </section>
+  );
+}
+
+function ToolTraceRow({ index, trace }: { index: number; trace: AgentToolTrace }) {
+  return (
+    <article className="rounded-md border border-[#c3c6d6] bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase text-[#434654]">
+            Step {index} | {trace.source_boundary}
+          </p>
+          <h4 className="mt-1 truncate text-sm font-bold text-[#1c1c1a]">{trace.tool_name}</h4>
+        </div>
+        <StatusPill tone={trace.status === "completed" ? "green" : trace.status === "failed" ? "rose" : "blue"}>{trace.status}</StatusPill>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[#434654]">{trace.purpose}</p>
+      <p className="mt-2 text-xs leading-5 text-[#1c1c1a]">{trace.reviewer_note}</p>
+      <div className="mt-3">
+        <Metric label="Results" value={trace.result_count == null ? "planned" : String(trace.result_count)} />
+      </div>
+    </article>
+  );
+}
+
+function ClarificationCard({ need }: { need: ClarificationNeed }) {
+  return (
+    <article className={`rounded-md border p-3 ${need.blocks_preliminary_opinion ? "border-[#f0c7c7] bg-[#fff7f7]" : "border-[#c3c6d6] bg-white"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase text-[#434654]">{need.category}</p>
+        <StatusPill tone={need.blocks_preliminary_opinion ? "rose" : "blue"}>
+          {need.blocks_preliminary_opinion ? "blocks opinion" : "review"}
+        </StatusPill>
+      </div>
+      <h4 className="mt-2 text-sm font-bold text-[#1c1c1a]">{need.question}</h4>
+      <p className="mt-2 text-xs leading-5 text-[#434654]">{need.reason}</p>
+    </article>
+  );
+}
+
+function AuthorityCandidateCard({
+  candidate,
+  packItems,
+  onOpenPackItem,
+}: {
+  candidate: AuthorityExpansionCandidate;
+  packItems: ResearchPackItem[];
+  onOpenPackItem: (packItemId: string) => void;
+}) {
+  const isPromoted = candidate.status === "promoted_to_sealed_pack" && candidate.promoted_pack_item_ids.length > 0;
+  return (
+    <article className="rounded-md border border-[#c3c6d6] bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase text-[#434654]">{candidate.authority_type}</p>
+          <h4 className="mt-1 text-sm font-bold text-[#1c1c1a]">{candidate.title}</h4>
+        </div>
+        <StatusPill tone={isPromoted ? "green" : "blue"}>{candidate.status}</StatusPill>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-[#434654]">{candidate.citation_or_identifier}</p>
+      <p className="mt-2 text-xs leading-5 text-[#1c1c1a]">{candidate.reviewer_note}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <StatusPill tone="neutral">{candidate.verification_status}</StatusPill>
+        <StatusPill tone="neutral">{candidate.source_boundary}</StatusPill>
+      </div>
+      <PackItemButtons packItemIds={candidate.promoted_pack_item_ids} packItems={packItems} onOpenPackItem={onOpenPackItem} />
+    </article>
   );
 }
 

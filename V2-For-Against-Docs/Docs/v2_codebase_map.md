@@ -378,6 +378,19 @@ Phase 18 connects the agentic research foundation to the existing strategy-draft
 - `Docs/v2_phase_18_agentic_backend_metadata_contract.md`: backend metadata contract and boundaries.
 - `Docs/releases/v2_phase_18_agentic_backend_metadata.md`: release note and validation evidence.
 
+## V2 Phase 19 Agentic Workspace Visibility
+
+Phase 19 exposes the agentic backend metadata in the lawyer workspace without changing the database schema. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: `WorkspaceDraftSummary` exposes `agenticResearchPlan` and `matterMemory`.
+- `rag/sl_legal_rag/db/repositories.py`: workspace draft summaries read agentic metadata from existing draft metadata.
+- `web/src/lib/workspace-types.ts`: TypeScript contracts for agent tool traces, authority candidates, clarification needs, agentic plans, and matter memory.
+- `web/src/components/DocumentWorkspace.tsx`: Reasoning tab agentic workflow panel for tool route, clarification blockers, authority candidates, and matter memory.
+- `web/src/components/CaseWorkspace.test.tsx`: UI rendering coverage for agentic workflow metadata.
+- `tests/test_db_access_layer.py`: backend workspace snapshot coverage for agentic metadata.
+- `Docs/v2_phase_19_agentic_workspace_contract.md`: agentic workspace contract and UI safety boundaries.
+- `Docs/releases/v2_phase_19_agentic_workspace.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

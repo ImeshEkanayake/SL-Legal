@@ -191,6 +191,69 @@ export type ReasoningPack = {
   warnings: string[];
 };
 
+export type AgentToolTrace = {
+  schema_version: string;
+  trace_id: string;
+  tool_name: string;
+  purpose: string;
+  source_boundary: string;
+  input_summary: Record<string, unknown>;
+  result_count?: number | null;
+  status: string;
+  selected_outputs: Record<string, unknown>[];
+  reviewer_note: string;
+};
+
+export type AuthorityExpansionCandidate = {
+  schema_version: string;
+  candidate_id: string;
+  title: string;
+  authority_type: string;
+  citation_or_identifier: string;
+  source_boundary: string;
+  originating_tool_trace_id: string;
+  source_hint: string;
+  status: string;
+  verification_status: string;
+  promoted_pack_item_ids: string[];
+  reviewer_note: string;
+};
+
+export type ClarificationNeed = {
+  clarification_id: string;
+  category: string;
+  question: string;
+  reason: string;
+  blocks_preliminary_opinion: boolean;
+};
+
+export type AgenticResearchPlan = {
+  schema_version: string;
+  plan_id: string;
+  matter_id: string;
+  requested_output: string;
+  tool_traces: AgentToolTrace[];
+  clarification_needs: ClarificationNeed[];
+  authority_candidates: AuthorityExpansionCandidate[];
+  reviewer_summary: string;
+};
+
+export type MatterMemory = {
+  schema_version: string;
+  matter_id: string;
+  case_id?: string | null;
+  client_position?: string | null;
+  selected_authority_ids: string[];
+  sealed_pack_ids: string[];
+  candidate_authorities: AuthorityExpansionCandidate[];
+  client_facts: string[];
+  adverse_material: string[];
+  missing_evidence_tasks: string[];
+  clarification_needs: ClarificationNeed[];
+  tool_traces: AgentToolTrace[];
+  review_state: Record<string, unknown>;
+};
+
 export type DraftSummary = {
   draftId: string;
   title: string;
@@ -201,6 +264,8 @@ export type DraftSummary = {
   contentPreview: string;
   claimCount: number;
   reasoningPack?: ReasoningPack | null;
+  agenticResearchPlan?: AgenticResearchPlan | null;
+  matterMemory?: MatterMemory | null;
 };
 
 export type ReviewItem = {

@@ -1205,6 +1205,8 @@ class LegalWorkspaceRepository:
                     "contentPreview": str(row["content_preview"] or ""),
                     "claimCount": int(row["claim_count"]),
                     "reasoningPack": metadata.get("reasoning_pack"),
+                    "agenticResearchPlan": metadata.get("agentic_research_plan"),
+                    "matterMemory": metadata.get("matter_memory"),
                 }
             )
         return drafts
