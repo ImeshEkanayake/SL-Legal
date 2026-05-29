@@ -7,8 +7,10 @@ Phase 17 validates the missing reasoning step after Phase 16 retrieval validatio
 ## Included
 
 - `scripts/run_phase17_lawyer_review_pack_validation.py`: builds a validation research pack from the Phase 16 report, calls `requested_output="lawyer_review_pack"`, and writes ignored local validation artifacts.
+- `scripts/run_phase17_lawyer_review_pack_validation.py`: now also supports any tuned case ID, case-specific pack item IDs, bounded transient Azure retries, and a cautious deterministic fallback for offline validation if the model provider is unavailable.
 - `rag/sl_legal_rag/strategy.py`: adds one validation-repair retry when model output fails pack-boundary checks.
 - `tests/test_strategy_reasoning.py`: covers the repair retry for uncited legal-claim sentences.
+- `tests/test_phase17_validation_runner.py`: covers transient retry behavior and deterministic fallback pack-boundary validation.
 
 ## Validation Results
 
@@ -28,6 +30,20 @@ Local validation completed on 2026-05-29:
 - Focused reasoning tests:
   - Command: `PYTHONPATH=rag uv run --with pytest --with pydantic --with pydantic-settings --with sqlalchemy --with 'psycopg[binary]' --with fastapi --with httpx --with pypdfium2 --with eval-type-backport python -m pytest tests/test_azure_openai_config.py tests/test_reasoning_pack_models.py tests/test_strategy_reasoning.py -q`
   - Result: `20 passed`.
+- Test 10 trademark infringement validation:
+  - Case ID: `intellectual_property_trademark_infringement`.
+  - Log: `logs/test-runs/test10-ip-trademark-final-20260529T074944Z.log`.
+  - Result: `pass`.
+  - Pack items: `25`.
+  - Extracted text: `4,000` characters per pack item.
+  - Claims: `10`.
+  - For/against arguments: `2`.
+  - Missing evidence entries: `10`.
+  - Citation validation: `valid`, `0` issues.
+  - Authority identifiers include Acts, Gazette numbers, and a Supreme Court item marked `case citation to_be_verified`; the pack explicitly flags that specific Supreme Court or Court of Appeal trademark case numbers are still missing.
+- Expanded focused runner/reasoning tests:
+  - Command: `PYTHONPATH=rag uv run --with pytest --with pydantic --with pydantic-settings --with eval-type-backport python -m pytest tests/test_phase17_validation_runner.py tests/test_strategy_reasoning.py tests/test_reasoning_pack_models.py tests/test_azure_openai_config.py -q`
+  - Result: `23 passed`.
 
 ## Output Artifacts
 
@@ -47,6 +63,12 @@ Generated outputs are local-only and intentionally ignored by Git:
   - `data/tracking/phase17_lawyer_review_pack_validation_25docs_longtext/phase17_lawyer_review_pack.json`
   - `data/tracking/phase17_lawyer_review_pack_validation_25docs_longtext/phase17_lawyer_review_pack_summary.md`
   - `data/tracking/phase17_lawyer_review_pack_validation_25docs_longtext/phase17_validation_report.json`
+- Test 10 trademark long-text validation artifacts are written under:
+  - `data/tracking/test10_ip_trademark_retrieval/two_stage_search_report.json`
+  - `data/tracking/test10_ip_trademark_lawyer_review_pack_25docs_longtext/phase17_research_pack.json`
+  - `data/tracking/test10_ip_trademark_lawyer_review_pack_25docs_longtext/phase17_lawyer_review_pack.json`
+  - `data/tracking/test10_ip_trademark_lawyer_review_pack_25docs_longtext/phase17_lawyer_review_pack_summary.md`
+  - `data/tracking/test10_ip_trademark_lawyer_review_pack_25docs_longtext/phase17_validation_report.json`
 
 ## Boundary Notes
 

