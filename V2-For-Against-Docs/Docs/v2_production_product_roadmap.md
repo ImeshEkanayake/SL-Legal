@@ -641,6 +641,27 @@ Exit criteria:
 - Duplicate promotion attempts are rejected.
 - No V1 changes, raw data upload, or database migration.
 
+### Phase 27: Full 10-Case Verification and Promotion Validation
+
+Outcome: the tuned 10-case validation set is run through retrieval, lawyer-review pack generation, missing-evidence checks, and authority promotion readiness scoring.
+
+Deliverables:
+
+- Phase 27 aggregate validation runner for the full tuned case set.
+- Official Gazette promotion-readiness fix so Gazettes are not incorrectly blocked as weak authorities.
+- Full 10-case retrieval report using 25 documents per case.
+- Full 10-case lawyer-review readiness summary.
+- Validation evidence showing supportive/adverse reasoning, missing evidence, and promotion-eligible authority coverage.
+
+Exit criteria:
+
+- All 10 tuned cases complete without runtime errors.
+- Retrieval stage reports `10/10` passing cases.
+- Lawyer-review readiness scorer reports `10/10` ready cases.
+- Each case has for/against reasoning and missing-evidence coverage.
+- Promotion eligibility includes Acts, Supreme Court/Court of Appeal/law-report authorities, and official Gazettes where applicable.
+- No V1 changes, raw data upload, or database migration.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

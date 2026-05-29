@@ -489,6 +489,20 @@ Phase 26 promotes only verified authority expansion child-pack items into citabl
 - `Docs/v2_phase_26_controlled_authority_promotion_contract.md`: promotion contract.
 - `Docs/releases/v2_phase_26_controlled_authority_promotion.md`: release note and validation evidence.
 
+## V2 Phase 27 Full 10-Case Verification and Promotion Validation
+
+Phase 27 validates V2 across the full tuned 10-case set after the authority verification and promotion path is available. The active implementation uses:
+
+- `scripts/run_two_stage_recall_precision_checks.py`: full 10-case two-stage retrieval report generation.
+- `scripts/run_phase27_full_case_validation.py`: aggregate lawyer-review and promotion-readiness scoring.
+- `scripts/run_phase17_lawyer_review_pack_validation.py`: reused pack construction and deterministic lawyer-review pack generation.
+- `rag/evals/two_stage_tuned_cases.json`: 10-case tuned validation source.
+- `rag/sl_legal_rag/db/repositories.py`: official Gazette verification boundary fix.
+- `tests/test_phase17_validation_runner.py`: Phase 27 aggregate runner and promotion-readiness tests.
+- `tests/test_agentic_research_models.py`: official Gazette promotion validation.
+- `Docs/v2_phase_27_full_case_validation_contract.md`: validation contract.
+- `Docs/releases/v2_phase_27_full_case_validation.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

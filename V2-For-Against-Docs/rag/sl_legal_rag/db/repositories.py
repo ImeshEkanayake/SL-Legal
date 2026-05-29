@@ -4349,9 +4349,10 @@ class LegalWorkspaceRepository:
                     issues.append("page_text_unavailable")
             if not item.citation.strip():
                 issues.append("citation_missing")
-            if item.authority_level > 3:
+            document_type_normalized = item.document_type.strip().lower()
+            if item.authority_level > 3 and "gazette" not in document_type_normalized:
                 issues.append("authority_level_requires_lawyer_review")
-            if item.document_type.strip().lower() not in {"act", "statute", "regulation", "gazette", "judgment", "case_law"}:
+            if document_type_normalized not in {"act", "statute", "regulation", "gazette", "extraordinary gazette", "judgment", "case_law"}:
                 issues.append("document_type_requires_lawyer_review")
 
             verification_status = "requires_lawyer_review" if issues else "verified"

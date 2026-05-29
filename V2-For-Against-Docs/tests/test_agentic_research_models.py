@@ -526,3 +526,98 @@ def test_phase_26_authority_pack_promotion_requires_verified_items() -> None:
     rejected["promotion_records"][0]["items"][0]["pack_item_id"] = "pack_item_other"
     with pytest.raises(ValidationError, match="authority pack promotion records can only promote verified pack items"):
         AuthorityPackExpansionPlan.model_validate(rejected)
+
+
+def test_phase_27_official_gazette_can_be_promoted_after_verification() -> None:
+    item = AuthorityPackItemVerification.model_validate(
+        {
+            "child_pack_id": "pack_child_001",
+            "pack_item_id": "pack_item_gazette_001",
+            "document_id": "gazette_001",
+            "title": "Extraordinary Gazette 1862/08",
+            "document_type": "Extraordinary Gazette",
+            "source_id": "GOV_GAZETTE",
+            "authority_level": 4,
+            "citation": "Extraordinary Gazette 1862/08",
+            "anchor_status": "anchored",
+            "anchor_count": 1,
+            "page_text_available": True,
+            "verification_status": "verified",
+            "requires_lawyer_review": False,
+            "issues": [],
+            "reviewer_note": "Official Gazette verified for controlled promotion.",
+        }
+    )
+    promotion = AuthorityPackPromotionRecord.model_validate(
+        {
+            "promotion_id": "authpromote_gazette_001",
+            "plan_id": "authplan_001",
+            "request_index": 0,
+            "child_pack_id": "pack_child_001",
+            "child_pack_hash": "hash_001",
+            "promoted_pack_item_ids": ["pack_item_gazette_001"],
+            "promoted_item_count": 1,
+            "promoted_at": "2026-05-30T09:30:00",
+            "items": [
+                {
+                    "child_pack_id": "pack_child_001",
+                    "pack_item_id": "pack_item_gazette_001",
+                    "document_id": "gazette_001",
+                    "title": "Extraordinary Gazette 1862/08",
+                    "document_type": "Extraordinary Gazette",
+                    "source_id": "GOV_GAZETTE",
+                    "authority_level": 4,
+                    "citation": "Extraordinary Gazette 1862/08",
+                    "anchor_count": 1,
+                }
+            ],
+            "reviewer_note": "Promote verified Gazette for legal citation use.",
+        }
+    )
+    plan = AuthorityPackExpansionPlan.model_validate(
+        {
+            "plan_id": "authplan_001",
+            "case_id": "case_001",
+            "draft_id": "draft_001",
+            "review_item_id": "review_001",
+            "parent_pack_id": "pack_001",
+            "status": "executed",
+            "candidate_ids": ["cand_001"],
+            "expansion_requests": [
+                {
+                    "query": "Extraordinary Gazette collective agreement",
+                    "query_class": "general_research",
+                    "filters": {"require_official": True, "authority_levels": [4]},
+                    "purpose": "authority_candidate_pack_expansion",
+                }
+            ],
+            "executed_pack_ids": ["pack_child_001"],
+            "execution_records": [
+                {
+                    "request_index": 0,
+                    "child_pack_id": "pack_child_001",
+                    "child_pack_hash": "hash_001",
+                    "item_count": 1,
+                    "executed_at": "2026-05-30T09:20:00",
+                    "request_query_sha256": "a" * 64,
+                }
+            ],
+            "verification_records": [
+                {
+                    "plan_id": "authplan_001",
+                    "request_index": 0,
+                    "child_pack_id": "pack_child_001",
+                    "child_pack_hash": "hash_001",
+                    "item_count": 1,
+                    "verified_item_count": 1,
+                    "needs_review_item_count": 0,
+                    "status": "verified",
+                    "verified_at": "2026-05-30T09:25:00",
+                    "items": [item.model_dump(mode="json")],
+                }
+            ],
+            "promotion_records": [promotion.model_dump(mode="json")],
+        }
+    )
+
+    assert plan.promotion_records[0].items[0].document_type == "Extraordinary Gazette"

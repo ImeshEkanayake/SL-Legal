@@ -6,6 +6,10 @@ from scripts.run_phase17_lawyer_review_pack_validation import (
     authority_identifier_for_document,
     deterministic_reasoning_pack,
 )
+from scripts.run_phase27_full_case_validation import (
+    promotion_readiness_items,
+    validate_case,
+)
 from sl_legal_rag.models import LegalResearchPack, PackItem, QueryClass, RetrievalFilters
 from sl_legal_rag.strategy import validate_strategy_response_against_pack
 
@@ -162,6 +166,59 @@ def test_authority_expansion_candidates_strengthen_next_pack_guidance() -> None:
         updated.reasoning_pack.preliminary_legal_opinion.recommended_next_steps
     )
     assert validate_strategy_response_against_pack(updated, pack, requested_output="lawyer_review_pack") == []
+
+
+def test_phase27_promotion_readiness_requires_citable_primary_text() -> None:
+    pack = build_test_pack()
+
+    ready = promotion_readiness_items(pack)
+
+    assert [item["pack_item_id"] for item in ready] == ["phase17_test_item_001", "phase17_test_item_002"]
+    assert ready[0]["promotion_basis"] == "phase27_offline_verification_readiness"
+
+
+def test_phase27_case_validation_reports_lawyer_review_readiness(tmp_path) -> None:
+    case = {
+        "case_id": "intellectual_property_trademark_infringement",
+        "case_facts": "Trademark dispute",
+        "query": "trademark infringement and registration",
+        "document_types": ["Act", "Extraordinary Gazette"],
+        "language": "English",
+        "status": "pass",
+        "metrics": {"stage1_expected_recall": 1.0, "top_k_expected_recall": 1.0},
+        "top_documents": [
+            {
+                "rank": 1,
+                "document_id": "act_ip_001",
+                "title": "Code of Intellectual Property Act",
+                "document_type": "Act",
+                "source_id": "unit",
+                "citation": "Code of Intellectual Property Act",
+                "relevance_score": 1.0,
+                "best_full_text_chunk": {
+                    "chunk_id": "chunk_001",
+                    "chunk_text": "Trademark registration and enforcement provisions for testing.",
+                },
+            }
+        ],
+    }
+    args = type(
+        "Args",
+        (),
+        {
+            "top_documents": 25,
+            "chunk_chars": 4000,
+            "min_missing_evidence": 5,
+            "min_promotion_eligible_items": 1,
+            "write_drafts": False,
+        },
+    )()
+
+    report = validate_case(case, args, tmp_path)
+
+    assert report["lawyer_review_ready"] is True
+    assert report["promotion_eligible_item_count"] == 1
+    assert report["adverse_argument_count"] >= 1
 
 
 def build_test_pack() -> LegalResearchPack:
