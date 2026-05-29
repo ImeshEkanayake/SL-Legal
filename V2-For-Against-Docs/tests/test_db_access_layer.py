@@ -804,6 +804,15 @@ def test_db_access_layer_vertical_workflow_rolls_back():
                 == expansion_plans[0]["plan_id"]
             )
             assert expanded_draft["metadata"]["matter_memory"]["candidate_authorities"][0]["status"] == "candidate_unverified"
+            reserved_plan = repo.reserve_authority_pack_expansion_execution(
+                case_id=workspace.case_id,
+                draft_id=persisted_strategy.draft_id,
+                plan_id=expansion_plans[0]["plan_id"],
+                request_index=0,
+                reserved_by_user_id=workspace.user_id,
+            )
+            assert reserved_plan.reservation_records[0].status == "reserved"
+            assert reserved_plan.reservation_records[0].request_index == 0
             executed_plan = repo.record_authority_pack_expansion_execution(
                 case_id=workspace.case_id,
                 draft_id=persisted_strategy.draft_id,
@@ -816,6 +825,8 @@ def test_db_access_layer_vertical_workflow_rolls_back():
             )
             assert executed_plan.status == "partially_executed"
             assert executed_plan.executed_pack_ids == ["pack_child_authority_001"]
+            assert executed_plan.reservation_records[0].status == "completed"
+            assert executed_plan.reservation_records[0].child_pack_id == "pack_child_authority_001"
             executed_draft = repo.get_draft_detail(case_id=workspace.case_id, draft_id=persisted_strategy.draft_id)
             assert executed_draft is not None
             assert (

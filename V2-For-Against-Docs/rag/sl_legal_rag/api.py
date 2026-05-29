@@ -1014,29 +1014,49 @@ def execute_authority_pack_expansion_request(
         if any(record.request_index == request_index for record in plan.execution_records):
             raise HTTPException(status_code=409, detail=f"Authority expansion request already executed: {request_index}")
 
+        with session_scope() as session:
+            repo = LegalWorkspaceRepository(session)
+            _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
+            try:
+                plan = repo.reserve_authority_pack_expansion_execution(
+                    case_id=case_id,
+                    draft_id=draft_id,
+                    plan_id=plan_id,
+                    request_index=request_index,
+                    reserved_by_user_id=auth.user_id,
+                )
+            except ValueError as exc:
+                if "already reserved" in str(exc) or "already executed" in str(exc):
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+                raise
+
         research_request = plan.expansion_requests[request_index].to_research_query_request(
             parent_pack_id=plan.parent_pack_id,
             case_id=case_id,
         )
-        pack_payload = _create_research_pack_response(
-            request=research_request,
-            auth=auth,
-            rate_limit_policy=RESEARCH_PACK_EXPAND_RATE_LIMIT,
-        )
+        try:
+            pack_payload = _create_research_pack_response(
+                request=research_request,
+                auth=auth,
+                rate_limit_policy=RESEARCH_PACK_EXPAND_RATE_LIMIT,
+            )
+        except Exception as exc:
+            with session_scope() as session:
+                repo = LegalWorkspaceRepository(session)
+                repo.record_authority_pack_expansion_reservation_failure(
+                    case_id=case_id,
+                    draft_id=draft_id,
+                    plan_id=plan_id,
+                    request_index=request_index,
+                    error_message=str(exc),
+                )
+            raise
         child_pack = LegalResearchPack.model_validate(pack_payload)
         child_pack_hash = research_pack_hash(child_pack)
 
         with session_scope() as session:
             repo = LegalWorkspaceRepository(session)
             case_context = _require_case_permission(repo, case_id=case_id, user_id=auth.user_id)
-            if repo.authority_pack_expansion_request_executed(
-                case_id=case_id,
-                draft_id=draft_id,
-                plan_id=plan_id,
-                request_index=request_index,
-                lock_draft=True,
-            ):
-                raise HTTPException(status_code=409, detail=f"Authority expansion request already executed: {request_index}")
             updated_plan = repo.record_authority_pack_expansion_execution(
                 case_id=case_id,
                 draft_id=draft_id,

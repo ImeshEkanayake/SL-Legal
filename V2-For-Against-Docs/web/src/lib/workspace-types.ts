@@ -282,6 +282,18 @@ export type AuthorityPackExpansionExecutionRecord = {
   request_query_sha256: string;
 };
 
+export type AuthorityPackExpansionReservationRecord = {
+  schema_version: string;
+  reservation_id: string;
+  request_index: number;
+  status: string;
+  reserved_by_user_id?: string | null;
+  reserved_at: string;
+  request_query_sha256: string;
+  child_pack_id?: string | null;
+  error_message?: string | null;
+};
+
 export type AuthorityPackExpansionPlan = {
   schema_version: string;
   plan_id: string;
@@ -293,6 +305,7 @@ export type AuthorityPackExpansionPlan = {
   status: string;
   candidate_ids: string[];
   expansion_requests: PackExpansionRequest[];
+  reservation_records: AuthorityPackExpansionReservationRecord[];
   executed_pack_ids: string[];
   execution_records: AuthorityPackExpansionExecutionRecord[];
   citable: boolean;

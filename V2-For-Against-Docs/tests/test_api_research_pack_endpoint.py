@@ -415,10 +415,10 @@ def test_authority_pack_expansion_execute_endpoint_records_child_pack(monkeypatc
         def save_research_pack(self, **kwargs):
             calls["saved_pack"] = kwargs
 
-        def authority_pack_expansion_request_executed(self, **kwargs):
-            calls["locked_recheck"] = kwargs
-            assert kwargs["lock_draft"] is True
-            return False
+        def reserve_authority_pack_expansion_execution(self, **kwargs):
+            calls["reservation"] = kwargs
+            assert kwargs["reserved_by_user_id"] == "user_1"
+            return plan
 
         def record_authority_pack_expansion_execution(self, **kwargs):
             calls["recorded_execution"] = kwargs
@@ -469,13 +469,13 @@ def test_authority_pack_expansion_execute_endpoint_records_child_pack(monkeypatc
     assert calls["loaded_plan"]["draft_id"] == "draft_1"
     assert calls["rate_limit"]["route_key"] == "research_pack.expand"
     assert calls["saved_pack"]["purpose"] == "authority_candidate_pack_expansion"
-    assert calls["locked_recheck"]["request_index"] == 0
+    assert calls["reservation"]["request_index"] == 0
     assert calls["recorded_execution"]["executed_by_user_id"] == "user_1"
     assert calls["audit_events"][-1]["event_type"] == "authority_pack_expansion.executed"
     assert calls["audit_events"][-1]["after_state"]["citable"] is False
 
 
-def test_authority_pack_expansion_execute_endpoint_rechecks_duplicate_under_lock(monkeypatch):
+def test_authority_pack_expansion_execute_endpoint_reserves_before_retrieval(monkeypatch):
     calls: dict[str, object] = {}
     plan = AuthorityPackExpansionPlan.model_validate(
         {
@@ -499,31 +499,7 @@ def test_authority_pack_expansion_execute_endpoint_rechecks_duplicate_under_lock
     )
 
     def fake_create_research_pack(request: ResearchQueryRequest) -> LegalResearchPack:
-        calls["retrieval_request"] = request
-        return LegalResearchPack.model_validate(
-            {
-                "pack_id": "pack_child",
-                "query": request.query,
-                "query_class": request.query_class,
-                "filters": request.filters.model_dump(mode="json"),
-                "retrieval_config": {"max_tokens": request.max_pack_tokens},
-                "items": [
-                    {
-                        "pack_item_id": "pack_child_item_001",
-                        "chunk_id": "chunk_1",
-                        "document_id": "doc_1",
-                        "title": "Supreme Court Judgment",
-                        "document_type": "judgment",
-                        "source_id": "SC",
-                        "authority_level": 3,
-                        "citation": "SC Appeal No. 1/2020",
-                        "text": "Confusion must be assessed by reference to the mark and market context.",
-                        "fused_score": 1.0,
-                        "selection_reason": "test",
-                    }
-                ],
-            }
-        )
+        raise AssertionError("duplicate reservation must stop before retrieval")
 
     class FakeRepository:
         def __init__(self, _session):
@@ -548,11 +524,11 @@ def test_authority_pack_expansion_execute_endpoint_rechecks_duplicate_under_lock
             return allowed_rate_limit(kwargs["route_key"])
 
         def save_research_pack(self, **kwargs):
-            calls["saved_pack"] = kwargs
+            raise AssertionError("duplicate reservation must not save a child pack")
 
-        def authority_pack_expansion_request_executed(self, **kwargs):
-            calls["locked_recheck"] = kwargs
-            return True
+        def reserve_authority_pack_expansion_execution(self, **kwargs):
+            calls["reservation"] = kwargs
+            raise ValueError("Authority expansion request already reserved: 0")
 
         def record_authority_pack_expansion_execution(self, **kwargs):
             raise AssertionError("duplicate execution must not be recorded")
@@ -576,10 +552,9 @@ def test_authority_pack_expansion_execute_endpoint_rechecks_duplicate_under_lock
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "Authority expansion request already executed: 0"
-    assert calls["locked_recheck"]["lock_draft"] is True
-    assert calls["saved_pack"]["pack"].pack_id == "pack_child"
-    assert all(event["event_type"] != "authority_pack_expansion.executed" for event in calls["audit_events"])
+    assert response.json()["detail"] == "Authority expansion request already reserved: 0"
+    assert calls["reservation"]["request_index"] == 0
+    assert "audit_events" not in calls
 
 
 def test_strategy_prompt_endpoint_returns_pack_bounded_messages_with_signed_auth(monkeypatch):

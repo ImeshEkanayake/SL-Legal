@@ -442,6 +442,21 @@ Phase 23 fixes authority expansion execution race conditions from review. The ac
 - `Docs/v2_phase_23_authority_expansion_idempotency_contract.md`: locking contract and remaining reservation boundary.
 - `Docs/releases/v2_phase_23_authority_expansion_idempotency.md`: release note and validation evidence.
 
+## V2 Phase 24 Authority Expansion Reservation
+
+Phase 24 prevents duplicate authority expansion retrieval by reserving a request before child pack creation. The active implementation uses:
+
+- `rag/sl_legal_rag/models.py`: reservation records on `AuthorityPackExpansionPlan`.
+- `rag/sl_legal_rag/db/repositories.py`: locked reservation, completion, and failure metadata updates.
+- `rag/sl_legal_rag/api.py`: pre-retrieval reservation before research-pack expansion.
+- `web/src/lib/workspace-types.ts`: workspace reservation record type.
+- `web/src/components/CaseWorkspace.test.tsx`: fixture coverage for reservation metadata shape.
+- `tests/test_agentic_research_models.py`: reservation validation coverage.
+- `tests/test_api_research_pack_endpoint.py`: duplicate reservation conflict coverage.
+- `tests/test_db_access_layer.py`: reservation-to-completion persistence coverage.
+- `Docs/v2_phase_24_authority_expansion_reservation_contract.md`: reservation contract.
+- `Docs/releases/v2_phase_24_authority_expansion_reservation.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

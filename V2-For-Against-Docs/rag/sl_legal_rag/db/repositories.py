@@ -4067,6 +4067,132 @@ class LegalWorkspaceRepository:
             return any(record.request_index == request_index for record in plan.execution_records)
         raise ValueError(f"Authority expansion plan not found: {plan_id}")
 
+    def reserve_authority_pack_expansion_execution(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+        request_index: int,
+        reserved_by_user_id: str | None,
+    ) -> AuthorityPackExpansionPlan:
+        draft_state = self._draft_state_for_update(case_id=case_id, draft_id=draft_id)
+        if draft_state is None:
+            raise ValueError(f"Draft not found for authority expansion execution: {draft_id}")
+        metadata = dict(draft_state.get("metadata") or {})
+        plans = [
+            dict(item)
+            for item in metadata.get("authority_pack_expansion_plans") or []
+            if isinstance(item, dict)
+        ]
+        plan_index = next((index for index, item in enumerate(plans) if item.get("plan_id") == plan_id), None)
+        if plan_index is None:
+            raise ValueError(f"Authority expansion plan not found: {plan_id}")
+        plan = AuthorityPackExpansionPlan.model_validate(plans[plan_index])
+        if request_index < 0 or request_index >= len(plan.expansion_requests):
+            raise ValueError(f"Authority expansion request index not found: {request_index}")
+        if plan.status == "cancelled":
+            raise ValueError("Cancelled authority expansion plans cannot be executed")
+        if any(record.request_index == request_index for record in plan.execution_records):
+            raise ValueError(f"Authority expansion request already executed: {request_index}")
+        if any(
+            record.request_index == request_index and record.status in {"reserved", "completed"}
+            for record in plan.reservation_records
+        ):
+            raise ValueError(f"Authority expansion request already reserved: {request_index}")
+
+        request = plan.expansion_requests[request_index]
+        reservation_records = [
+            record.model_dump(mode="json")
+            for record in plan.reservation_records
+            if record.request_index != request_index or record.status != "failed"
+        ]
+        reservation_records.append(
+            {
+                "reservation_id": new_id("authreserve"),
+                "request_index": request_index,
+                "status": "reserved",
+                "reserved_by_user_id": reserved_by_user_id,
+                "reserved_at": datetime.utcnow().isoformat(),
+                "request_query_sha256": _sha256(request.query),
+            }
+        )
+        reservation_records = sorted(reservation_records, key=lambda item: int(item["request_index"]))
+        updated_plan = AuthorityPackExpansionPlan.model_validate(
+            {
+                **plan.model_dump(mode="json"),
+                "reservation_records": reservation_records,
+            }
+        )
+        self._store_authority_pack_expansion_plan_metadata(
+            case_id=case_id,
+            draft_id=draft_id,
+            metadata=metadata,
+            plans=plans,
+            plan_index=plan_index,
+            updated_plan=updated_plan,
+            review_state_updates={
+                "authority_candidates_are_citable": False,
+                "latest_authority_pack_expansion_plan_id": updated_plan.plan_id,
+                "authority_pack_expansion_status": "execution_reserved",
+            },
+        )
+        return updated_plan
+
+    def record_authority_pack_expansion_reservation_failure(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        plan_id: str,
+        request_index: int,
+        error_message: str,
+    ) -> AuthorityPackExpansionPlan | None:
+        draft_state = self._draft_state_for_update(case_id=case_id, draft_id=draft_id)
+        if draft_state is None:
+            return None
+        metadata = dict(draft_state.get("metadata") or {})
+        plans = [
+            dict(item)
+            for item in metadata.get("authority_pack_expansion_plans") or []
+            if isinstance(item, dict)
+        ]
+        plan_index = next((index for index, item in enumerate(plans) if item.get("plan_id") == plan_id), None)
+        if plan_index is None:
+            return None
+        plan = AuthorityPackExpansionPlan.model_validate(plans[plan_index])
+        reservation_records: list[dict[str, Any]] = []
+        changed = False
+        for record in plan.reservation_records:
+            record_data = record.model_dump(mode="json")
+            if record.request_index == request_index and record.status == "reserved":
+                record_data["status"] = "failed"
+                record_data["error_message"] = error_message[:500]
+                changed = True
+            reservation_records.append(record_data)
+        if not changed:
+            return plan
+        updated_plan = AuthorityPackExpansionPlan.model_validate(
+            {
+                **plan.model_dump(mode="json"),
+                "reservation_records": reservation_records,
+            }
+        )
+        self._store_authority_pack_expansion_plan_metadata(
+            case_id=case_id,
+            draft_id=draft_id,
+            metadata=metadata,
+            plans=plans,
+            plan_index=plan_index,
+            updated_plan=updated_plan,
+            review_state_updates={
+                "authority_candidates_are_citable": False,
+                "latest_authority_pack_expansion_plan_id": updated_plan.plan_id,
+                "authority_pack_expansion_status": "execution_failed",
+            },
+        )
+        return updated_plan
+
     def record_authority_pack_expansion_execution(
         self,
         *,
@@ -4100,6 +4226,27 @@ class LegalWorkspaceRepository:
             raise ValueError(f"Authority expansion request already executed: {request_index}")
 
         request = plan.expansion_requests[request_index]
+        reservation_records: list[dict[str, Any]] = []
+        reservation_found = False
+        for record in plan.reservation_records:
+            record_data = record.model_dump(mode="json")
+            if record.request_index == request_index and record.status == "reserved":
+                record_data["status"] = "completed"
+                record_data["child_pack_id"] = child_pack_id
+                reservation_found = True
+            reservation_records.append(record_data)
+        if not reservation_found:
+            reservation_records.append(
+                {
+                    "reservation_id": new_id("authreserve"),
+                    "request_index": request_index,
+                    "status": "completed",
+                    "reserved_by_user_id": executed_by_user_id,
+                    "reserved_at": datetime.utcnow().isoformat(),
+                    "request_query_sha256": _sha256(request.query),
+                    "child_pack_id": child_pack_id,
+                }
+            )
         execution_records = [
             record.model_dump(mode="json")
             for record in plan.execution_records
@@ -4120,24 +4267,45 @@ class LegalWorkspaceRepository:
         updated_plan = AuthorityPackExpansionPlan.model_validate(
             {
                 **plan.model_dump(mode="json"),
+                "reservation_records": sorted(reservation_records, key=lambda item: int(item["request_index"])),
                 "status": status,
                 "executed_pack_ids": [str(record["child_pack_id"]) for record in execution_records],
                 "execution_records": execution_records,
             }
         )
+        self._store_authority_pack_expansion_plan_metadata(
+            case_id=case_id,
+            draft_id=draft_id,
+            metadata=metadata,
+            plans=plans,
+            plan_index=plan_index,
+            updated_plan=updated_plan,
+            review_state_updates={
+                "authority_candidates_are_citable": False,
+                "latest_authority_pack_expansion_plan_id": updated_plan.plan_id,
+                "authority_pack_expansion_status": updated_plan.status,
+                "latest_authority_expansion_child_pack_id": child_pack_id,
+            },
+        )
+        return updated_plan
+
+    def _store_authority_pack_expansion_plan_metadata(
+        self,
+        *,
+        case_id: str,
+        draft_id: str,
+        metadata: dict[str, Any],
+        plans: list[dict[str, Any]],
+        plan_index: int,
+        updated_plan: AuthorityPackExpansionPlan,
+        review_state_updates: dict[str, Any],
+    ) -> None:
         plans[plan_index] = updated_plan.model_dump(mode="json")
         metadata["authority_pack_expansion_plans"] = plans
         matter_memory = dict(metadata.get("matter_memory") or {})
         if matter_memory:
             review_state = dict(matter_memory.get("review_state") or {})
-            review_state.update(
-                {
-                    "authority_candidates_are_citable": False,
-                    "latest_authority_pack_expansion_plan_id": updated_plan.plan_id,
-                    "authority_pack_expansion_status": updated_plan.status,
-                    "latest_authority_expansion_child_pack_id": child_pack_id,
-                }
-            )
+            review_state.update(review_state_updates)
             matter_memory["review_state"] = review_state
             metadata["matter_memory"] = matter_memory
         self.session.execute(
@@ -4152,7 +4320,6 @@ class LegalWorkspaceRepository:
             {"case_id": case_id, "draft_id": draft_id, "metadata": _json(metadata)},
         )
         self.session.flush()
-        return updated_plan
 
     def list_case_drafts(
         self,

@@ -579,6 +579,26 @@ Exit criteria:
 - Duplicate execution conflict tests pass.
 - Candidate authorities remain non-citable and unpromoted.
 
+### Phase 24: Authority Expansion Reservation
+
+Outcome: planned authority expansion requests are reserved before retrieval so duplicate actions cannot create duplicate child packs.
+
+Deliverables:
+
+- `authority_pack_expansion_reservation.v1` metadata records.
+- Locked reservation creation before research-pack expansion.
+- Reservation completion after execution metadata is written.
+- Reservation failure metadata for retry-safe retrieval failures.
+- Duplicate reservation conflict handling before retrieval begins.
+
+Exit criteria:
+
+- Duplicate request execution returns `409 Conflict` before retrieval.
+- Successful execution marks the reservation `completed`.
+- Retrieval failure marks the reservation `failed` and permits a future retry.
+- Existing execution records and audit events remain green.
+- Candidate authorities remain non-citable and unpromoted.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

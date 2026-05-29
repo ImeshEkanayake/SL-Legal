@@ -496,6 +496,19 @@ class ResearchPackExpansionRequest(BaseModel):
 
 
 AuthorityPackExpansionStatus = Literal["planned", "partially_executed", "executed", "cancelled"]
+AuthorityPackExpansionReservationStatus = Literal["reserved", "completed", "failed"]
+
+
+class AuthorityPackExpansionReservationRecord(BaseModel):
+    schema_version: str = "authority_pack_expansion_reservation.v1"
+    reservation_id: str = Field(min_length=1)
+    request_index: int = Field(ge=0)
+    status: AuthorityPackExpansionReservationStatus = "reserved"
+    reserved_by_user_id: str | None = None
+    reserved_at: datetime
+    request_query_sha256: str = Field(min_length=64, max_length=64)
+    child_pack_id: str | None = None
+    error_message: str | None = None
 
 
 class AuthorityPackExpansionExecutionRecord(BaseModel):
@@ -520,6 +533,7 @@ class AuthorityPackExpansionPlan(BaseModel):
     status: AuthorityPackExpansionStatus = "planned"
     candidate_ids: list[str] = Field(min_length=1)
     expansion_requests: list[ResearchPackExpansionRequest] = Field(min_length=1)
+    reservation_records: list[AuthorityPackExpansionReservationRecord] = Field(default_factory=list)
     executed_pack_ids: list[str] = Field(default_factory=list)
     execution_records: list[AuthorityPackExpansionExecutionRecord] = Field(default_factory=list)
     citable: bool = False
@@ -547,6 +561,19 @@ class AuthorityPackExpansionPlan(BaseModel):
             raise ValueError("authority expansion execution records require unique request indexes")
         if any(index >= len(self.expansion_requests) for index in request_indexes):
             raise ValueError("authority expansion execution record references unknown request index")
+        reservation_indexes = [record.request_index for record in self.reservation_records]
+        if len(reservation_indexes) != len(set(reservation_indexes)):
+            raise ValueError("authority expansion reservation records require unique request indexes")
+        if any(index >= len(self.expansion_requests) for index in reservation_indexes):
+            raise ValueError("authority expansion reservation record references unknown request index")
+        executed_indexes = set(request_indexes)
+        incomplete_reservations = [
+            record.request_index
+            for record in self.reservation_records
+            if record.status == "completed" and record.request_index not in executed_indexes
+        ]
+        if incomplete_reservations:
+            raise ValueError("completed authority expansion reservations require execution records")
         for request in self.expansion_requests:
             if not request.filters.require_official:
                 raise ValueError("authority expansion requests must require official-source retrieval")

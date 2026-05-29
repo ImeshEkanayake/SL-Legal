@@ -280,3 +280,46 @@ def test_phase_22_executed_authority_expansion_plan_requires_matching_child_pack
 
     with pytest.raises(ValidationError, match="executed_pack_ids must match execution record child pack ids"):
         AuthorityPackExpansionPlan.model_validate({**payload, "executed_pack_ids": ["pack_other"]})
+
+
+def test_phase_24_authority_expansion_reservation_records_are_unique() -> None:
+    payload = {
+        "plan_id": "authplan_001",
+        "case_id": "case_001",
+        "draft_id": "draft_001",
+        "review_item_id": "review_001",
+        "parent_pack_id": "pack_001",
+        "candidate_ids": ["cand_001"],
+        "expansion_requests": [
+            {
+                "query": "SC Appeal No. 1/2020 Supreme Court trademark confusion",
+                "query_class": "case_law_lookup",
+                "filters": {"require_official": True, "authority_levels": [1, 3]},
+                "purpose": "authority_candidate_pack_expansion",
+            }
+        ],
+        "reservation_records": [
+            {
+                "reservation_id": "authreserve_001",
+                "request_index": 0,
+                "status": "reserved",
+                "reserved_by_user_id": "user_001",
+                "reserved_at": "2026-05-30T05:40:00",
+                "request_query_sha256": "c" * 64,
+            }
+        ],
+    }
+
+    plan = AuthorityPackExpansionPlan.model_validate(payload)
+
+    assert plan.reservation_records[0].status == "reserved"
+
+    duplicate = {
+        **payload,
+        "reservation_records": [
+            payload["reservation_records"][0],
+            {**payload["reservation_records"][0], "reservation_id": "authreserve_002"},
+        ],
+    }
+    with pytest.raises(ValidationError, match="authority expansion reservation records require unique request indexes"):
+        AuthorityPackExpansionPlan.model_validate(duplicate)

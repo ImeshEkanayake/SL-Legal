@@ -314,6 +314,7 @@ const snapshot: WorkspaceSnapshot = {
               purpose: "authority_candidate_pack_expansion",
             },
           ],
+          reservation_records: [],
           executed_pack_ids: [],
           execution_records: [],
           citable: false,
