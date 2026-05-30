@@ -2142,6 +2142,25 @@ def load_hosted_environment_config_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_hosted_dry_run_evidence_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase40_hosted_dry_run_evidence.v1":
+        raise ValueError(
+            "hosted dry-run evidence manifest schema_version must be phase40_hosted_dry_run_evidence.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted dry-run evidence manifest must contain a non-empty prerequisites array")
+    dry_run_evidence = payload.get("dry_run_evidence")
+    if not isinstance(dry_run_evidence, list) or not dry_run_evidence:
+        raise ValueError("hosted dry-run evidence manifest must contain a non-empty dry_run_evidence array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("hosted dry-run evidence manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -2469,6 +2488,100 @@ def build_hosted_environment_config_pack(
             "command_recipes": len(commands),
             "execution_recipes": sum(1 for item in commands if item["executes_capture"]),
             "evidence_outputs": len(evidence_outputs),
+            "blockers": len(blockers),
+        },
+    }
+
+
+def evaluate_hosted_dry_run_evidence(
+    item: dict[str, Any],
+    project_root: Path,
+    *,
+    forbidden_terms: list[str],
+) -> dict[str, Any]:
+    result = evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+    if not result["exists"]:
+        return result
+    path = Path(str(result["path"]))
+    if not path.is_absolute():
+        path = project_root / path
+    text = path.read_text(encoding="utf-8", errors="replace")
+    normalized_text = text.lower()
+    matched_terms = [term for term in forbidden_terms if term and term.lower() in normalized_text]
+    if not matched_terms:
+        return {**result, "forbidden_content_matches": []}
+    return {
+        **result,
+        "status": "failed",
+        "forbidden_content_matches": matched_terms,
+        "summary": "dry-run evidence contains forbidden hosted content",
+    }
+
+
+def build_hosted_dry_run_evidence_report(
+    dry_run_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(dry_run_payload.get("target_release_tag") or "").strip()
+    repo = str(dry_run_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in dry_run_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in dry_run_payload["prerequisites"]
+    ]
+    dry_run_evidence = [
+        evaluate_hosted_dry_run_evidence(item, project_root, forbidden_terms=forbidden_terms)
+        for item in dry_run_payload["dry_run_evidence"]
+    ]
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    evidence_failures = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in dry_run_evidence
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_evidence = [
+        item for item in dry_run_evidence if item["required"] and item["status"] == "pending"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in dry_run_evidence}
+    phase39_status = statuses.get("phase39_config_pack", "")
+    phase38_status = statuses.get("phase38_hosted_dry_run", "")
+    blockers = [*prerequisite_blockers, *evidence_failures]
+    if blockers:
+        status = "blocked"
+    elif phase39_status != "ready_for_hosted_capture_dry_run":
+        status = "awaiting_hosted_environment_configuration"
+    elif phase38_status != "ready_for_hosted_capture_execution":
+        status = "awaiting_hosted_dry_run_evidence"
+    else:
+        status = "hosted_dry_run_validated"
+    return {
+        "schema_version": "phase40_hosted_dry_run_evidence.v1",
+        "source_schema_version": dry_run_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(dry_run_payload.get("execution_environment") or "staging"),
+        "prerequisites": prerequisites,
+        "dry_run_evidence": dry_run_evidence,
+        "pending_dry_run_evidence": pending_evidence,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_dry_run_evidence": len(dry_run_evidence),
+            "verified_dry_run_evidence": sum(1 for item in dry_run_evidence if item["status"] == "verified"),
+            "pending_dry_run_evidence": len(pending_evidence),
+            "failed_dry_run_evidence": sum(1 for item in dry_run_evidence if item["status"] == "failed"),
+            "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
         },
     }

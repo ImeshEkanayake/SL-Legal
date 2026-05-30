@@ -976,17 +976,23 @@ Outcome: hosted staging proves that Phase 38 can see a valid environment and pre
 
 Deliverables:
 
-- Dry-run evidence manifest for Phase 38 hosted configuration.
-- Validation gate that accepts only `ready_for_hosted_capture_execution`.
-- Scrubbed hosted dry-run logs proving required variables are present without exposing values.
+- Machine-readable dry-run evidence manifest for Phase 38 hosted configuration.
+- Dry-run evidence builder that produces `awaiting_hosted_environment_configuration`, `awaiting_hosted_dry_run_evidence`, `hosted_dry_run_validated`, or `blocked`.
+- Detached `hosted-dry-run-evidence` mode.
+- Validation of Phase 39 `ready_for_hosted_capture_dry_run` and Phase 38 `ready_for_hosted_capture_execution`.
+- Required proof that Phase 38 dry-run used `environment_included=true`, `execute=false`, `captured_evidence=0`, and no blockers.
+- Forbidden-content scan for signed headers, session cookies, DB URLs, private keys, raw document bodies, and raw response bodies.
 - Operator review checklist for API base, fixture case/document IDs, signing readiness, and DB read-only confirmations.
 
 Exit criteria:
 
-- Hosted dry-run returns `ready_for_hosted_capture_execution`.
+- Local validation returns `awaiting_hosted_environment_configuration` until hosted Phase 39 evidence is ready.
+- Hosted dry-run validation returns `hosted_dry_run_validated` only after Phase 39 is ready and Phase 38 returns `ready_for_hosted_capture_execution`.
 - No hosted HTTP capture is executed during dry-run.
 - Dry-run evidence contains no secrets, signed headers, session cookies, DB URLs, raw document bodies, or raw data.
 - Failed or incomplete hosted configuration blocks execution.
+- Detached backend tests, frontend quality gate, Phase 40 dry-run evidence gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
 
 ### Phase 41: Hosted Capture Execution Evidence
 

@@ -661,6 +661,19 @@ Phase 39 adds the secret-safe hosted environment configuration pack required bef
 - `Docs/v2_phase_39_hosted_environment_config_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_39_hosted_environment_config.md`: release note and validation evidence.
 
+## V2 Phase 40 Hosted Dry-Run Evidence Capture
+
+Phase 40 adds the hosted dry-run evidence gate for Phase 38. The active implementation uses:
+
+- `rag/evals/phase40_hosted_dry_run_evidence.json`: dry-run evidence manifest with prerequisites, evidence requirements, and forbidden-content terms.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_dry_run_evidence_manifest` and `build_hosted_dry_run_evidence_report`.
+- `scripts/build_phase40_hosted_dry_run_evidence.py`: report builder for local awaiting, hosted pending, validated, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `hosted-dry-run-evidence` detached mode.
+- `tests/test_phase40_hosted_dry_run_evidence.py`: coverage for local awaiting state, pending dry-run evidence, validated hosted dry-run, forbidden-content blockers, failed dry-run blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_40_hosted_dry_run_evidence_contract.md`: dry-run evidence contract.
+- `Docs/v2_phase_40_hosted_dry_run_evidence_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_40_hosted_dry_run_evidence.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

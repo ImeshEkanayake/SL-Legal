@@ -1,0 +1,105 @@
+{
+  "schema_version": "phase40_hosted_dry_run_evidence.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-39-hosted-environment-config",
+  "phase_name": "V2 Phase 40: Hosted Dry-Run Evidence Capture",
+  "execution_environment": "staging",
+  "description": "Validation gate for hosted Phase 38 dry-run evidence. Accepts only a secret-safe hosted dry-run that is ready for capture execution and proves no capture was executed.",
+  "forbidden_terms": [
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "Authorization: Bearer",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "raw document body",
+    "raw response body"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase39_manifest",
+      "title": "Phase 39 hosted environment config manifest",
+      "type": "file",
+      "path": "rag/evals/phase39_hosted_environment_config.json",
+      "required": true
+    },
+    {
+      "id": "phase39_contract",
+      "title": "Phase 39 hosted environment config contract",
+      "type": "document",
+      "path": "Docs/v2_phase_39_hosted_environment_config_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase39_runbook",
+      "title": "Phase 39 hosted environment config runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_39_hosted_environment_config_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase39_release_note",
+      "title": "Phase 39 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_39_hosted_environment_config.md",
+      "required": true
+    },
+    {
+      "id": "phase38_orchestrator",
+      "title": "Phase 38 hosted capture execution orchestrator",
+      "type": "file",
+      "path": "scripts/run_phase38_hosted_capture_execution.py",
+      "required": true
+    },
+    {
+      "id": "phase40_contract",
+      "title": "Phase 40 hosted dry-run evidence contract",
+      "type": "document",
+      "path": "Docs/v2_phase_40_hosted_dry_run_evidence_contract.md",
+      "required": true
+    }
+  ],
+  "dry_run_evidence": [
+    {
+      "id": "phase39_config_pack",
+      "title": "Hosted Phase 39 config pack",
+      "type": "json_status",
+      "path": "logs/readiness/phase39-hosted-environment-config-pack.json",
+      "accepted_statuses": [
+        "ready_for_hosted_capture_dry_run"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_environment_configuration"
+      ],
+      "required_fields": {
+        "environment.included": true,
+        "summary.blockers": 0,
+        "summary.execution_recipes": 1
+      },
+      "required": true
+    },
+    {
+      "id": "phase38_hosted_dry_run",
+      "title": "Hosted Phase 38 dry-run report",
+      "type": "json_status",
+      "path": "logs/readiness/phase38-hosted-capture-execution.json",
+      "accepted_statuses": [
+        "ready_for_hosted_capture_execution"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_capture_configuration"
+      ],
+      "required_fields": {
+        "execute": false,
+        "environment_included": true,
+        "summary.phase35_status": "ready_for_capture_execution",
+        "summary.phase36_status": "ready_for_hosted_capture_execution",
+        "summary.captured_evidence": 0,
+        "summary.blockers": 0
+      },
+      "required": true
+    }
+  ]
+}
