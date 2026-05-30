@@ -1,0 +1,216 @@
+{
+  "schema_version": "phase42_staging_acceptance_decision.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-41-hosted-capture-execution-evidence",
+  "phase_name": "V2 Phase 42: Staging Acceptance Decision",
+  "execution_environment": "staging",
+  "description": "Decision gate that converts hosted staging evidence, owner acceptance, operator acceptance, and residual risk evidence into a production-planning decision without authorizing production execution.",
+  "forbidden_terms": [
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "Authorization: Bearer",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "raw document body",
+    "raw response body",
+    "This is final legal advice",
+    "final legal advice"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase41_manifest",
+      "title": "Phase 41 hosted capture execution evidence manifest",
+      "type": "file",
+      "path": "rag/evals/phase41_hosted_capture_execution_evidence.json",
+      "required": true
+    },
+    {
+      "id": "phase41_contract",
+      "title": "Phase 41 hosted capture execution evidence contract",
+      "type": "document",
+      "path": "Docs/v2_phase_41_hosted_capture_execution_evidence_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase41_runbook",
+      "title": "Phase 41 hosted capture execution evidence runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_41_hosted_capture_execution_evidence_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase41_release_note",
+      "title": "Phase 41 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_41_hosted_capture_execution_evidence.md",
+      "required": true
+    },
+    {
+      "id": "phase41_builder",
+      "title": "Phase 41 execution evidence builder",
+      "type": "file",
+      "path": "scripts/build_phase41_hosted_capture_execution_evidence.py",
+      "required": true
+    },
+    {
+      "id": "phase42_contract",
+      "title": "Phase 42 staging acceptance decision contract",
+      "type": "document",
+      "path": "Docs/v2_phase_42_staging_acceptance_decision_contract.md",
+      "required": true
+    }
+  ],
+  "decision_evidence": [
+    {
+      "id": "phase33_hosted_validation",
+      "title": "Phase 33 hosted staging validation",
+      "group": "hosted_staging",
+      "type": "json_status",
+      "path": "logs/readiness/phase33-hosted-staging-validation.json",
+      "accepted_statuses": [
+        "hosted_staging_validated"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_execution"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase34_backend_db_validation",
+      "title": "Phase 34 backend DB staging validation",
+      "group": "hosted_staging",
+      "type": "json_status",
+      "path": "logs/readiness/phase34-backend-db-staging-validation.json",
+      "accepted_statuses": [
+        "backend_db_staging_validated"
+      ],
+      "pending_statuses": [
+        "awaiting_backend_db_staging_evidence"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase37_capture_acceptance",
+      "title": "Phase 37 hosted capture acceptance",
+      "group": "hosted_staging",
+      "type": "json_status",
+      "path": "logs/readiness/phase37-hosted-capture-acceptance.json",
+      "accepted_statuses": [
+        "hosted_capture_accepted"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_capture_execution",
+        "awaiting_captured_evidence_files",
+        "awaiting_phase34_backend_db_validation"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase38_execution_report",
+      "title": "Phase 38 hosted capture execution",
+      "group": "hosted_staging",
+      "type": "json_status",
+      "path": "logs/readiness/phase38-hosted-capture-execution.json",
+      "accepted_statuses": [
+        "hosted_capture_execution_accepted"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_capture_configuration",
+        "ready_for_hosted_capture_execution",
+        "hosted_capture_executed_pending_backend_db_validation",
+        "hosted_capture_executed_pending_acceptance"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase40_dry_run_evidence",
+      "title": "Phase 40 hosted dry-run evidence",
+      "group": "hosted_staging",
+      "type": "json_status",
+      "path": "logs/readiness/phase40-hosted-dry-run-evidence.json",
+      "accepted_statuses": [
+        "hosted_dry_run_validated"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_environment_configuration",
+        "awaiting_hosted_dry_run_evidence"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase41_execution_evidence",
+      "title": "Phase 41 hosted capture execution evidence",
+      "group": "hosted_staging",
+      "type": "json_status",
+      "path": "logs/readiness/phase41-hosted-capture-execution-evidence.json",
+      "accepted_statuses": [
+        "hosted_capture_execution_evidence_validated"
+      ],
+      "pending_statuses": [
+        "awaiting_hosted_dry_run_validation",
+        "awaiting_hosted_capture_execution",
+        "hosted_capture_executed_pending_backend_db_validation",
+        "hosted_capture_executed_pending_acceptance"
+      ],
+      "required": true
+    }
+  ],
+  "required_acceptance": [
+    {
+      "id": "lawyer_owner_acceptance",
+      "title": "Lawyer-owner staging acceptance",
+      "group": "owner_acceptance",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase42-lawyer-owner-acceptance.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "reviewed_phase41_evidence": true,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true,
+        "production_execution_authorized": false
+      },
+      "required": true
+    },
+    {
+      "id": "operator_staging_acceptance",
+      "title": "Operator staging acceptance",
+      "group": "operator_acceptance",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase42-operator-staging-acceptance.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "reviewed_phase41_evidence": true,
+        "db_migration_applied": false,
+        "raw_data_uploaded": false,
+        "production_execution_authorized": false
+      },
+      "required": true
+    }
+  ],
+  "residual_risks": [
+    {
+      "id": "residual_risk_register",
+      "title": "Residual risk register",
+      "group": "risk_acceptance",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase42-residual-risk-register.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "unresolved_blockers": 0,
+        "production_execution_authorized": false,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    }
+  ]
+}

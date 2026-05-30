@@ -2181,6 +2181,32 @@ def load_hosted_capture_execution_evidence_manifest(path: Path) -> dict[str, Any
     return payload
 
 
+def load_staging_acceptance_decision_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase42_staging_acceptance_decision.v1":
+        raise ValueError(
+            "staging acceptance decision manifest schema_version must be "
+            "phase42_staging_acceptance_decision.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("staging acceptance decision manifest must contain a non-empty prerequisites array")
+    decision_evidence = payload.get("decision_evidence")
+    if not isinstance(decision_evidence, list) or not decision_evidence:
+        raise ValueError("staging acceptance decision manifest must contain a non-empty decision_evidence array")
+    required_acceptance = payload.get("required_acceptance")
+    if not isinstance(required_acceptance, list) or not required_acceptance:
+        raise ValueError("staging acceptance decision manifest must contain a non-empty required_acceptance array")
+    residual_risks = payload.get("residual_risks")
+    if not isinstance(residual_risks, list) or not residual_risks:
+        raise ValueError("staging acceptance decision manifest must contain a non-empty residual_risks array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("staging acceptance decision manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -2727,6 +2753,125 @@ def build_hosted_capture_execution_evidence_report(
             "phase36_status": phase36_status,
             "phase34_status": phase34_status,
             "phase37_status": phase37_status,
+        },
+    }
+
+
+def evaluate_staging_acceptance_item(
+    item: dict[str, Any],
+    project_root: Path,
+    *,
+    forbidden_terms: list[str],
+) -> dict[str, Any]:
+    result = evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+    result = {**result, "group": str(item.get("group") or "").strip()}
+    if not result["exists"]:
+        return result
+    path = Path(str(result["path"]))
+    if not path.is_absolute():
+        path = project_root / path
+    text = path.read_text(encoding="utf-8", errors="replace")
+    normalized_text = text.lower()
+    matched_terms = [term for term in forbidden_terms if term and term.lower() in normalized_text]
+    if not matched_terms:
+        return {**result, "forbidden_content_matches": []}
+    return {
+        **result,
+        "status": "failed",
+        "forbidden_content_matches": matched_terms,
+        "summary": "staging acceptance evidence contains forbidden content",
+    }
+
+
+def build_staging_acceptance_decision_report(
+    decision_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(decision_payload.get("target_release_tag") or "").strip()
+    repo = str(decision_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in decision_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in decision_payload["prerequisites"]
+    ]
+    decision_evidence = [
+        evaluate_staging_acceptance_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in decision_payload["decision_evidence"]
+    ]
+    required_acceptance = [
+        evaluate_staging_acceptance_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in decision_payload["required_acceptance"]
+    ]
+    residual_risks = [
+        evaluate_staging_acceptance_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in decision_payload["residual_risks"]
+    ]
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    failed_items = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in [*decision_evidence, *required_acceptance, *residual_risks]
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_decision = [item for item in decision_evidence if item["required"] and item["status"] == "pending"]
+    pending_acceptance = [
+        item for item in [*required_acceptance, *residual_risks] if item["required"] and item["status"] == "pending"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in decision_evidence}
+    phase41_status = statuses.get("phase41_execution_evidence", "")
+    blockers = [*prerequisite_blockers, *failed_items]
+    if blockers:
+        status = "blocked"
+        decision = "blocked"
+    elif phase41_status != "hosted_capture_execution_evidence_validated" or pending_decision:
+        status = "awaiting_staging_execution_evidence"
+        decision = "wait_for_hosted_evidence"
+    elif pending_acceptance:
+        status = "awaiting_required_acceptance"
+        decision = "wait_for_acceptance"
+    else:
+        status = "staging_accepted_for_production_planning"
+        decision = "go_for_production_planning"
+    return {
+        "schema_version": "phase42_staging_acceptance_decision.v1",
+        "source_schema_version": decision_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "decision": decision,
+        "execution_environment": str(decision_payload.get("execution_environment") or "staging"),
+        "production_execution_authorized": False,
+        "lawyer_review_required": True,
+        "no_final_legal_advice": True,
+        "prerequisites": prerequisites,
+        "decision_evidence": decision_evidence,
+        "required_acceptance": required_acceptance,
+        "residual_risks": residual_risks,
+        "pending_decision_evidence": pending_decision,
+        "pending_acceptance": pending_acceptance,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_decision_evidence": len(decision_evidence),
+            "verified_decision_evidence": sum(1 for item in decision_evidence if item["status"] == "verified"),
+            "pending_decision_evidence": len(pending_decision),
+            "total_required_acceptance": len(required_acceptance),
+            "verified_required_acceptance": sum(1 for item in required_acceptance if item["status"] == "verified"),
+            "pending_acceptance": len(pending_acceptance),
+            "total_residual_risks": len(residual_risks),
+            "verified_residual_risks": sum(1 for item in residual_risks if item["status"] == "verified"),
+            "forbidden_terms": len(forbidden_terms),
+            "blockers": len(blockers),
+            "phase41_status": phase41_status,
         },
     }
 

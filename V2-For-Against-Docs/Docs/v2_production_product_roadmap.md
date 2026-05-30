@@ -1023,16 +1023,23 @@ Outcome: hosted staging evidence is converted into a clear go/no-go decision for
 
 Deliverables:
 
-- Staging acceptance decision manifest.
-- Decision builder that consumes Phase 33, Phase 34, Phase 37, Phase 38, Phase 40, and Phase 41 evidence.
-- Required lawyer-owner and operator acceptance entries.
-- Residual risk register for known gaps, hosted constraints, data boundaries, and legal-review requirements.
+- Machine-readable staging acceptance decision manifest.
+- Decision builder that emits `awaiting_staging_execution_evidence`, `awaiting_required_acceptance`, `staging_accepted_for_production_planning`, or `blocked`.
+- Detached `staging-acceptance-decision` mode.
+- Decision checks that consume Phase 33, Phase 34, Phase 37, Phase 38, Phase 40, and Phase 41 evidence.
+- Required lawyer-owner acceptance JSON confirming Phase 41 review, lawyer review boundary, no final legal advice, and no production execution authorization.
+- Required operator acceptance JSON confirming Phase 41 review, no DB migration, no raw data upload, and no production execution authorization.
+- Residual risk register covering unresolved blockers, hosted constraints, data boundaries, legal-review requirements, and production-planning limits.
+- Contract, runbook, tests, release note, and codebase map updates for Phase 42.
 
 Exit criteria:
 
-- Staging can be accepted only when Phase 38 is accepted and all required hosted evidence is verified.
-- Missing lawyer-owner review, operator DB acceptance, or unresolved blockers prevents production planning.
-- Decision report preserves the no-final-legal-advice boundary.
+- Phase 42 can accept staging for production planning only when Phase 41 returns `hosted_capture_execution_evidence_validated`, prior hosted staging evidence is verified, required acceptance entries are verified, and residual blockers are zero.
+- Missing hosted execution evidence returns `awaiting_staging_execution_evidence`; missing owner/operator/risk acceptance returns `awaiting_required_acceptance`.
+- Any failed status, required-field mismatch, unresolved blocker, secret-bearing content, raw data content, DB migration, or final-legal-advice language blocks.
+- Decision report always preserves `production_execution_authorized=false`, `lawyer_review_required=true`, and `no_final_legal_advice=true`.
+- Detached backend tests, frontend quality gate, Phase 42 decision gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, production mutation, or raw data staging.
 
 ### Phase 43: Production Cutover Readiness Pack
 

@@ -687,6 +687,19 @@ Phase 41 adds the hosted capture execution evidence gate for Phase 38. The activ
 - `Docs/v2_phase_41_hosted_capture_execution_evidence_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_41_hosted_capture_execution_evidence.md`: release note and validation evidence.
 
+## V2 Phase 42 Staging Acceptance Decision
+
+Phase 42 adds the hosted staging acceptance decision gate. The active implementation uses:
+
+- `rag/evals/phase42_staging_acceptance_decision.json`: decision manifest with prerequisites, hosted evidence requirements, owner/operator acceptance requirements, residual risk checks, and forbidden-content terms.
+- `rag/sl_legal_rag/operations.py`: `load_staging_acceptance_decision_manifest` and `build_staging_acceptance_decision_report`.
+- `scripts/build_phase42_staging_acceptance_decision.py`: report builder for local awaiting, required acceptance, accepted planning, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `staging-acceptance-decision` detached mode.
+- `tests/test_phase42_staging_acceptance_decision.py`: coverage for local awaiting state, required acceptance, accepted planning state, production authorization blockers, residual risk blockers, forbidden-content blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_42_staging_acceptance_decision_contract.md`: decision contract.
+- `Docs/v2_phase_42_staging_acceptance_decision_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_42_staging_acceptance_decision.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
