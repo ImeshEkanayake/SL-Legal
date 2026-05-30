@@ -1,0 +1,261 @@
+{
+  "schema_version": "phase44_production_cutover_dry_run.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-43-production-cutover-readiness",
+  "phase_name": "V2 Phase 44: Production Cutover Dry Run",
+  "cutover_environment": "production",
+  "description": "Non-mutating production cutover dry-run plan that rehearses deployment, verification, rollback, and approval steps without authorizing production execution.",
+  "forbidden_terms": [
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "Authorization: Bearer",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "raw document body",
+    "raw response body",
+    "This is final legal advice",
+    "final legal advice"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase43_manifest",
+      "title": "Phase 43 production cutover readiness manifest",
+      "type": "file",
+      "path": "rag/evals/phase43_production_cutover_readiness.json",
+      "required": true
+    },
+    {
+      "id": "phase43_contract",
+      "title": "Phase 43 production cutover readiness contract",
+      "type": "document",
+      "path": "Docs/v2_phase_43_production_cutover_readiness_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase43_runbook",
+      "title": "Phase 43 production cutover readiness runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_43_production_cutover_readiness_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase43_release_note",
+      "title": "Phase 43 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_43_production_cutover_readiness.md",
+      "required": true
+    },
+    {
+      "id": "phase43_builder",
+      "title": "Phase 43 production cutover readiness builder",
+      "type": "file",
+      "path": "scripts/build_phase43_production_cutover_readiness.py",
+      "required": true
+    },
+    {
+      "id": "phase44_contract",
+      "title": "Phase 44 production cutover dry-run contract",
+      "type": "document",
+      "path": "Docs/v2_phase_44_production_cutover_dry_run_contract.md",
+      "required": true
+    }
+  ],
+  "readiness_reports": [
+    {
+      "id": "phase43_production_cutover_readiness",
+      "title": "Phase 43 production cutover readiness report",
+      "group": "production_readiness",
+      "type": "json_status",
+      "path": "logs/readiness/phase43-production-cutover-readiness.json",
+      "accepted_statuses": [
+        "ready_for_production_cutover_dry_run"
+      ],
+      "pending_statuses": [
+        "awaiting_staging_acceptance",
+        "awaiting_production_readiness_evidence",
+        "awaiting_production_environment_inventory"
+      ],
+      "required_fields": {
+        "production_execution_authorized": false,
+        "production_mutation_authorized": false,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false,
+        "cutover_dry_run_authorized": true,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    }
+  ],
+  "dry_run_steps": [
+    {
+      "id": "phase44_environment_inventory_refresh",
+      "title": "Refresh production environment inventory",
+      "stage": "preflight",
+      "owner": "operator",
+      "execution_mode": "read_only_dry_run",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "production-cutover-readiness-env",
+        "phase44-production-env-inventory"
+      ],
+      "expected_evidence": "logs/test-runs/phase44-production-env-inventory.log",
+      "planned_only": false,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    },
+    {
+      "id": "phase44_backend_regression",
+      "title": "Backend regression suite",
+      "stage": "preflight",
+      "owner": "operator",
+      "execution_mode": "read_only_dry_run",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "tests",
+        "phase44-production-tests"
+      ],
+      "expected_evidence": "logs/test-runs/phase44-production-tests.log",
+      "planned_only": false,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    },
+    {
+      "id": "phase44_frontend_quality",
+      "title": "Frontend quality and production build",
+      "stage": "preflight",
+      "owner": "operator",
+      "execution_mode": "read_only_dry_run",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "frontend",
+        "phase44-production-frontend"
+      ],
+      "expected_evidence": "logs/test-runs/phase44-production-frontend.log",
+      "planned_only": false,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    },
+    {
+      "id": "phase44_prebuilt_production_deploy",
+      "title": "Planned production deployment command",
+      "stage": "deployment",
+      "owner": "operator",
+      "execution_mode": "planned_only",
+      "command": [
+        "vercel",
+        "deploy",
+        "--prebuilt",
+        "--prod"
+      ],
+      "expected_evidence": "logs/production-cutover/phase44-prebuilt-production-deploy-plan.json",
+      "planned_only": true,
+      "execution_approved": false,
+      "mutates_production": true,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": true
+    },
+    {
+      "id": "phase44_post_deploy_smoke_plan",
+      "title": "Planned signed post-deploy smoke checks",
+      "stage": "verification",
+      "owner": "operator",
+      "execution_mode": "planned_only",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "production-cutover-readiness-env",
+        "phase44-production-post-deploy-smoke"
+      ],
+      "expected_evidence": "logs/test-runs/phase44-production-post-deploy-smoke.log",
+      "planned_only": true,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    },
+    {
+      "id": "phase44_index_refresh_plan",
+      "title": "Planned index refresh command",
+      "stage": "verification",
+      "owner": "operator",
+      "execution_mode": "planned_only",
+      "command": [
+        "python",
+        "scripts/check_rag_index_consistency.py",
+        "--production-review"
+      ],
+      "expected_evidence": "logs/production-cutover/phase44-index-refresh-plan.json",
+      "planned_only": true,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": true,
+      "release_promotion": false
+    }
+  ],
+  "owner_approvals": [
+    {
+      "id": "lawyer_owner_dry_run_acceptance",
+      "title": "Lawyer-owner accepts dry-run plan and no-final-advice boundary",
+      "owner": "lawyer_owner",
+      "expected_evidence": "logs/production-cutover/phase44-lawyer-owner-dry-run-acceptance.json",
+      "required": true
+    },
+    {
+      "id": "operator_dry_run_acceptance",
+      "title": "Operator accepts dry-run plan and production mutation boundary",
+      "owner": "operator",
+      "expected_evidence": "logs/production-cutover/phase44-operator-dry-run-acceptance.json",
+      "required": true
+    }
+  ],
+  "rollback_steps": [
+    {
+      "id": "phase44_rollback_alias_plan",
+      "title": "Planned rollback to previous production deployment alias",
+      "owner": "operator",
+      "action": "Restore the previous production deployment alias if dry-run evidence indicates cutover risk.",
+      "expected_evidence": "logs/production-cutover/phase44-rollback-alias-plan.json",
+      "planned_only": true,
+      "execution_approved": false
+    },
+    {
+      "id": "phase44_revoke_access_plan",
+      "title": "Planned access revocation if smoke checks fail",
+      "owner": "operator",
+      "action": "Revoke production reviewer access and preserve failure evidence without exposing raw data.",
+      "expected_evidence": "logs/production-cutover/phase44-revoke-access-plan.json",
+      "planned_only": true,
+      "execution_approved": false
+    },
+    {
+      "id": "phase44_preserve_failure_evidence",
+      "title": "Preserve dry-run failure evidence",
+      "owner": "operator",
+      "action": "Keep scrubbed logs, readiness reports, and incident notes under ignored evidence paths.",
+      "expected_evidence": "logs/production-cutover/phase44-failure-evidence-register.json",
+      "planned_only": true,
+      "execution_approved": false
+    }
+  ]
+}

@@ -713,6 +713,19 @@ Phase 43 adds the non-mutating production cutover readiness gate. The active imp
 - `Docs/v2_phase_43_production_cutover_readiness_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_43_production_cutover_readiness.md`: release note and validation evidence.
 
+## V2 Phase 44 Production Cutover Dry Run
+
+Phase 44 adds the non-mutating production cutover dry-run gate. The active implementation uses:
+
+- `rag/evals/phase44_production_cutover_dry_run.json`: dry-run manifest with Phase 43 readiness, ordered preflight/deployment/verification steps, owner approvals, rollback steps, and forbidden-content terms.
+- `rag/sl_legal_rag/operations.py`: `load_production_cutover_dry_run_manifest` and `build_production_cutover_dry_run_report`.
+- `scripts/build_phase44_production_cutover_dry_run.py`: report builder for production-readiness-awaiting, planned dry-run, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `production-cutover-dry-run` detached mode.
+- `tests/test_phase44_production_cutover_dry_run.py`: coverage for local awaiting state, planned dry-run state, production execution approval blockers, mutating command blockers, rollback blockers, forbidden-content blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_44_production_cutover_dry_run_contract.md`: dry-run contract.
+- `Docs/v2_phase_44_production_cutover_dry_run_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_44_production_cutover_dry_run.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

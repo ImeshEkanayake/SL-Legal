@@ -1070,15 +1070,23 @@ Outcome: the production deployment procedure is rehearsed without mutating produ
 
 Deliverables:
 
-- Dry-run execution manifest for production cutover.
-- Ordered deployment, verification, rollback, and owner-approval steps.
-- Dry-run report that records command readiness, expected evidence paths, and unresolved blockers.
+- Machine-readable dry-run execution manifest for production cutover.
+- Dry-run builder that emits `awaiting_production_cutover_readiness`, `production_cutover_dry_run_planned`, or `blocked`.
+- Detached `production-cutover-dry-run` mode.
+- Ordered preflight, deployment, verification, rollback, and owner-approval steps with expected evidence paths.
+- Planned-only command handling for production deployment, release promotion, index refresh, rollback, and any other production-mutating action.
+- Owner/operator approval evidence expectations for accepting the dry-run plan and production mutation boundary.
+- Contract, runbook, tests, release note, and codebase map updates for Phase 44.
 
 Exit criteria:
 
-- Dry-run succeeds only when all readiness pack evidence is verified.
-- Any migration, raw data upload, index mutation, or release promotion command remains planned-only unless explicitly approved in a later execution phase.
-- Rollback steps are complete and operator-owned.
+- Dry-run planning succeeds only when Phase 43 returns `ready_for_production_cutover_dry_run`.
+- Missing or blocked Phase 43 readiness returns `awaiting_production_cutover_readiness`.
+- Any production execution approval, production mutation approval, database migration approval, raw data upload, release promotion approval, or non-planned mutating command blocks.
+- Rollback steps are complete, operator-owned, planned-only, and have expected evidence paths.
+- Decision report always preserves `production_execution_authorized=false`, `production_mutation_authorized=false`, `database_migration_authorized=false`, `raw_data_upload_authorized=false`, `release_promotion_authorized=false`, `lawyer_review_required=true`, and `no_final_legal_advice=true`.
+- Detached backend tests, frontend quality gate, Phase 44 dry-run gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, production mutation, release promotion, or raw data staging.
 
 ### Phase 45: Production Cutover Execution Plan
 

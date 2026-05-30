@@ -2233,6 +2233,35 @@ def load_production_cutover_readiness_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_production_cutover_dry_run_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase44_production_cutover_dry_run.v1":
+        raise ValueError(
+            "production cutover dry-run manifest schema_version must be "
+            "phase44_production_cutover_dry_run.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("production cutover dry-run manifest must contain a non-empty prerequisites array")
+    readiness_reports = payload.get("readiness_reports")
+    if not isinstance(readiness_reports, list) or not readiness_reports:
+        raise ValueError("production cutover dry-run manifest must contain a non-empty readiness_reports array")
+    dry_run_steps = payload.get("dry_run_steps")
+    if not isinstance(dry_run_steps, list) or not dry_run_steps:
+        raise ValueError("production cutover dry-run manifest must contain a non-empty dry_run_steps array")
+    rollback_steps = payload.get("rollback_steps")
+    if not isinstance(rollback_steps, list) or not rollback_steps:
+        raise ValueError("production cutover dry-run manifest must contain a non-empty rollback_steps array")
+    owner_approvals = payload.get("owner_approvals")
+    if not isinstance(owner_approvals, list) or not owner_approvals:
+        raise ValueError("production cutover dry-run manifest must contain a non-empty owner_approvals array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("production cutover dry-run manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -3083,6 +3112,218 @@ def build_production_cutover_readiness_report(
             "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
             "phase42_status": phase42_status,
+        },
+    }
+
+
+def production_cutover_dry_run_step_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    step_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    stage = str(item.get("stage") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    execution_mode = str(item.get("execution_mode") or "").strip()
+    command = item.get("command")
+    expected_evidence = str(item.get("expected_evidence") or "").strip()
+    blockers: list[dict[str, str]] = []
+    if not step_id:
+        raise ValueError("production cutover dry-run step id is required")
+    if not title:
+        raise ValueError(f"{step_id} title is required")
+    if stage not in {"preflight", "deployment", "verification", "rollback", "owner_approval"}:
+        blockers.append({"id": step_id, "status": "failed", "summary": "dry-run step has unsupported stage"})
+    if execution_mode not in {"planned_only", "read_only_dry_run", "manual_approval"}:
+        blockers.append({"id": step_id, "status": "failed", "summary": "dry-run step has unsupported execution mode"})
+    command_parts: list[str] = []
+    if command is not None:
+        if not isinstance(command, list) or not command or not all(str(part).strip() for part in command):
+            blockers.append({"id": step_id, "status": "failed", "summary": "dry-run command must be a non-empty string array"})
+        else:
+            command_parts = [str(part) for part in command]
+    if execution_mode != "manual_approval" and not command_parts:
+        blockers.append({"id": step_id, "status": "failed", "summary": "non-approval dry-run step requires a command"})
+    if not expected_evidence:
+        blockers.append({"id": step_id, "status": "failed", "summary": "dry-run step expected evidence path is required"})
+    planned_only = bool(item.get("planned_only", execution_mode == "planned_only"))
+    execution_approved = bool(item.get("execution_approved", False))
+    risk_flags = {
+        "mutates_production": bool(item.get("mutates_production", False)),
+        "database_migration": bool(item.get("database_migration", False)),
+        "raw_data_upload": bool(item.get("raw_data_upload", False)),
+        "index_mutation": bool(item.get("index_mutation", False)),
+        "release_promotion": bool(item.get("release_promotion", False)),
+    }
+    if execution_approved:
+        blockers.append({"id": step_id, "status": "failed", "summary": "Phase 44 must not approve execution"})
+    if any(risk_flags.values()) and not planned_only:
+        blockers.append({"id": step_id, "status": "failed", "summary": "mutating or promotion steps must remain planned-only"})
+    if execution_mode == "read_only_dry_run" and risk_flags["mutates_production"]:
+        blockers.append({"id": step_id, "status": "failed", "summary": "read-only dry-run steps must not mutate production"})
+    status = "planned_only" if planned_only else "ready_for_read_only_dry_run"
+    if execution_mode == "manual_approval":
+        status = "requires_manual_approval"
+    return {
+        "id": step_id,
+        "title": title,
+        "stage": stage,
+        "owner": owner or None,
+        "execution_mode": execution_mode,
+        "command": command_parts,
+        "command_line": " ".join(shlex.quote(part) for part in command_parts) if command_parts else "",
+        "expected_evidence": expected_evidence,
+        "planned_only": planned_only,
+        "execution_approved": execution_approved,
+        **risk_flags,
+        "status": status,
+    }, blockers
+
+
+def production_cutover_owner_approval_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    approval_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    expected_evidence = str(item.get("expected_evidence") or "").strip()
+    required = bool(item.get("required", True))
+    blockers: list[dict[str, str]] = []
+    if not approval_id:
+        raise ValueError("production cutover owner approval id is required")
+    if required and (not title or not owner or not expected_evidence):
+        blockers.append({"id": approval_id, "status": "failed", "summary": "owner approval is incomplete"})
+    return {
+        "id": approval_id,
+        "title": title,
+        "owner": owner,
+        "expected_evidence": expected_evidence,
+        "required": required,
+        "status": "approval_evidence_expected",
+    }, blockers
+
+
+def production_cutover_rollback_step_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    rollback_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    action = str(item.get("action") or "").strip()
+    expected_evidence = str(item.get("expected_evidence") or "").strip()
+    planned_only = bool(item.get("planned_only", True))
+    execution_approved = bool(item.get("execution_approved", False))
+    blockers: list[dict[str, str]] = []
+    if not rollback_id:
+        raise ValueError("production cutover rollback step id is required")
+    if not title or not owner or not action or not expected_evidence:
+        blockers.append({"id": rollback_id, "status": "failed", "summary": "rollback step is incomplete"})
+    if not planned_only:
+        blockers.append({"id": rollback_id, "status": "failed", "summary": "rollback steps must remain planned-only in Phase 44"})
+    if execution_approved:
+        blockers.append({"id": rollback_id, "status": "failed", "summary": "Phase 44 must not approve rollback execution"})
+    return {
+        "id": rollback_id,
+        "title": title,
+        "owner": owner,
+        "action": action,
+        "expected_evidence": expected_evidence,
+        "planned_only": planned_only,
+        "execution_approved": execution_approved,
+        "status": "planned_only",
+    }, blockers
+
+
+def build_production_cutover_dry_run_report(
+    dry_run_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(dry_run_payload.get("target_release_tag") or "").strip()
+    repo = str(dry_run_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in dry_run_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in dry_run_payload["prerequisites"]
+    ]
+    readiness_reports = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in dry_run_payload["readiness_reports"]
+    ]
+    dry_run_steps: list[dict[str, Any]] = []
+    step_blockers: list[dict[str, str]] = []
+    for item in dry_run_payload["dry_run_steps"]:
+        step, blockers = production_cutover_dry_run_step_from_mapping(item)
+        dry_run_steps.append(step)
+        step_blockers.extend(blockers)
+    owner_approvals: list[dict[str, Any]] = []
+    approval_blockers: list[dict[str, str]] = []
+    for item in dry_run_payload["owner_approvals"]:
+        approval, blockers = production_cutover_owner_approval_from_mapping(item)
+        owner_approvals.append(approval)
+        approval_blockers.extend(blockers)
+    rollback_steps: list[dict[str, Any]] = []
+    rollback_blockers: list[dict[str, str]] = []
+    for item in dry_run_payload["rollback_steps"]:
+        rollback_step, blockers = production_cutover_rollback_step_from_mapping(item)
+        rollback_steps.append(rollback_step)
+        rollback_blockers.extend(blockers)
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    failed_reports = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in readiness_reports
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_reports = [
+        item for item in readiness_reports if item["required"] and item["status"] == "pending"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in readiness_reports}
+    phase43_status = statuses.get("phase43_production_cutover_readiness", "")
+    blockers = [*prerequisite_blockers, *failed_reports, *step_blockers, *approval_blockers, *rollback_blockers]
+    if blockers:
+        status = "blocked"
+    elif phase43_status != "ready_for_production_cutover_dry_run" or pending_reports:
+        status = "awaiting_production_cutover_readiness"
+    else:
+        status = "production_cutover_dry_run_planned"
+    return {
+        "schema_version": "phase44_production_cutover_dry_run.v1",
+        "source_schema_version": dry_run_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "cutover_environment": str(dry_run_payload.get("cutover_environment") or "production"),
+        "production_execution_authorized": False,
+        "production_mutation_authorized": False,
+        "database_migration_authorized": False,
+        "raw_data_upload_authorized": False,
+        "release_promotion_authorized": False,
+        "lawyer_review_required": True,
+        "no_final_legal_advice": True,
+        "phase45_execution_plan_authorized": status == "production_cutover_dry_run_planned",
+        "prerequisites": prerequisites,
+        "readiness_reports": readiness_reports,
+        "dry_run_steps": dry_run_steps,
+        "owner_approvals": owner_approvals,
+        "rollback_steps": rollback_steps,
+        "pending_readiness_reports": pending_reports,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_readiness_reports": len(readiness_reports),
+            "verified_readiness_reports": sum(1 for item in readiness_reports if item["status"] == "verified"),
+            "pending_readiness_reports": len(pending_reports),
+            "failed_readiness_reports": sum(1 for item in readiness_reports if item["status"] == "failed"),
+            "dry_run_steps": len(dry_run_steps),
+            "planned_only_steps": sum(1 for item in dry_run_steps if item["planned_only"]),
+            "read_only_dry_run_steps": sum(1 for item in dry_run_steps if item["execution_mode"] == "read_only_dry_run"),
+            "owner_approvals": len(owner_approvals),
+            "rollback_steps": len(rollback_steps),
+            "forbidden_terms": len(forbidden_terms),
+            "blockers": len(blockers),
+            "phase43_status": phase43_status,
         },
     }
 
