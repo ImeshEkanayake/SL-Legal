@@ -902,6 +902,28 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 36 runner gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 37: Hosted Capture Acceptance Gate
+
+Outcome: hosted evidence captured by Phase 36 is accepted only after the captured files are complete, scrubbed, and Phase 34 validates the backend/DB staging evidence.
+
+Deliverables:
+
+- Machine-readable hosted capture acceptance manifest.
+- Acceptance report builder that produces `awaiting_hosted_capture_execution`, `awaiting_captured_evidence_files`, `awaiting_phase34_backend_db_validation`, `hosted_capture_accepted`, or `blocked`.
+- Detached `hosted-capture-acceptance` mode.
+- Captured-evidence checks for API health, signed workspace smoke, authority workflow smoke, document-source smoke, read-only DB health, DB write guard, and operator DB acceptance.
+- Forbidden-content scan for signing headers, session cookies, DB URLs, private keys, raw document bodies, and API key labels.
+- Acceptance dependency on Phase 34 `backend_db_staging_validated` status.
+
+Exit criteria:
+
+- Local acceptance returns `awaiting_hosted_capture_execution`.
+- Hosted acceptance can return `hosted_capture_accepted` only after Phase 36 reports `hosted_evidence_captured` and Phase 34 reports `backend_db_staging_validated`.
+- Captured logs and JSON evidence contain no forbidden hosted-capture content.
+- Failed or incomplete captured evidence blocks production planning.
+- Detached backend tests, frontend quality gate, Phase 37 acceptance gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

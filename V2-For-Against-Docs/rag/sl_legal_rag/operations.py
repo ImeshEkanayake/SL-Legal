@@ -2082,6 +2082,25 @@ def load_hosted_evidence_capture_runner_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_hosted_capture_acceptance_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase37_hosted_capture_acceptance.v1":
+        raise ValueError(
+            "hosted capture acceptance manifest schema_version must be phase37_hosted_capture_acceptance.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted capture acceptance manifest must contain a non-empty prerequisites array")
+    captured_evidence = payload.get("captured_evidence")
+    if not isinstance(captured_evidence, list) or not captured_evidence:
+        raise ValueError("hosted capture acceptance manifest must contain a non-empty captured_evidence array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("hosted capture acceptance manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -2246,6 +2265,103 @@ def build_hosted_evidence_capture_plan(
             "capture_tasks": len(capture_tasks),
             "signed_capture_tasks": sum(1 for item in capture_tasks if item["requires_signed_auth"]),
             "db_writing_capture_tasks": sum(1 for item in capture_tasks if item["writes_database"]),
+            "blockers": len(blockers),
+        },
+    }
+
+
+def evaluate_hosted_capture_acceptance_evidence(
+    item: dict[str, Any],
+    project_root: Path,
+    *,
+    forbidden_terms: list[str],
+) -> dict[str, Any]:
+    result = evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+    if not result["exists"]:
+        return result
+    path = Path(str(result["path"]))
+    if not path.is_absolute():
+        path = project_root / path
+    text = path.read_text(encoding="utf-8", errors="replace")
+    normalized_text = text.lower()
+    matched_terms = [term for term in forbidden_terms if term and term.lower() in normalized_text]
+    if not matched_terms:
+        return {**result, "forbidden_content_matches": []}
+    return {
+        **result,
+        "status": "failed",
+        "forbidden_content_matches": matched_terms,
+        "summary": "evidence contains forbidden hosted-capture content",
+    }
+
+
+def build_hosted_capture_acceptance_report(
+    acceptance_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(acceptance_payload.get("target_release_tag") or "").strip()
+    repo = str(acceptance_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in acceptance_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in acceptance_payload["prerequisites"]
+    ]
+    captured_evidence = [
+        evaluate_hosted_capture_acceptance_evidence(item, project_root, forbidden_terms=forbidden_terms)
+        for item in acceptance_payload["captured_evidence"]
+    ]
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] not in {"verified", "pending"}
+    ]
+    evidence_failures = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in captured_evidence
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_evidence = [
+        item for item in captured_evidence if item["required"] and item["status"] == "pending"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in prerequisites}
+    phase36_status = statuses.get("phase36_capture_run", "")
+    phase34_status = statuses.get("phase34_backend_db_validation", "")
+    blockers = [*prerequisite_blockers, *evidence_failures]
+    if blockers:
+        status = "blocked"
+    elif phase36_status != "hosted_evidence_captured":
+        status = "awaiting_hosted_capture_execution"
+    elif pending_evidence:
+        status = "awaiting_captured_evidence_files"
+    elif phase34_status != "backend_db_staging_validated":
+        status = "awaiting_phase34_backend_db_validation"
+    else:
+        status = "hosted_capture_accepted"
+    return {
+        "schema_version": "phase37_hosted_capture_acceptance.v1",
+        "source_schema_version": acceptance_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(acceptance_payload.get("execution_environment") or "staging"),
+        "prerequisites": prerequisites,
+        "captured_evidence": captured_evidence,
+        "pending_captured_evidence": pending_evidence,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "pending_prerequisites": sum(1 for item in prerequisites if item["status"] == "pending"),
+            "total_captured_evidence": len(captured_evidence),
+            "verified_captured_evidence": sum(1 for item in captured_evidence if item["status"] == "verified"),
+            "pending_captured_evidence": len(pending_evidence),
+            "failed_captured_evidence": sum(1 for item in captured_evidence if item["status"] == "failed"),
+            "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
         },
     }

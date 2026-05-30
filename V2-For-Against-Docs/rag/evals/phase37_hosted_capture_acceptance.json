@@ -1,0 +1,159 @@
+{
+  "schema_version": "phase37_hosted_capture_acceptance.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-36-hosted-evidence-capture-runner",
+  "phase_name": "V2 Phase 37: Hosted Capture Acceptance Gate",
+  "execution_environment": "staging",
+  "description": "Post-capture acceptance gate for Phase 36 hosted evidence and Phase 34 backend/DB validation.",
+  "forbidden_terms": [
+    "SL_LEGAL_AUTH_HMAC_SECRET",
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "AZURE_OPENAI_API_KEY",
+    "raw document body"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase36_capture_run",
+      "title": "Phase 36 hosted evidence capture run",
+      "type": "json_status",
+      "path": "logs/readiness/phase36-hosted-evidence-capture-run.json",
+      "accepted_statuses": [
+        "hosted_evidence_captured"
+      ],
+      "pending_statuses": [
+        "ready_for_hosted_capture_runner_configuration",
+        "ready_for_hosted_capture_execution"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase34_backend_db_validation",
+      "title": "Phase 34 backend DB staging validation",
+      "type": "json_status",
+      "path": "logs/readiness/phase34-backend-db-staging-validation.json",
+      "accepted_statuses": [
+        "backend_db_staging_validated"
+      ],
+      "pending_statuses": [
+        "awaiting_backend_db_staging_evidence"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase36_manifest",
+      "title": "Phase 36 hosted evidence capture runner manifest",
+      "type": "file",
+      "path": "rag/evals/phase36_hosted_evidence_capture_runner.json",
+      "required": true
+    },
+    {
+      "id": "phase36_contract",
+      "title": "Phase 36 hosted evidence capture runner contract",
+      "type": "document",
+      "path": "Docs/v2_phase_36_hosted_evidence_capture_runner_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase36_runbook",
+      "title": "Phase 36 hosted evidence capture runner runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_36_hosted_evidence_capture_runner_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase36_release_note",
+      "title": "Phase 36 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_36_hosted_evidence_capture_runner.md",
+      "required": true
+    }
+  ],
+  "captured_evidence": [
+    {
+      "id": "api_health_real_backend",
+      "title": "Hosted API health evidence",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase34-api-health.json",
+      "accepted_statuses": [
+        "healthy"
+      ],
+      "required_fields": {
+        "runtime": "hosted_staging",
+        "backend": "real",
+        "database_connected": true
+      },
+      "required": true
+    },
+    {
+      "id": "signed_workspace_api_smoke",
+      "title": "Signed workspace API smoke log",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase34-platform-signed-workspace-smoke.log",
+      "required": true
+    },
+    {
+      "id": "authority_workflow_real_backend",
+      "title": "Authority workflow smoke log",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase34-platform-authority-workflow.log",
+      "required": true
+    },
+    {
+      "id": "document_source_real_backend",
+      "title": "Document source status smoke log",
+      "type": "detached_log",
+      "path": "logs/test-runs/phase34-platform-document-source-smoke.log",
+      "required": true
+    },
+    {
+      "id": "db_readonly_health",
+      "title": "Read-only DB health evidence",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase34-db-readonly-health.json",
+      "accepted_statuses": [
+        "healthy"
+      ],
+      "required_fields": {
+        "access_mode": "read_only",
+        "migration_applied": false
+      },
+      "required": true
+    },
+    {
+      "id": "db_write_guard",
+      "title": "DB write guard evidence",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase34-db-write-guard.json",
+      "accepted_statuses": [
+        "no_unintended_writes"
+      ],
+      "required_fields": {
+        "write_count": 0,
+        "migration_count": 0,
+        "raw_data_uploaded": false
+      },
+      "required": true
+    },
+    {
+      "id": "operator_db_acceptance",
+      "title": "Operator DB acceptance evidence",
+      "type": "json_status",
+      "path": "logs/hosted-staging/phase34-operator-db-acceptance.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "database_migrated": false,
+        "raw_data_uploaded": false,
+        "writes_reviewed": true
+      },
+      "required": true
+    }
+  ]
+}

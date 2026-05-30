@@ -622,6 +622,19 @@ Phase 36 adds the guarded hosted evidence runner for gathering Phase 34 evidence
 - `Docs/v2_phase_36_hosted_evidence_capture_runner_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_36_hosted_evidence_capture_runner.md`: release note and validation evidence.
 
+## V2 Phase 37 Hosted Capture Acceptance Gate
+
+Phase 37 adds the post-capture acceptance gate for Phase 36 hosted evidence and Phase 34 backend/DB validation. The active implementation uses:
+
+- `rag/evals/phase37_hosted_capture_acceptance.json`: acceptance manifest with prerequisites, captured evidence, and forbidden-content terms.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_capture_acceptance_manifest` and `build_hosted_capture_acceptance_report`.
+- `scripts/build_phase37_hosted_capture_acceptance.py`: report builder for local awaiting, hosted waiting, accepted, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `hosted-capture-acceptance` detached mode.
+- `tests/test_phase37_hosted_capture_acceptance.py`: coverage for local awaiting, post-capture waiting, full acceptance, forbidden content blockers, failed runner blockers, and CLI output.
+- `Docs/v2_phase_37_hosted_capture_acceptance_contract.md`: acceptance contract.
+- `Docs/v2_phase_37_hosted_capture_acceptance_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_37_hosted_capture_acceptance.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
