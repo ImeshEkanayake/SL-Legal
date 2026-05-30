@@ -2062,6 +2062,26 @@ def load_hosted_evidence_capture_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_hosted_evidence_capture_runner_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase36_hosted_evidence_capture_runner.v1":
+        raise ValueError(
+            "hosted evidence capture runner manifest schema_version must be "
+            "phase36_hosted_evidence_capture_runner.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted evidence capture runner manifest must contain a non-empty prerequisites array")
+    capture_manifest_path = str(payload.get("capture_manifest_path") or "").strip()
+    if not capture_manifest_path:
+        raise ValueError("hosted evidence capture runner manifest must define capture_manifest_path")
+    response_expectations = payload.get("response_expectations", [])
+    if not isinstance(response_expectations, list):
+        raise ValueError("hosted evidence capture runner response_expectations must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,

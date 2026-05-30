@@ -609,6 +609,19 @@ Phase 35 adds the hosted evidence capture plan for gathering Phase 34 backend/DB
 - `Docs/v2_phase_35_hosted_evidence_capture_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_35_hosted_evidence_capture.md`: release note and validation evidence.
 
+## V2 Phase 36 Hosted Evidence Capture Runner
+
+Phase 36 adds the guarded hosted evidence runner for gathering Phase 34 evidence from the Phase 35 capture plan. The active implementation uses:
+
+- `rag/evals/phase36_hosted_evidence_capture_runner.json`: runner manifest with prerequisites, response expectations, and execution rules.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_evidence_capture_runner_manifest`.
+- `scripts/run_phase36_hosted_evidence_capture.py`: dry-run and hosted execution runner for scrubbed evidence capture.
+- `scripts/run_detached_quality_gate.sh`: `hosted-evidence-capture-runner` detached mode.
+- `tests/test_phase36_hosted_evidence_capture_runner.py`: coverage for dry-run status, hosted-ready status, scrubbed capture output, execution blockers, response-shape blockers, and CLI output.
+- `Docs/v2_phase_36_hosted_evidence_capture_runner_contract.md`: runner contract.
+- `Docs/v2_phase_36_hosted_evidence_capture_runner_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_36_hosted_evidence_capture_runner.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

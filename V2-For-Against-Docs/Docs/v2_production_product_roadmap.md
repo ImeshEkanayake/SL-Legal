@@ -879,6 +879,29 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 35 capture-plan gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 36: Hosted Evidence Capture Runner
+
+Outcome: the Phase 35 capture plan becomes an executable hosted runner that can gather Phase 34 evidence in staging, while local release validation remains dry-run and non-mutating.
+
+Deliverables:
+
+- Machine-readable hosted evidence capture runner manifest.
+- Runner script that produces `ready_for_hosted_capture_runner_configuration`, `ready_for_hosted_capture_execution`, `hosted_evidence_captured`, or `blocked`.
+- Detached `hosted-evidence-capture-runner` mode that runs dry by default.
+- Explicit `--execute --include-environment` path for hosted staging capture.
+- Signed GET smoke checks for workspace, authority workflow, and document-source status, with scrubbed logs only.
+- Operator JSON generation for DB read-only health, DB write guard, and DB acceptance.
+- Response-shape checks for hosted API and signed API smoke paths.
+
+Exit criteria:
+
+- Local runner validation returns `ready_for_hosted_capture_runner_configuration`.
+- Hosted dry-run with environment can return `ready_for_hosted_capture_execution`.
+- Hosted execution can return `hosted_evidence_captured` only after all capture tasks write scrubbed evidence successfully.
+- Signed smoke logs do not contain secrets, signed cookies, DB URLs, raw document bodies, or raw data.
+- Detached backend tests, frontend quality gate, Phase 36 runner gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

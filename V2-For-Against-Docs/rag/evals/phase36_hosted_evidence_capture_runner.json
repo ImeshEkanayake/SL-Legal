@@ -1,0 +1,92 @@
+{
+  "schema_version": "phase36_hosted_evidence_capture_runner.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-35-hosted-evidence-capture-plan",
+  "phase_name": "V2 Phase 36: Hosted Evidence Capture Runner",
+  "execution_environment": "staging",
+  "description": "Guarded hosted runner for capturing Phase 34 backend/DB staging evidence from the Phase 35 capture plan. Local runs remain dry-run only unless --execute and hosted environment validation are supplied.",
+  "capture_manifest_path": "rag/evals/phase35_hosted_evidence_capture.json",
+  "prerequisites": [
+    {
+      "id": "phase35_capture_plan_report",
+      "title": "Phase 35 hosted evidence capture plan report",
+      "type": "json_status",
+      "path": "logs/readiness/phase35-hosted-evidence-capture-plan.json",
+      "accepted_statuses": [
+        "ready_for_hosted_capture_configuration",
+        "ready_for_capture_execution"
+      ],
+      "required": true
+    },
+    {
+      "id": "phase35_manifest",
+      "title": "Phase 35 hosted evidence capture manifest",
+      "type": "file",
+      "path": "rag/evals/phase35_hosted_evidence_capture.json",
+      "required": true
+    },
+    {
+      "id": "phase35_contract",
+      "title": "Phase 35 hosted evidence capture contract",
+      "type": "document",
+      "path": "Docs/v2_phase_35_hosted_evidence_capture_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase35_runbook",
+      "title": "Phase 35 hosted evidence capture runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_35_hosted_evidence_capture_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase35_release_note",
+      "title": "Phase 35 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_35_hosted_evidence_capture.md",
+      "required": true
+    }
+  ],
+  "response_expectations": [
+    {
+      "task_id": "api_health_capture",
+      "expected_json_keys": [
+        "status"
+      ]
+    },
+    {
+      "task_id": "signed_workspace_snapshot_smoke",
+      "expected_json_keys": [
+        "activeCaseId",
+        "documents",
+        "drafts",
+        "reviewItems"
+      ]
+    },
+    {
+      "task_id": "authority_workflow_smoke",
+      "expected_json_keys": [
+        "drafts",
+        "reviewItems"
+      ]
+    },
+    {
+      "task_id": "document_source_status_smoke",
+      "expected_json_keys": [
+        "documentId",
+        "title",
+        "documentType",
+        "sourceId"
+      ]
+    }
+  ],
+  "execution_rules": {
+    "execute_flag_required": true,
+    "include_environment_required": true,
+    "max_response_bytes": 65536,
+    "allowed_write_classifications": [
+      "audit_event_only"
+    ],
+    "evidence_output_root": "logs"
+  }
+}
