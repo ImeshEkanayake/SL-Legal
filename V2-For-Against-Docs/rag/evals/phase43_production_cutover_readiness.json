@@ -1,0 +1,291 @@
+{
+  "schema_version": "phase43_production_cutover_readiness.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-42-staging-acceptance-decision",
+  "phase_name": "V2 Phase 43: Production Cutover Readiness Pack",
+  "execution_environment": "production_planning",
+  "description": "Non-mutating production cutover readiness gate for Phase 44 dry-run planning.",
+  "forbidden_terms": [
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "Authorization: Bearer",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "raw document body",
+    "raw response body",
+    "This is final legal advice",
+    "final legal advice"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase42_manifest",
+      "title": "Phase 42 staging acceptance decision manifest",
+      "type": "file",
+      "path": "rag/evals/phase42_staging_acceptance_decision.json",
+      "required": true
+    },
+    {
+      "id": "phase42_contract",
+      "title": "Phase 42 staging acceptance decision contract",
+      "type": "document",
+      "path": "Docs/v2_phase_42_staging_acceptance_decision_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase42_runbook",
+      "title": "Phase 42 staging acceptance decision runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_42_staging_acceptance_decision_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase42_release_note",
+      "title": "Phase 42 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_42_staging_acceptance_decision.md",
+      "required": true
+    },
+    {
+      "id": "phase42_builder",
+      "title": "Phase 42 staging acceptance decision builder",
+      "type": "file",
+      "path": "scripts/build_phase42_staging_acceptance_decision.py",
+      "required": true
+    },
+    {
+      "id": "phase43_contract",
+      "title": "Phase 43 production cutover readiness contract",
+      "type": "document",
+      "path": "Docs/v2_phase_43_production_cutover_readiness_contract.md",
+      "required": true
+    }
+  ],
+  "readiness_evidence": [
+    {
+      "id": "phase42_staging_acceptance",
+      "title": "Phase 42 staging acceptance decision",
+      "group": "staging_acceptance",
+      "type": "json_status",
+      "path": "logs/readiness/phase42-staging-acceptance-decision.json",
+      "accepted_statuses": [
+        "staging_accepted_for_production_planning"
+      ],
+      "pending_statuses": [
+        "awaiting_staging_execution_evidence",
+        "awaiting_required_acceptance"
+      ],
+      "required_fields": {
+        "production_execution_authorized": false,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    },
+    {
+      "id": "release_provenance",
+      "title": "Phase 42 release provenance ledger",
+      "group": "release_governance",
+      "type": "json_status",
+      "path": "logs/release-artifacts/phase43-release-provenance-ledger.json",
+      "accepted_statuses": [
+        "verified"
+      ],
+      "required_fields": {
+        "target_release_tag": "v2-phase-42-staging-acceptance-decision"
+      },
+      "required": true
+    },
+    {
+      "id": "signing_plan",
+      "title": "Phase 42 signing plan",
+      "group": "release_governance",
+      "type": "json_status",
+      "path": "logs/release-artifacts/phase43-signing-plan.json",
+      "accepted_statuses": [
+        "planned"
+      ],
+      "required_fields": {
+        "target_release_tag": "v2-phase-42-staging-acceptance-decision",
+        "signing_execution_approved": false
+      },
+      "required": true
+    },
+    {
+      "id": "schema_readiness",
+      "title": "Production schema readiness evidence",
+      "group": "production_preflight",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-schema-readiness.json",
+      "accepted_statuses": [
+        "ready"
+      ],
+      "required_fields": {
+        "db_migration_applied": false,
+        "production_mutation_executed": false
+      },
+      "required": true
+    },
+    {
+      "id": "rag_index_health",
+      "title": "RAG and index health evidence",
+      "group": "production_preflight",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-rag-index-health.json",
+      "accepted_statuses": [
+        "healthy"
+      ],
+      "required_fields": {
+        "documents_searchable": true,
+        "index_write_executed": false,
+        "production_mutation_executed": false
+      },
+      "required": true
+    },
+    {
+      "id": "signed_load_suite",
+      "title": "Signed production load-suite evidence",
+      "group": "production_preflight",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-signed-load-suite.json",
+      "accepted_statuses": [
+        "passed"
+      ],
+      "required_fields": {
+        "signed_requests": true,
+        "p95_within_target": true,
+        "error_rate_within_target": true,
+        "production_mutation_executed": false
+      },
+      "required": true
+    },
+    {
+      "id": "corpus_searchability",
+      "title": "Corpus searchability evidence",
+      "group": "production_preflight",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-corpus-searchability.json",
+      "accepted_statuses": [
+        "passed"
+      ],
+      "required_fields": {
+        "sample_queries_passed": true,
+        "raw_data_uploaded": false,
+        "production_mutation_executed": false
+      },
+      "required": true
+    }
+  ],
+  "rollback_evidence": [
+    {
+      "id": "rollback_schema_smoke",
+      "title": "Rollback-only schema smoke evidence",
+      "group": "rollback_readiness",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-rollback-schema-smoke.json",
+      "accepted_statuses": [
+        "passed"
+      ],
+      "required_fields": {
+        "rollback_only": true,
+        "migration_applied": false,
+        "production_mutation_executed": false
+      },
+      "required": true
+    },
+    {
+      "id": "rollback_checklist",
+      "title": "Rollback checklist acceptance",
+      "group": "rollback_readiness",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-rollback-checklist.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "rollback_owner_assigned": true,
+        "tested_rollback_only": true,
+        "production_execution_authorized": false,
+        "production_mutation_executed": false
+      },
+      "required": true
+    },
+    {
+      "id": "incident_response_checklist",
+      "title": "Incident response checklist acceptance",
+      "group": "incident_readiness",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase43-incident-response-checklist.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "incident_owner_assigned": true,
+        "monitoring_window_defined": true,
+        "lawyer_review_required": true,
+        "production_execution_authorized": false
+      },
+      "required": true
+    }
+  ],
+  "required_environment": [
+    {
+      "name": "SL_LEGAL_PUBLIC_APP_URL",
+      "category": "routing",
+      "required": true,
+      "secret": false,
+      "url": true
+    },
+    {
+      "name": "SL_LEGAL_API_BASE_URL",
+      "category": "routing",
+      "required": true,
+      "secret": false,
+      "url": true
+    },
+    {
+      "name": "SL_LEGAL_PRODUCTION_MODE",
+      "category": "safety",
+      "required": true,
+      "secret": false,
+      "expected_value": "true"
+    },
+    {
+      "name": "SL_LEGAL_DATABASE_URL",
+      "category": "database",
+      "required": true,
+      "secret": true,
+      "min_length": 20
+    },
+    {
+      "name": "SL_LEGAL_AUTH_SECRET",
+      "category": "security",
+      "required": true,
+      "secret": true,
+      "min_length": 32
+    },
+    {
+      "name": "SL_LEGAL_SIGNING_SECRET",
+      "category": "security",
+      "required": true,
+      "secret": true,
+      "min_length": 32
+    },
+    {
+      "name": "AZURE_OPENAI_ENDPOINT",
+      "category": "ai_provider",
+      "required": true,
+      "secret": false,
+      "url": true
+    },
+    {
+      "name": "AZURE_OPENAI_API_KEY",
+      "category": "ai_provider",
+      "required": true,
+      "secret": true,
+      "min_length": 20
+    }
+  ]
+}

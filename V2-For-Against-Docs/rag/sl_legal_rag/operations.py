@@ -2207,6 +2207,32 @@ def load_staging_acceptance_decision_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_production_cutover_readiness_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase43_production_cutover_readiness.v1":
+        raise ValueError(
+            "production cutover readiness manifest schema_version must be "
+            "phase43_production_cutover_readiness.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("production cutover readiness manifest must contain a non-empty prerequisites array")
+    readiness_evidence = payload.get("readiness_evidence")
+    if not isinstance(readiness_evidence, list) or not readiness_evidence:
+        raise ValueError("production cutover readiness manifest must contain a non-empty readiness_evidence array")
+    rollback_evidence = payload.get("rollback_evidence")
+    if not isinstance(rollback_evidence, list) or not rollback_evidence:
+        raise ValueError("production cutover readiness manifest must contain a non-empty rollback_evidence array")
+    required_environment = payload.get("required_environment")
+    if not isinstance(required_environment, list) or not required_environment:
+        raise ValueError("production cutover readiness manifest must contain a non-empty required_environment array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("production cutover readiness manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -2872,6 +2898,191 @@ def build_staging_acceptance_decision_report(
             "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
             "phase41_status": phase41_status,
+        },
+    }
+
+
+def evaluate_production_cutover_readiness_item(
+    item: dict[str, Any],
+    project_root: Path,
+    *,
+    forbidden_terms: list[str],
+) -> dict[str, Any]:
+    result = evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+    result = {**result, "group": str(item.get("group") or "").strip()}
+    if not result["exists"]:
+        return result
+    path = Path(str(result["path"]))
+    if not path.is_absolute():
+        path = project_root / path
+    text = path.read_text(encoding="utf-8", errors="replace")
+    normalized_text = text.lower()
+    matched_terms = [term for term in forbidden_terms if term and term.lower() in normalized_text]
+    if not matched_terms:
+        return {**result, "forbidden_content_matches": []}
+    return {
+        **result,
+        "status": "failed",
+        "forbidden_content_matches": matched_terms,
+        "summary": "production cutover readiness evidence contains forbidden content",
+    }
+
+
+def evaluate_production_cutover_environment(
+    payload: dict[str, Any],
+    *,
+    environment: dict[str, str],
+    include_environment: bool,
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    blockers: list[dict[str, str]] = []
+    for item in payload.get("required_environment", []):
+        name = str(item.get("name") or "").strip()
+        if not name:
+            raise ValueError("production cutover environment name is required")
+        required = bool(item.get("required", True))
+        secret = bool(item.get("secret", False))
+        min_length = int(item.get("min_length") or 1)
+        expected_value = item.get("expected_value")
+        url_required = bool(item.get("url", False))
+        if not include_environment:
+            checks.append(
+                {
+                    "name": name,
+                    "category": str(item.get("category") or ""),
+                    "required": required,
+                    "secret": secret,
+                    "status": "not_evaluated",
+                    "summary": "production environment value was not inspected",
+                }
+            )
+            continue
+        value = environment.get(name, "")
+        present = bool(value)
+        length_ok = len(value) >= min_length if present else False
+        url_ok = value.startswith(("https://", "http://")) if url_required and present else not url_required
+        expected_ok = str(value).strip().lower() == str(expected_value).strip().lower() if expected_value is not None else True
+        verified = (not required or present) and (not present or length_ok) and url_ok and expected_ok
+        status = "verified" if verified else "missing"
+        check = {
+            "name": name,
+            "category": str(item.get("category") or ""),
+            "required": required,
+            "secret": secret,
+            "status": status,
+            "present": present,
+            "meets_min_length": length_ok if secret else None,
+            "url_scheme_ok": url_ok if url_required else None,
+            "expected_value_matched": expected_ok if expected_value is not None else None,
+            "summary": "production environment value is present and valid"
+            if status == "verified"
+            else "production environment value is missing or invalid",
+        }
+        checks.append(check)
+        if required and status != "verified":
+            blockers.append({"id": f"env:{name}", "status": status, "summary": check["summary"]})
+    return {
+        "included": include_environment,
+        "checks": checks,
+        "blockers": blockers,
+        "summary": "Production cutover environment evaluated without exposing secret values."
+        if include_environment
+        else "Production cutover environment values were not inspected.",
+    }
+
+
+def build_production_cutover_readiness_report(
+    readiness_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    environment: dict[str, str] | None = None,
+    include_environment: bool = False,
+) -> dict[str, Any]:
+    target_tag = str(readiness_payload.get("target_release_tag") or "").strip()
+    repo = str(readiness_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in readiness_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in readiness_payload["prerequisites"]
+    ]
+    readiness_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in readiness_payload["readiness_evidence"]
+    ]
+    rollback_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in readiness_payload["rollback_evidence"]
+    ]
+    environment_report = evaluate_production_cutover_environment(
+        readiness_payload,
+        environment=environment or {},
+        include_environment=include_environment,
+    )
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    failed_items = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in [*readiness_evidence, *rollback_evidence]
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_readiness = [
+        item for item in [*readiness_evidence, *rollback_evidence] if item["required"] and item["status"] == "pending"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in [*readiness_evidence, *rollback_evidence]}
+    phase42_status = statuses.get("phase42_staging_acceptance", "")
+    environment_ready = include_environment and not environment_report["blockers"]
+    blockers = [*prerequisite_blockers, *failed_items, *environment_report["blockers"]]
+    if blockers:
+        status = "blocked"
+    elif phase42_status != "staging_accepted_for_production_planning":
+        status = "awaiting_staging_acceptance"
+    elif pending_readiness:
+        status = "awaiting_production_readiness_evidence"
+    elif not environment_ready:
+        status = "awaiting_production_environment_inventory"
+    else:
+        status = "ready_for_production_cutover_dry_run"
+    return {
+        "schema_version": "phase43_production_cutover_readiness.v1",
+        "source_schema_version": readiness_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(readiness_payload.get("execution_environment") or "production_planning"),
+        "production_execution_authorized": False,
+        "production_mutation_authorized": False,
+        "database_migration_authorized": False,
+        "raw_data_upload_authorized": False,
+        "lawyer_review_required": True,
+        "no_final_legal_advice": True,
+        "cutover_dry_run_authorized": status == "ready_for_production_cutover_dry_run",
+        "prerequisites": prerequisites,
+        "readiness_evidence": readiness_evidence,
+        "rollback_evidence": rollback_evidence,
+        "production_environment": environment_report,
+        "pending_readiness_evidence": pending_readiness,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_readiness_evidence": len(readiness_evidence),
+            "verified_readiness_evidence": sum(1 for item in readiness_evidence if item["status"] == "verified"),
+            "total_rollback_evidence": len(rollback_evidence),
+            "verified_rollback_evidence": sum(1 for item in rollback_evidence if item["status"] == "verified"),
+            "pending_readiness_evidence": len(pending_readiness),
+            "failed_evidence": sum(1 for item in [*readiness_evidence, *rollback_evidence] if item["status"] == "failed"),
+            "environment_checks": len(environment_report["checks"]),
+            "environment_included": include_environment,
+            "forbidden_terms": len(forbidden_terms),
+            "blockers": len(blockers),
+            "phase42_status": phase42_status,
         },
     }
 

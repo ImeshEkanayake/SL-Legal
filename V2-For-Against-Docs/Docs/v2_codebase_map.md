@@ -700,6 +700,19 @@ Phase 42 adds the hosted staging acceptance decision gate. The active implementa
 - `Docs/v2_phase_42_staging_acceptance_decision_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_42_staging_acceptance_decision.md`: release note and validation evidence.
 
+## V2 Phase 43 Production Cutover Readiness Pack
+
+Phase 43 adds the non-mutating production cutover readiness gate. The active implementation uses:
+
+- `rag/evals/phase43_production_cutover_readiness.json`: readiness manifest with Phase 42 acceptance, release-governance, production-preflight, rollback, incident-response, and production environment requirements.
+- `rag/sl_legal_rag/operations.py`: `load_production_cutover_readiness_manifest` and `build_production_cutover_readiness_report`.
+- `scripts/build_phase43_production_cutover_readiness.py`: report builder for staging-awaiting, evidence-awaiting, environment-awaiting, dry-run-ready, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `production-cutover-readiness` and `production-cutover-readiness-env` detached modes.
+- `tests/test_phase43_production_cutover_readiness.py`: coverage for local awaiting state, readiness evidence, environment inventory, full dry-run readiness, production mutation blockers, signing approval blockers, forbidden-content blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_43_production_cutover_readiness_contract.md`: readiness contract.
+- `Docs/v2_phase_43_production_cutover_readiness_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_43_production_cutover_readiness.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

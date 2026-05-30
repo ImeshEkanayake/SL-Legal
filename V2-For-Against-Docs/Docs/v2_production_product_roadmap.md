@@ -1047,16 +1047,22 @@ Outcome: production cutover requirements are gathered into a final non-mutating 
 
 Deliverables:
 
-- Production cutover readiness manifest.
-- Evidence checks for schema readiness, rollback-only schema smoke, RAG/index health, signed load suite, corpus searchability, release provenance, and signing plan.
-- Production environment variable inventory with secret-safe validation.
-- Rollback and incident-response checklist.
+- Machine-readable production cutover readiness manifest.
+- Readiness builder that emits `awaiting_staging_acceptance`, `awaiting_production_readiness_evidence`, `awaiting_production_environment_inventory`, `ready_for_production_cutover_dry_run`, or `blocked`.
+- Detached `production-cutover-readiness` and `production-cutover-readiness-env` modes.
+- Evidence checks for Phase 42 staging acceptance, current release provenance, signing plan, schema readiness, rollback-only schema smoke, RAG/index health, signed load suite, and corpus searchability.
+- Production environment variable inventory with secret-safe validation that records presence, length, URL shape, and expected-value checks without writing secret values.
+- Rollback checklist and incident-response checklist evidence.
+- Contract, runbook, tests, release note, and codebase map updates for Phase 43.
 
 Exit criteria:
 
-- Production readiness cannot pass with missing hosted staging acceptance, missing release provenance, or missing rollback evidence.
-- No production mutation is executed by the readiness pack.
-- Raw data and secret values remain outside Git and outside report bodies.
+- Production readiness cannot pass with missing Phase 42 staging acceptance, missing release provenance, missing signing plan, missing rollback evidence, missing incident-response ownership, or missing production environment inventory.
+- The pack can authorize only Phase 44 dry-run planning; it must not authorize production execution, production mutation, database migration, signing execution, or raw data upload.
+- Any failed status, required-field mismatch, unresolved rollback gap, secret-bearing content, raw document content, DB URL, or final-legal-advice language blocks.
+- Decision report always preserves `production_execution_authorized=false`, `production_mutation_authorized=false`, `database_migration_authorized=false`, `raw_data_upload_authorized=false`, `lawyer_review_required=true`, and `no_final_legal_advice=true`.
+- Detached backend tests, frontend quality gate, Phase 43 readiness gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, production mutation, or raw data staging.
 
 ### Phase 44: Production Cutover Dry Run
 
