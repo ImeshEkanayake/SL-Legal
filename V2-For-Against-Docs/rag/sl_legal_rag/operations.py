@@ -2120,6 +2120,28 @@ def load_hosted_capture_execution_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_hosted_environment_config_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase39_hosted_environment_config.v1":
+        raise ValueError(
+            "hosted environment config manifest schema_version must be phase39_hosted_environment_config.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted environment config manifest must contain a non-empty prerequisites array")
+    required_environment = payload.get("required_environment")
+    if not isinstance(required_environment, list) or not required_environment:
+        raise ValueError("hosted environment config manifest must contain a non-empty required_environment array")
+    command_recipes = payload.get("command_recipes")
+    if not isinstance(command_recipes, list) or not command_recipes:
+        raise ValueError("hosted environment config manifest must contain a non-empty command_recipes array")
+    evidence_outputs = payload.get("evidence_outputs")
+    if not isinstance(evidence_outputs, list) or not evidence_outputs:
+        raise ValueError("hosted environment config manifest must contain a non-empty evidence_outputs array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -2284,6 +2306,169 @@ def build_hosted_evidence_capture_plan(
             "capture_tasks": len(capture_tasks),
             "signed_capture_tasks": sum(1 for item in capture_tasks if item["requires_signed_auth"]),
             "db_writing_capture_tasks": sum(1 for item in capture_tasks if item["writes_database"]),
+            "blockers": len(blockers),
+        },
+    }
+
+
+def hosted_config_command_from_mapping(item: dict[str, Any], *, environment_ready: bool) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    recipe_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    command = item.get("command")
+    requires_environment = bool(item.get("requires_environment", False))
+    executes_capture = bool(item.get("executes_capture", False))
+    blockers: list[dict[str, str]] = []
+    if not recipe_id:
+        raise ValueError("hosted environment config command recipe id is required")
+    if not title:
+        raise ValueError(f"{recipe_id} title is required")
+    if not isinstance(command, list) or not command or not all(str(part).strip() for part in command):
+        raise ValueError(f"{recipe_id} command must be a non-empty string array")
+    command_parts = [str(part) for part in command]
+    if (requires_environment or executes_capture) and "scripts/run_phase38_hosted_capture_execution.py" not in command_parts:
+        blockers.append(
+            {
+                "id": recipe_id,
+                "status": "failed",
+                "summary": "Phase 39 command recipes must call the Phase 38 orchestrator",
+            }
+        )
+    has_include_environment = "--include-environment" in command_parts
+    has_execute = "--execute" in command_parts
+    if requires_environment and not has_include_environment:
+        blockers.append(
+            {
+                "id": recipe_id,
+                "status": "failed",
+                "summary": "hosted command recipes that require environment must include --include-environment",
+            }
+        )
+    if executes_capture and not (has_execute and has_include_environment):
+        blockers.append(
+            {
+                "id": recipe_id,
+                "status": "failed",
+                "summary": "hosted execution recipes must include --execute and --include-environment",
+            }
+        )
+    if not executes_capture and has_execute:
+        blockers.append(
+            {
+                "id": recipe_id,
+                "status": "failed",
+                "summary": "dry-run command recipes must not include --execute",
+            }
+        )
+    return {
+        "id": recipe_id,
+        "title": title,
+        "command": command_parts,
+        "command_line": " ".join(shlex.quote(part) for part in command_parts),
+        "requires_environment": requires_environment,
+        "executes_capture": executes_capture,
+        "expected_status": str(item.get("expected_status") or "").strip(),
+        "status": "ready" if not requires_environment or environment_ready else "requires_hosted_environment",
+    }, blockers
+
+
+def build_hosted_environment_config_pack(
+    config_payload: dict[str, Any],
+    *,
+    project_root: Path,
+    environment: dict[str, str] | None = None,
+    include_environment: bool = False,
+    phase35_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    target_tag = str(config_payload.get("target_release_tag") or "").strip()
+    repo = str(config_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in config_payload["prerequisites"]
+    ]
+    env_report = evaluate_hosted_capture_environment(
+        config_payload,
+        environment=environment or {},
+        include_environment=include_environment,
+    )
+    environment_ready = include_environment and not env_report["blockers"]
+    commands: list[dict[str, Any]] = []
+    command_blockers: list[dict[str, str]] = []
+    for item in config_payload["command_recipes"]:
+        command, blockers = hosted_config_command_from_mapping(item, environment_ready=environment_ready)
+        commands.append(command)
+        command_blockers.extend(blockers)
+    evidence_outputs = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "title": str(item.get("title") or "").strip(),
+            "path": str(item.get("path") or "").strip(),
+            "category": str(item.get("category") or "").strip(),
+            "committable": bool(item.get("committable", False)),
+        }
+        for item in config_payload["evidence_outputs"]
+    ]
+    evidence_blockers = [
+        {
+            "id": item["id"] or "evidence_output",
+            "status": "failed",
+            "summary": "evidence outputs must have id, title, path, and remain non-committable",
+        }
+        for item in evidence_outputs
+        if not item["id"] or not item["title"] or not item["path"] or item["committable"]
+    ]
+    environment_sync_blockers: list[dict[str, str]] = []
+    if phase35_payload is not None:
+        expected_names = {str(item.get("name") or "").strip() for item in phase35_payload.get("required_environment", [])}
+        actual_names = {str(item.get("name") or "").strip() for item in config_payload.get("required_environment", [])}
+        if expected_names != actual_names:
+            environment_sync_blockers.append(
+                {
+                    "id": "phase35_environment_sync",
+                    "status": "failed",
+                    "summary": "Phase 39 environment requirements must match Phase 35",
+                }
+            )
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    blockers = [
+        *prerequisite_blockers,
+        *env_report["blockers"],
+        *command_blockers,
+        *evidence_blockers,
+        *environment_sync_blockers,
+    ]
+    if blockers:
+        status = "blocked"
+    elif environment_ready:
+        status = "ready_for_hosted_capture_dry_run"
+    else:
+        status = "awaiting_hosted_environment_configuration"
+    return {
+        "schema_version": "phase39_hosted_environment_config.v1",
+        "source_schema_version": config_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(config_payload.get("execution_environment") or "staging"),
+        "prerequisites": prerequisites,
+        "environment": env_report,
+        "command_recipes": commands,
+        "evidence_outputs": evidence_outputs,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "environment_checks": len(env_report["checks"]),
+            "command_recipes": len(commands),
+            "execution_recipes": sum(1 for item in commands if item["executes_capture"]),
+            "evidence_outputs": len(evidence_outputs),
             "blockers": len(blockers),
         },
     }

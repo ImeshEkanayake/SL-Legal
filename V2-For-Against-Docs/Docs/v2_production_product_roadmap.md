@@ -947,7 +947,151 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 38 execution gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
-## Phase 8 Production Evidence Requirements
+### Phase 39: Hosted Environment Configuration Pack
+
+Outcome: hosted staging configuration is made reviewable and repeatable before any real Phase 38 dry-run or execution is attempted.
+
+Deliverables:
+
+- Machine-readable hosted environment configuration manifest.
+- Configuration-pack builder that produces `awaiting_hosted_environment_configuration`, `ready_for_hosted_capture_dry_run`, or `blocked`.
+- Detached `hosted-environment-config-pack` mode.
+- Secret-safe checks for staging API base URL, staging reviewer user ID, fixture case/document IDs, HMAC signing secret presence, and operator DB confirmations.
+- Command recipe inventory for Phase 38 hosted dry-run and hosted execution.
+- Evidence-output inventory for all ignored readiness, test-run, and hosted-staging files expected after execution.
+- Operator runbook for configuring hosted variables without committing secrets or raw evidence.
+
+Exit criteria:
+
+- Local detached configuration returns `awaiting_hosted_environment_configuration`.
+- Hosted configuration with environment inspection can return `ready_for_hosted_capture_dry_run`.
+- Required secret values are checked by presence/length only and never printed.
+- Command recipes include explicit dry-run and `--execute --include-environment` execution paths.
+- Detached backend tests, frontend quality gate, Phase 39 configuration gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
+### Phase 40: Hosted Dry-Run Evidence Capture
+
+Outcome: hosted staging proves that Phase 38 can see a valid environment and prepare execution without performing real capture.
+
+Deliverables:
+
+- Dry-run evidence manifest for Phase 38 hosted configuration.
+- Validation gate that accepts only `ready_for_hosted_capture_execution`.
+- Scrubbed hosted dry-run logs proving required variables are present without exposing values.
+- Operator review checklist for API base, fixture case/document IDs, signing readiness, and DB read-only confirmations.
+
+Exit criteria:
+
+- Hosted dry-run returns `ready_for_hosted_capture_execution`.
+- No hosted HTTP capture is executed during dry-run.
+- Dry-run evidence contains no secrets, signed headers, session cookies, DB URLs, raw document bodies, or raw data.
+- Failed or incomplete hosted configuration blocks execution.
+
+### Phase 41: Hosted Capture Execution Evidence
+
+Outcome: Phase 38 is executed in hosted staging and produces the evidence needed by Phase 34 and Phase 37.
+
+Deliverables:
+
+- Execution evidence manifest for the Phase 38 hosted run.
+- Scrubbed capture logs and JSON evidence under ignored `logs/` paths.
+- Validation gate for `hosted_capture_executed_pending_backend_db_validation`, `hosted_capture_executed_pending_acceptance`, and `hosted_capture_execution_accepted`.
+- Operator evidence review covering DB write guard, migration count, raw data upload state, and audit-event-only smoke writes.
+
+Exit criteria:
+
+- Phase 36 reports `hosted_evidence_captured`.
+- Phase 34 and Phase 37 are rerun and their statuses are recorded.
+- Any DB migration, raw data upload, unintended domain write, or forbidden captured content blocks acceptance.
+- Evidence remains untracked and is summarized only through scrubbed reports.
+
+### Phase 42: Staging Acceptance Decision
+
+Outcome: hosted staging evidence is converted into a clear go/no-go decision for production cutover planning.
+
+Deliverables:
+
+- Staging acceptance decision manifest.
+- Decision builder that consumes Phase 33, Phase 34, Phase 37, Phase 38, Phase 40, and Phase 41 evidence.
+- Required lawyer-owner and operator acceptance entries.
+- Residual risk register for known gaps, hosted constraints, data boundaries, and legal-review requirements.
+
+Exit criteria:
+
+- Staging can be accepted only when Phase 38 is accepted and all required hosted evidence is verified.
+- Missing lawyer-owner review, operator DB acceptance, or unresolved blockers prevents production planning.
+- Decision report preserves the no-final-legal-advice boundary.
+
+### Phase 43: Production Cutover Readiness Pack
+
+Outcome: production cutover requirements are gathered into a final non-mutating readiness pack.
+
+Deliverables:
+
+- Production cutover readiness manifest.
+- Evidence checks for schema readiness, rollback-only schema smoke, RAG/index health, signed load suite, corpus searchability, release provenance, and signing plan.
+- Production environment variable inventory with secret-safe validation.
+- Rollback and incident-response checklist.
+
+Exit criteria:
+
+- Production readiness cannot pass with missing hosted staging acceptance, missing release provenance, or missing rollback evidence.
+- No production mutation is executed by the readiness pack.
+- Raw data and secret values remain outside Git and outside report bodies.
+
+### Phase 44: Production Cutover Dry Run
+
+Outcome: the production deployment procedure is rehearsed without mutating production data.
+
+Deliverables:
+
+- Dry-run execution manifest for production cutover.
+- Ordered deployment, verification, rollback, and owner-approval steps.
+- Dry-run report that records command readiness, expected evidence paths, and unresolved blockers.
+
+Exit criteria:
+
+- Dry-run succeeds only when all readiness pack evidence is verified.
+- Any migration, raw data upload, index mutation, or release promotion command remains planned-only unless explicitly approved in a later execution phase.
+- Rollback steps are complete and operator-owned.
+
+### Phase 45: Production Cutover Execution Plan
+
+Outcome: production execution is planned with explicit approvals, gates, rollback points, and monitoring responsibilities.
+
+Deliverables:
+
+- Production execution plan manifest.
+- Approval gates for owner, operator, and lawyer-review sign-off.
+- Execution command plan with preflight, cutover, smoke verification, rollback, and post-cutover observation windows.
+- Evidence handoff checklist for release notes, provenance, signing, hosted acceptance, and production validation.
+
+Exit criteria:
+
+- No production execution can proceed without all required approvals and Phase 44 dry-run evidence.
+- Commands that mutate production require explicit execution flags and documented rollback points.
+- The plan preserves the lawyer-review requirement and no-final-legal-advice boundary.
+
+### Phase 46: Post-Cutover Monitoring and Operational Handover
+
+Outcome: production operation is monitored, documented, and handed over with rollback evidence and ongoing quality gates.
+
+Deliverables:
+
+- Post-cutover monitoring manifest.
+- Operational dashboard checklist for API health, retrieval latency, source viewer latency, citation validation failures, review queue latency, and error rates.
+- Incident and rollback evidence template.
+- Handover document for support, legal review, data updates, and future corpus growth.
+
+Exit criteria:
+
+- Monitoring evidence is attached before production is considered operationally complete.
+- Rollback and incident-response evidence is reviewed.
+- Data update procedures remain separate from Git code release procedures.
+- No V1 changes, raw data upload, database migration, or unmanaged production mutation occurs outside approved execution phases.
+
+## Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:
 
@@ -1014,3 +1158,8 @@ Every release candidate must pass:
 - Phase 13 must fail attestation generation when release metadata, tag commits, provenance ledger status, or required subject digests are missing or mismatched.
 - Phase 14 must fail signing readiness when release metadata, tag commits, required attestation evidence, approved signing modes, or forbidden private-key file scans fail.
 - Phase 15 must fail signing planning when release metadata, tag commits, readiness reports, or required signing artifacts are missing or mismatched.
+- Phase 16 through Phase 28 must not promote or cite candidate authorities unless the authority verification and promotion gates pass.
+- Phase 29 through Phase 33 must not treat local browser or local staging evidence as hosted production evidence.
+- Phase 34 through Phase 38 must not execute hosted capture, mark backend/DB staging validated, or accept hosted capture unless the required hosted evidence is present and scrubbed.
+- Phase 39 through Phase 41 must not print or commit hosted secrets, signed headers, session cookies, DB URLs, raw document bodies, raw response bodies, or raw data.
+- Phase 42 through Phase 46 must not authorize production execution without staged acceptance, owner/operator approvals, rollback evidence, and production readiness evidence.

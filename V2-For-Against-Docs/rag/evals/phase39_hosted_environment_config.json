@@ -1,0 +1,254 @@
+{
+  "schema_version": "phase39_hosted_environment_config.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-38-hosted-capture-execution",
+  "phase_name": "V2 Phase 39: Hosted Environment Configuration Pack",
+  "execution_environment": "staging",
+  "description": "Secret-safe hosted staging configuration pack for the Phase 38 dry-run and execution path.",
+  "phase35_manifest_path": "rag/evals/phase35_hosted_evidence_capture.json",
+  "phase38_manifest_path": "rag/evals/phase38_hosted_capture_execution.json",
+  "prerequisites": [
+    {
+      "id": "phase38_manifest",
+      "title": "Phase 38 hosted capture execution manifest",
+      "type": "file",
+      "path": "rag/evals/phase38_hosted_capture_execution.json",
+      "required": true
+    },
+    {
+      "id": "phase38_contract",
+      "title": "Phase 38 hosted capture execution contract",
+      "type": "document",
+      "path": "Docs/v2_phase_38_hosted_capture_execution_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase38_runbook",
+      "title": "Phase 38 hosted capture execution runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_38_hosted_capture_execution_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase38_release_note",
+      "title": "Phase 38 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_38_hosted_capture_execution.md",
+      "required": true
+    },
+    {
+      "id": "phase38_orchestrator",
+      "title": "Phase 38 hosted capture execution orchestrator",
+      "type": "file",
+      "path": "scripts/run_phase38_hosted_capture_execution.py",
+      "required": true
+    },
+    {
+      "id": "phase39_contract",
+      "title": "Phase 39 hosted environment configuration contract",
+      "type": "document",
+      "path": "Docs/v2_phase_39_hosted_environment_config_contract.md",
+      "required": true
+    }
+  ],
+  "required_environment": [
+    {
+      "name": "SL_LEGAL_STAGING_API_BASE_URL",
+      "category": "staging_api",
+      "required": true,
+      "url": true
+    },
+    {
+      "name": "SL_LEGAL_STAGING_USER_ID",
+      "category": "staging_auth",
+      "required": true
+    },
+    {
+      "name": "SL_LEGAL_AUTH_HMAC_SECRET",
+      "category": "staging_auth",
+      "required": true,
+      "secret": true,
+      "min_length": 32
+    },
+    {
+      "name": "SL_LEGAL_STAGING_CASE_ID",
+      "category": "staging_fixture",
+      "required": true
+    },
+    {
+      "name": "SL_LEGAL_STAGING_DOCUMENT_ID",
+      "category": "staging_fixture",
+      "required": true
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_DB_READONLY_CONFIRMED",
+      "category": "db_operator_confirmation",
+      "required": true,
+      "expected_value": "true"
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_DB_DOMAIN_WRITE_COUNT",
+      "category": "db_operator_confirmation",
+      "required": true,
+      "expected_value": "0"
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_DB_MIGRATION_COUNT",
+      "category": "db_operator_confirmation",
+      "required": true,
+      "expected_value": "0"
+    },
+    {
+      "name": "SL_LEGAL_PHASE35_RAW_DATA_UPLOADED",
+      "category": "data_operator_confirmation",
+      "required": true,
+      "expected_value": "false"
+    }
+  ],
+  "command_recipes": [
+    {
+      "id": "local_config_gate",
+      "title": "Local Phase 39 configuration gate",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "hosted-environment-config-pack",
+        "phase39-hosted-environment-config-pack"
+      ],
+      "requires_environment": false,
+      "executes_capture": false,
+      "expected_status": "awaiting_hosted_environment_configuration"
+    },
+    {
+      "id": "hosted_phase38_dry_run",
+      "title": "Hosted Phase 38 dry-run with environment",
+      "command": [
+        "PYTHONPATH=rag",
+        "uv",
+        "run",
+        "--with",
+        "pydantic",
+        "python",
+        "scripts/run_phase38_hosted_capture_execution.py",
+        "--include-environment",
+        "--output",
+        "logs/readiness/phase38-hosted-capture-execution.json"
+      ],
+      "requires_environment": true,
+      "executes_capture": false,
+      "expected_status": "ready_for_hosted_capture_execution"
+    },
+    {
+      "id": "hosted_phase38_execution",
+      "title": "Hosted Phase 38 execution",
+      "command": [
+        "PYTHONPATH=rag",
+        "uv",
+        "run",
+        "--with",
+        "pydantic",
+        "python",
+        "scripts/run_phase38_hosted_capture_execution.py",
+        "--include-environment",
+        "--execute",
+        "--output",
+        "logs/readiness/phase38-hosted-capture-execution.json"
+      ],
+      "requires_environment": true,
+      "executes_capture": true,
+      "expected_status": "hosted_capture_execution_accepted"
+    }
+  ],
+  "evidence_outputs": [
+    {
+      "id": "phase39_config_pack",
+      "title": "Phase 39 hosted environment configuration pack",
+      "category": "readiness",
+      "path": "logs/readiness/phase39-hosted-environment-config-pack.json",
+      "committable": false
+    },
+    {
+      "id": "phase38_execution",
+      "title": "Phase 38 hosted capture execution report",
+      "category": "readiness",
+      "path": "logs/readiness/phase38-hosted-capture-execution.json",
+      "committable": false
+    },
+    {
+      "id": "phase37_acceptance",
+      "title": "Phase 37 hosted capture acceptance report",
+      "category": "readiness",
+      "path": "logs/readiness/phase37-hosted-capture-acceptance.json",
+      "committable": false
+    },
+    {
+      "id": "phase36_capture_run",
+      "title": "Phase 36 hosted evidence capture run",
+      "category": "readiness",
+      "path": "logs/readiness/phase36-hosted-evidence-capture-run.json",
+      "committable": false
+    },
+    {
+      "id": "phase35_capture_plan",
+      "title": "Phase 35 hosted evidence capture plan",
+      "category": "readiness",
+      "path": "logs/readiness/phase35-hosted-evidence-capture-plan.json",
+      "committable": false
+    },
+    {
+      "id": "phase34_backend_db_validation",
+      "title": "Phase 34 backend DB staging validation",
+      "category": "readiness",
+      "path": "logs/readiness/phase34-backend-db-staging-validation.json",
+      "committable": false
+    },
+    {
+      "id": "phase34_api_health",
+      "title": "Phase 34 hosted API health",
+      "category": "hosted_staging",
+      "path": "logs/hosted-staging/phase34-api-health.json",
+      "committable": false
+    },
+    {
+      "id": "phase34_signed_workspace",
+      "title": "Phase 34 signed workspace smoke",
+      "category": "test_run",
+      "path": "logs/test-runs/phase34-platform-signed-workspace-smoke.log",
+      "committable": false
+    },
+    {
+      "id": "phase34_authority_workflow",
+      "title": "Phase 34 authority workflow smoke",
+      "category": "test_run",
+      "path": "logs/test-runs/phase34-platform-authority-workflow.log",
+      "committable": false
+    },
+    {
+      "id": "phase34_document_source",
+      "title": "Phase 34 document source status smoke",
+      "category": "test_run",
+      "path": "logs/test-runs/phase34-platform-document-source-smoke.log",
+      "committable": false
+    },
+    {
+      "id": "phase34_db_readonly",
+      "title": "Phase 34 DB read-only health",
+      "category": "hosted_staging",
+      "path": "logs/hosted-staging/phase34-db-readonly-health.json",
+      "committable": false
+    },
+    {
+      "id": "phase34_db_write_guard",
+      "title": "Phase 34 DB write guard",
+      "category": "hosted_staging",
+      "path": "logs/hosted-staging/phase34-db-write-guard.json",
+      "committable": false
+    },
+    {
+      "id": "phase34_operator_db_acceptance",
+      "title": "Phase 34 operator DB acceptance",
+      "category": "hosted_staging",
+      "path": "logs/hosted-staging/phase34-operator-db-acceptance.json",
+      "committable": false
+    }
+  ]
+}

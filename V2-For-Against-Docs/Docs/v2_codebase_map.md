@@ -648,6 +648,19 @@ Phase 38 adds the guarded execution orchestrator for the hosted evidence chain. 
 - `Docs/v2_phase_38_hosted_capture_execution_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_38_hosted_capture_execution.md`: release note and validation evidence.
 
+## V2 Phase 39 Hosted Environment Configuration Pack
+
+Phase 39 adds the secret-safe hosted environment configuration pack required before Phase 38 hosted dry-run and execution. The active implementation uses:
+
+- `rag/evals/phase39_hosted_environment_config.json`: configuration manifest with prerequisites, environment checks, command recipes, and evidence outputs.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_environment_config_manifest` and `build_hosted_environment_config_pack`.
+- `scripts/build_phase39_hosted_environment_config_pack.py`: report builder for local awaiting and hosted-ready states.
+- `scripts/run_detached_quality_gate.sh`: `hosted-environment-config-pack` detached mode.
+- `tests/test_phase39_hosted_environment_config.py`: coverage for local awaiting state, hosted-ready state, missing environment blockers, command validation, environment sync with Phase 35, manifest validation, and CLI output.
+- `Docs/v2_phase_39_hosted_environment_config_contract.md`: configuration contract.
+- `Docs/v2_phase_39_hosted_environment_config_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_39_hosted_environment_config.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
