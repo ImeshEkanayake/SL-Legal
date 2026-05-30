@@ -635,6 +635,19 @@ Phase 37 adds the post-capture acceptance gate for Phase 36 hosted evidence and 
 - `Docs/v2_phase_37_hosted_capture_acceptance_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_37_hosted_capture_acceptance.md`: release note and validation evidence.
 
+## V2 Phase 38 Hosted Capture Execution Orchestrator
+
+Phase 38 adds the guarded execution orchestrator for the hosted evidence chain. The active implementation uses:
+
+- `rag/evals/phase38_hosted_capture_execution.json`: execution manifest with prerequisites, chained report outputs, and success statuses.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_capture_execution_manifest`.
+- `scripts/run_phase38_hosted_capture_execution.py`: orchestrator that refreshes Phase 35, Phase 36, Phase 34, and Phase 37 readiness reports in sequence.
+- `scripts/run_detached_quality_gate.sh`: `hosted-capture-execution` detached mode.
+- `tests/test_phase38_hosted_capture_execution.py`: coverage for local awaiting state, hosted dry-run readiness, accepted execution, pending backend/DB validation, blocked execution, manifest validation, and CLI output.
+- `Docs/v2_phase_38_hosted_capture_execution_contract.md`: execution contract.
+- `Docs/v2_phase_38_hosted_capture_execution_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_38_hosted_capture_execution.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

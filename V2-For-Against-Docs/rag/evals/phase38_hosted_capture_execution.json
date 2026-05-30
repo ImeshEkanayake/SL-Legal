@@ -1,0 +1,97 @@
+{
+  "schema_version": "phase38_hosted_capture_execution.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-37-hosted-capture-acceptance",
+  "phase_name": "V2 Phase 38: Hosted Capture Execution Orchestrator",
+  "execution_environment": "staging",
+  "description": "Guarded orchestrator for running Phase 35 environment preflight, Phase 36 hosted evidence capture, Phase 34 backend/DB validation, and Phase 37 acceptance as one controlled staging workflow.",
+  "prerequisites": [
+    {
+      "id": "phase34_manifest",
+      "title": "Phase 34 backend DB staging validation manifest",
+      "type": "file",
+      "path": "rag/evals/phase34_backend_db_staging_validation.json",
+      "required": true
+    },
+    {
+      "id": "phase35_manifest",
+      "title": "Phase 35 hosted evidence capture manifest",
+      "type": "file",
+      "path": "rag/evals/phase35_hosted_evidence_capture.json",
+      "required": true
+    },
+    {
+      "id": "phase36_manifest",
+      "title": "Phase 36 hosted evidence capture runner manifest",
+      "type": "file",
+      "path": "rag/evals/phase36_hosted_evidence_capture_runner.json",
+      "required": true
+    },
+    {
+      "id": "phase37_manifest",
+      "title": "Phase 37 hosted capture acceptance manifest",
+      "type": "file",
+      "path": "rag/evals/phase37_hosted_capture_acceptance.json",
+      "required": true
+    },
+    {
+      "id": "phase36_runner",
+      "title": "Phase 36 hosted evidence capture runner script",
+      "type": "file",
+      "path": "scripts/run_phase36_hosted_evidence_capture.py",
+      "required": true
+    },
+    {
+      "id": "phase38_contract",
+      "title": "Phase 38 hosted capture execution contract",
+      "type": "document",
+      "path": "Docs/v2_phase_38_hosted_capture_execution_contract.md",
+      "required": true
+    }
+  ],
+  "report_outputs": {
+    "phase35_capture_plan": "logs/readiness/phase35-hosted-evidence-capture-plan.json",
+    "phase36_capture_run": "logs/readiness/phase36-hosted-evidence-capture-run.json",
+    "phase34_backend_db_validation": "logs/readiness/phase34-backend-db-staging-validation.json",
+    "phase37_capture_acceptance": "logs/readiness/phase37-hosted-capture-acceptance.json",
+    "phase38_execution": "logs/readiness/phase38-hosted-capture-execution.json"
+  },
+  "execution_chain": [
+    {
+      "id": "phase35_environment_preflight",
+      "title": "Build Phase 35 hosted environment preflight",
+      "mode": "preflight",
+      "writes_database": false,
+      "output_key": "phase35_capture_plan"
+    },
+    {
+      "id": "phase36_hosted_capture",
+      "title": "Run Phase 36 hosted evidence capture",
+      "mode": "execute_when_requested",
+      "writes_database": true,
+      "write_classification": "audit_event_only",
+      "output_key": "phase36_capture_run"
+    },
+    {
+      "id": "phase34_backend_db_validation",
+      "title": "Rebuild Phase 34 backend and DB staging validation",
+      "mode": "post_capture_validation",
+      "writes_database": false,
+      "output_key": "phase34_backend_db_validation"
+    },
+    {
+      "id": "phase37_acceptance",
+      "title": "Rebuild Phase 37 hosted capture acceptance",
+      "mode": "post_capture_acceptance",
+      "writes_database": false,
+      "output_key": "phase37_capture_acceptance"
+    }
+  ],
+  "success_statuses": [
+    "awaiting_hosted_capture_configuration",
+    "ready_for_hosted_capture_execution",
+    "hosted_capture_executed_pending_backend_db_validation",
+    "hosted_capture_executed_pending_acceptance",
+    "hosted_capture_execution_accepted"
+  ]
+}

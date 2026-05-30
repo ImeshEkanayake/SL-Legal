@@ -924,6 +924,29 @@ Exit criteria:
 - Detached backend tests, frontend quality gate, Phase 37 acceptance gate, secret scan, and marker scan pass.
 - No V1 changes, raw data upload, database migration, or raw data staging.
 
+### Phase 38: Hosted Capture Execution Orchestrator
+
+Outcome: the hosted evidence path is executed through one guarded staging workflow that refreshes Phase 35, Phase 36, Phase 34, and Phase 37 readiness reports in sequence.
+
+Deliverables:
+
+- Machine-readable hosted capture execution manifest.
+- Execution orchestrator that produces `awaiting_hosted_capture_configuration`, `ready_for_hosted_capture_execution`, `hosted_capture_executed_pending_backend_db_validation`, `hosted_capture_executed_pending_acceptance`, `hosted_capture_execution_accepted`, or `blocked`.
+- Detached `hosted-capture-execution` mode that remains dry-run and non-mutating by default.
+- Explicit `--execute --include-environment` path for real hosted staging capture.
+- Chained refresh of Phase 35 environment preflight, Phase 36 capture runner, Phase 34 backend/DB validation, and Phase 37 capture acceptance.
+- Operator runbook for hosted dry-run, hosted execution, and downstream status review.
+
+Exit criteria:
+
+- Local detached execution returns `awaiting_hosted_capture_configuration`.
+- Hosted dry-run with environment returns `ready_for_hosted_capture_execution`.
+- Hosted execution can advance only after Phase 36 reports `hosted_evidence_captured`.
+- Accepted hosted execution requires Phase 34 `backend_db_staging_validated` and Phase 37 `hosted_capture_accepted`.
+- Execution reports and captured evidence contain no secrets, signed headers, session cookies, DB URLs, raw document bodies, or raw data.
+- Detached backend tests, frontend quality gate, Phase 38 execution gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
+
 ## Phase 8 Production Evidence Requirements
 
 Before a production cutover, attach passing evidence for:

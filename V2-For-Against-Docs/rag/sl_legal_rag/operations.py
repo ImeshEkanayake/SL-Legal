@@ -2101,6 +2101,25 @@ def load_hosted_capture_acceptance_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_hosted_capture_execution_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase38_hosted_capture_execution.v1":
+        raise ValueError(
+            "hosted capture execution manifest schema_version must be phase38_hosted_capture_execution.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted capture execution manifest must contain a non-empty prerequisites array")
+    execution_chain = payload.get("execution_chain")
+    if not isinstance(execution_chain, list) or not execution_chain:
+        raise ValueError("hosted capture execution manifest must contain a non-empty execution_chain array")
+    report_outputs = payload.get("report_outputs")
+    if not isinstance(report_outputs, dict) or not report_outputs:
+        raise ValueError("hosted capture execution manifest must contain report_outputs")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
