@@ -2161,6 +2161,26 @@ def load_hosted_dry_run_evidence_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_hosted_capture_execution_evidence_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase41_hosted_capture_execution_evidence.v1":
+        raise ValueError(
+            "hosted capture execution evidence manifest schema_version must be "
+            "phase41_hosted_capture_execution_evidence.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("hosted capture execution evidence manifest must contain a non-empty prerequisites array")
+    execution_evidence = payload.get("execution_evidence")
+    if not isinstance(execution_evidence, list) or not execution_evidence:
+        raise ValueError("hosted capture execution evidence manifest must contain a non-empty execution_evidence array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("hosted capture execution evidence manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -2583,6 +2603,130 @@ def build_hosted_dry_run_evidence_report(
             "failed_dry_run_evidence": sum(1 for item in dry_run_evidence if item["status"] == "failed"),
             "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
+        },
+    }
+
+
+def evaluate_hosted_capture_execution_evidence(
+    item: dict[str, Any],
+    project_root: Path,
+    *,
+    forbidden_terms: list[str],
+) -> dict[str, Any]:
+    result = evaluate_hosted_staging_validation_item(item, project_root, missing_status="pending")
+    result = {**result, "group": str(item.get("group") or "").strip()}
+    if not result["exists"]:
+        return result
+    path = Path(str(result["path"]))
+    if not path.is_absolute():
+        path = project_root / path
+    text = path.read_text(encoding="utf-8", errors="replace")
+    normalized_text = text.lower()
+    matched_terms = [term for term in forbidden_terms if term and term.lower() in normalized_text]
+    if not matched_terms:
+        return {**result, "forbidden_content_matches": []}
+    return {
+        **result,
+        "status": "failed",
+        "forbidden_content_matches": matched_terms,
+        "summary": "execution evidence contains forbidden hosted content",
+    }
+
+
+def build_hosted_capture_execution_evidence_report(
+    execution_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(execution_payload.get("target_release_tag") or "").strip()
+    repo = str(execution_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in execution_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in execution_payload["prerequisites"]
+    ]
+    execution_evidence = [
+        evaluate_hosted_capture_execution_evidence(item, project_root, forbidden_terms=forbidden_terms)
+        for item in execution_payload["execution_evidence"]
+    ]
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    evidence_failures = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in execution_evidence
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_evidence = [
+        item for item in execution_evidence if item["required"] and item["status"] == "pending"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in execution_evidence}
+    phase40_status = statuses.get("phase40_dry_run_evidence", "")
+    phase38_status = statuses.get("phase38_execution_report", "")
+    phase36_status = statuses.get("phase36_capture_run", "")
+    phase34_status = statuses.get("phase34_backend_db_validation", "")
+    phase37_status = statuses.get("phase37_capture_acceptance", "")
+    captured_pending = [
+        item for item in pending_evidence if item.get("group") == "captured_evidence"
+    ]
+    blockers = [*prerequisite_blockers, *evidence_failures]
+    if phase36_status == "hosted_evidence_captured" and captured_pending:
+        blockers.extend(
+            {
+                "id": item["id"],
+                "status": "pending",
+                "summary": "captured execution evidence is missing after Phase 36 captured evidence",
+            }
+            for item in captured_pending
+        )
+    execution_statuses = {
+        "hosted_capture_executed_pending_backend_db_validation",
+        "hosted_capture_executed_pending_acceptance",
+        "hosted_capture_execution_accepted",
+    }
+    if blockers:
+        status = "blocked"
+    elif phase40_status != "hosted_dry_run_validated":
+        status = "awaiting_hosted_dry_run_validation"
+    elif phase38_status not in execution_statuses or phase36_status != "hosted_evidence_captured":
+        status = "awaiting_hosted_capture_execution"
+    elif phase34_status != "backend_db_staging_validated":
+        status = "hosted_capture_executed_pending_backend_db_validation"
+    elif phase37_status != "hosted_capture_accepted":
+        status = "hosted_capture_executed_pending_acceptance"
+    else:
+        status = "hosted_capture_execution_evidence_validated"
+    return {
+        "schema_version": "phase41_hosted_capture_execution_evidence.v1",
+        "source_schema_version": execution_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "execution_environment": str(execution_payload.get("execution_environment") or "staging"),
+        "execution_evidence": execution_evidence,
+        "pending_execution_evidence": pending_evidence,
+        "prerequisites": prerequisites,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_execution_evidence": len(execution_evidence),
+            "verified_execution_evidence": sum(1 for item in execution_evidence if item["status"] == "verified"),
+            "pending_execution_evidence": len(pending_evidence),
+            "failed_execution_evidence": sum(1 for item in execution_evidence if item["status"] == "failed"),
+            "forbidden_terms": len(forbidden_terms),
+            "blockers": len(blockers),
+            "phase40_status": phase40_status,
+            "phase38_status": phase38_status,
+            "phase36_status": phase36_status,
+            "phase34_status": phase34_status,
+            "phase37_status": phase37_status,
         },
     }
 

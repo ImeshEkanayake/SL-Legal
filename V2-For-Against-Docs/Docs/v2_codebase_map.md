@@ -674,6 +674,19 @@ Phase 40 adds the hosted dry-run evidence gate for Phase 38. The active implemen
 - `Docs/v2_phase_40_hosted_dry_run_evidence_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_40_hosted_dry_run_evidence.md`: release note and validation evidence.
 
+## V2 Phase 41 Hosted Capture Execution Evidence
+
+Phase 41 adds the hosted capture execution evidence gate for Phase 38. The active implementation uses:
+
+- `rag/evals/phase41_hosted_capture_execution_evidence.json`: execution evidence manifest with prerequisites, execution evidence requirements, captured evidence checks, and forbidden-content terms.
+- `rag/sl_legal_rag/operations.py`: `load_hosted_capture_execution_evidence_manifest` and `build_hosted_capture_execution_evidence_report`.
+- `scripts/build_phase41_hosted_capture_execution_evidence.py`: report builder for local awaiting, execution pending, backend/DB pending, acceptance pending, validated, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `hosted-capture-execution-evidence` detached mode.
+- `tests/test_phase41_hosted_capture_execution_evidence.py`: coverage for local awaiting state, pending capture execution, pending backend/DB validation, pending acceptance, full validation, forbidden-content blockers, missing captured evidence blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_41_hosted_capture_execution_evidence_contract.md`: execution evidence contract.
+- `Docs/v2_phase_41_hosted_capture_execution_evidence_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_41_hosted_capture_execution_evidence.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

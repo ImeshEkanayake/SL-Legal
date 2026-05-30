@@ -1000,9 +1000,12 @@ Outcome: Phase 38 is executed in hosted staging and produces the evidence needed
 
 Deliverables:
 
-- Execution evidence manifest for the Phase 38 hosted run.
-- Scrubbed capture logs and JSON evidence under ignored `logs/` paths.
-- Validation gate for `hosted_capture_executed_pending_backend_db_validation`, `hosted_capture_executed_pending_acceptance`, and `hosted_capture_execution_accepted`.
+- Machine-readable execution evidence manifest for the Phase 38 hosted run.
+- Execution evidence builder that produces `awaiting_hosted_dry_run_validation`, `awaiting_hosted_capture_execution`, `hosted_capture_executed_pending_backend_db_validation`, `hosted_capture_executed_pending_acceptance`, `hosted_capture_execution_evidence_validated`, or `blocked`.
+- Detached `hosted-capture-execution-evidence` mode.
+- Scrubbed capture log and JSON evidence checks under ignored `logs/` paths.
+- Validation of Phase 40 `hosted_dry_run_validated`, Phase 38 execution status, Phase 36 `hosted_evidence_captured`, Phase 34 backend/DB validation, and Phase 37 acceptance.
+- Required proof that Phase 38 ran with `execute=true`, `environment_included=true`, `captured_evidence=7`, and no blockers.
 - Operator evidence review covering DB write guard, migration count, raw data upload state, and audit-event-only smoke writes.
 
 Exit criteria:
@@ -1011,6 +1014,8 @@ Exit criteria:
 - Phase 34 and Phase 37 are rerun and their statuses are recorded.
 - Any DB migration, raw data upload, unintended domain write, or forbidden captured content blocks acceptance.
 - Evidence remains untracked and is summarized only through scrubbed reports.
+- Detached backend tests, frontend quality gate, Phase 41 execution evidence gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, or raw data staging.
 
 ### Phase 42: Staging Acceptance Decision
 
