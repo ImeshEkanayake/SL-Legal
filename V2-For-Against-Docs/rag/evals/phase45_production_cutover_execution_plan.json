@@ -1,0 +1,335 @@
+{
+  "schema_version": "phase45_production_cutover_execution_plan.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-44-production-cutover-dry-run",
+  "phase_name": "V2 Phase 45: Production Cutover Execution Plan",
+  "cutover_environment": "production",
+  "description": "Reviewed production cutover execution plan with approval gates, explicit execution flags, rollback points, observation windows, and evidence handoff requirements.",
+  "forbidden_terms": [
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "Authorization: Bearer",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "raw document body",
+    "raw response body",
+    "This is final legal advice",
+    "final legal advice"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase44_manifest",
+      "title": "Phase 44 production cutover dry-run manifest",
+      "type": "file",
+      "path": "rag/evals/phase44_production_cutover_dry_run.json",
+      "required": true
+    },
+    {
+      "id": "phase44_contract",
+      "title": "Phase 44 production cutover dry-run contract",
+      "type": "document",
+      "path": "Docs/v2_phase_44_production_cutover_dry_run_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase44_runbook",
+      "title": "Phase 44 production cutover dry-run runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_44_production_cutover_dry_run_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase44_release_note",
+      "title": "Phase 44 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_44_production_cutover_dry_run.md",
+      "required": true
+    },
+    {
+      "id": "phase44_builder",
+      "title": "Phase 44 production cutover dry-run builder",
+      "type": "file",
+      "path": "scripts/build_phase44_production_cutover_dry_run.py",
+      "required": true
+    },
+    {
+      "id": "phase45_contract",
+      "title": "Phase 45 production cutover execution plan contract",
+      "type": "document",
+      "path": "Docs/v2_phase_45_production_cutover_execution_plan_contract.md",
+      "required": true
+    }
+  ],
+  "dry_run_evidence": [
+    {
+      "id": "phase44_production_cutover_dry_run",
+      "title": "Phase 44 production cutover dry-run report",
+      "group": "dry_run",
+      "type": "json_status",
+      "path": "logs/readiness/phase44-production-cutover-dry-run.json",
+      "accepted_statuses": [
+        "production_cutover_dry_run_planned"
+      ],
+      "pending_statuses": [
+        "awaiting_production_cutover_readiness"
+      ],
+      "required_fields": {
+        "production_execution_authorized": false,
+        "production_mutation_authorized": false,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false,
+        "release_promotion_authorized": false,
+        "phase45_execution_plan_authorized": true,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    }
+  ],
+  "approval_gates": [
+    {
+      "id": "lawyer_owner_execution_plan_signoff",
+      "title": "Lawyer-owner execution plan signoff",
+      "group": "approval_gate",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase45-lawyer-owner-execution-plan-signoff.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "reviewed_phase44_dry_run": true,
+        "reviewed_execution_commands": true,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true,
+        "production_execution_authorized": false
+      },
+      "required": true
+    },
+    {
+      "id": "operator_execution_plan_signoff",
+      "title": "Operator execution plan signoff",
+      "group": "approval_gate",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase45-operator-execution-plan-signoff.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "reviewed_phase44_dry_run": true,
+        "rollback_points_confirmed": true,
+        "production_execution_authorized": false,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false
+      },
+      "required": true
+    },
+    {
+      "id": "legal_review_signoff",
+      "title": "Legal-review boundary signoff",
+      "group": "approval_gate",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase45-legal-review-signoff.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "required_fields": {
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true,
+        "production_execution_authorized": false
+      },
+      "required": true
+    }
+  ],
+  "rollback_points": [
+    {
+      "id": "rollback_previous_deployment_alias",
+      "title": "Rollback to previous production deployment alias",
+      "owner": "operator",
+      "trigger": "Deployment smoke, signed health, or lawyer workspace access fails during cutover.",
+      "action": "Restore the previous production deployment alias and preserve scrubbed cutover evidence.",
+      "expected_evidence": "logs/production-cutover/phase45-rollback-previous-deployment-alias.json"
+    },
+    {
+      "id": "rollback_index_consistency",
+      "title": "Rollback index consistency changes",
+      "owner": "operator",
+      "trigger": "RAG/index consistency check degrades retrieval quality or source traceability.",
+      "action": "Stop index promotion, restore the last verified index state, and preserve consistency evidence.",
+      "expected_evidence": "logs/production-cutover/phase45-rollback-index-consistency.json"
+    }
+  ],
+  "execution_commands": [
+    {
+      "id": "phase45_preflight_readiness_refresh",
+      "title": "Refresh production readiness evidence",
+      "stage": "preflight",
+      "owner": "operator",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "production-cutover-readiness-env",
+        "phase45-production-readiness-env"
+      ],
+      "expected_evidence": "logs/test-runs/phase45-production-readiness-env.log",
+      "requires_explicit_execution_flag": false,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    },
+    {
+      "id": "phase45_prebuilt_production_deploy",
+      "title": "Execute reviewed production deployment",
+      "stage": "cutover",
+      "owner": "operator",
+      "command": [
+        "vercel",
+        "deploy",
+        "--prebuilt",
+        "--prod",
+        "--confirm-phase45-execution"
+      ],
+      "expected_evidence": "logs/production-cutover/phase45-prebuilt-production-deploy.json",
+      "requires_explicit_execution_flag": true,
+      "explicit_execution_flag": "--confirm-phase45-execution",
+      "execution_approved": false,
+      "rollback_point_id": "rollback_previous_deployment_alias",
+      "mutates_production": true,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": true
+    },
+    {
+      "id": "phase45_signed_smoke_verification",
+      "title": "Run signed production smoke verification",
+      "stage": "smoke_verification",
+      "owner": "operator",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "production-cutover-readiness-env",
+        "phase45-production-signed-smoke"
+      ],
+      "expected_evidence": "logs/test-runs/phase45-production-signed-smoke.log",
+      "requires_explicit_execution_flag": false,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    },
+    {
+      "id": "phase45_index_consistency_review",
+      "title": "Run reviewed index consistency command",
+      "stage": "smoke_verification",
+      "owner": "operator",
+      "command": [
+        "python",
+        "scripts/check_rag_index_consistency.py",
+        "--production-review",
+        "--confirm-phase45-execution"
+      ],
+      "expected_evidence": "logs/production-cutover/phase45-index-consistency-review.json",
+      "requires_explicit_execution_flag": true,
+      "explicit_execution_flag": "--confirm-phase45-execution",
+      "execution_approved": false,
+      "rollback_point_id": "rollback_index_consistency",
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": true,
+      "release_promotion": false
+    },
+    {
+      "id": "phase45_observation_start",
+      "title": "Start post-cutover observation evidence capture",
+      "stage": "observation",
+      "owner": "operator",
+      "command": [
+        "scripts/run_detached_quality_gate.sh",
+        "production-cutover-readiness",
+        "phase45-post-cutover-observation-start"
+      ],
+      "expected_evidence": "logs/test-runs/phase45-post-cutover-observation-start.log",
+      "requires_explicit_execution_flag": false,
+      "execution_approved": false,
+      "mutates_production": false,
+      "database_migration": false,
+      "raw_data_upload": false,
+      "index_mutation": false,
+      "release_promotion": false
+    }
+  ],
+  "observation_windows": [
+    {
+      "id": "phase45_first_hour_observation",
+      "title": "First-hour production observation",
+      "owner": "operator",
+      "duration_minutes": 60,
+      "metrics": [
+        "api_health",
+        "retrieval_latency",
+        "source_viewer_latency",
+        "citation_validation_failures",
+        "review_queue_latency",
+        "error_rate"
+      ],
+      "expected_evidence": "logs/production-cutover/phase45-first-hour-observation.json"
+    },
+    {
+      "id": "phase45_legal_review_observation",
+      "title": "Lawyer-review workflow observation",
+      "owner": "lawyer_owner",
+      "duration_minutes": 60,
+      "metrics": [
+        "review_pack_generation",
+        "for_against_argument_quality",
+        "missing_evidence_flags",
+        "no_final_legal_advice_boundary"
+      ],
+      "expected_evidence": "logs/production-cutover/phase45-legal-review-observation.json"
+    }
+  ],
+  "evidence_handoff": [
+    {
+      "id": "phase44_release_note_handoff",
+      "title": "Phase 44 release note",
+      "source_path": "Docs/releases/v2_phase_44_production_cutover_dry_run.md",
+      "owner": "operator",
+      "timing": "before_execution"
+    },
+    {
+      "id": "phase43_release_provenance_handoff",
+      "title": "Phase 43 release provenance evidence",
+      "source_path": "logs/release-artifacts/phase43-release-provenance-ledger.json",
+      "owner": "operator",
+      "timing": "before_execution"
+    },
+    {
+      "id": "phase43_signing_plan_handoff",
+      "title": "Phase 43 signing plan evidence",
+      "source_path": "logs/release-artifacts/phase43-signing-plan.json",
+      "owner": "operator",
+      "timing": "before_execution"
+    },
+    {
+      "id": "phase42_hosted_acceptance_handoff",
+      "title": "Phase 42 hosted staging acceptance",
+      "source_path": "logs/readiness/phase42-staging-acceptance-decision.json",
+      "owner": "operator",
+      "timing": "before_execution"
+    },
+    {
+      "id": "phase45_production_validation_handoff",
+      "title": "Phase 45 production validation evidence",
+      "source_path": "logs/production-cutover/phase45-production-validation.json",
+      "owner": "operator",
+      "timing": "after_execution"
+    }
+  ]
+}

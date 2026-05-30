@@ -726,6 +726,19 @@ Phase 44 adds the non-mutating production cutover dry-run gate. The active imple
 - `Docs/v2_phase_44_production_cutover_dry_run_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_44_production_cutover_dry_run.md`: release note and validation evidence.
 
+## V2 Phase 45 Production Cutover Execution Plan
+
+Phase 45 adds the production cutover execution-plan gate. The active implementation uses:
+
+- `rag/evals/phase45_production_cutover_execution_plan.json`: execution-plan manifest with Phase 44 dry-run evidence, approval gates, execution commands, rollback points, observation windows, evidence handoff, and forbidden-content terms.
+- `rag/sl_legal_rag/operations.py`: `load_production_cutover_execution_plan_manifest` and `build_production_cutover_execution_plan_report`.
+- `scripts/build_phase45_production_cutover_execution_plan.py`: report builder for dry-run-awaiting, approval-awaiting, plan-ready, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `production-cutover-execution-plan` detached mode.
+- `tests/test_phase45_production_cutover_execution_plan.py`: coverage for local awaiting state, approval waiting, ready plan state, execution approval blockers, explicit-flag blockers, rollback-point blockers, observation/handoff blockers, forbidden-content blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_45_production_cutover_execution_plan_contract.md`: execution-plan contract.
+- `Docs/v2_phase_45_production_cutover_execution_plan_runbook.md`: operator runbook.
+- `Docs/releases/v2_phase_45_production_cutover_execution_plan.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.

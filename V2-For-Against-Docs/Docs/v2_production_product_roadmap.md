@@ -1094,16 +1094,23 @@ Outcome: production execution is planned with explicit approvals, gates, rollbac
 
 Deliverables:
 
-- Production execution plan manifest.
-- Approval gates for owner, operator, and lawyer-review sign-off.
+- Machine-readable production execution plan manifest.
+- Execution-plan builder that emits `awaiting_production_cutover_dry_run`, `awaiting_execution_approvals`, `production_cutover_execution_plan_ready`, or `blocked`.
+- Detached `production-cutover-execution-plan` mode.
+- Approval gates for lawyer-owner, operator, and legal-review sign-off.
 - Execution command plan with preflight, cutover, smoke verification, rollback, and post-cutover observation windows.
-- Evidence handoff checklist for release notes, provenance, signing, hosted acceptance, and production validation.
+- Explicit execution-flag and rollback-point requirements for production-mutating, index-mutating, migration, raw-data-upload, and release-promotion commands.
+- Evidence handoff checklist for release notes, provenance, signing, hosted acceptance, dry-run evidence, and production validation.
+- Contract, runbook, tests, release note, and codebase map updates for Phase 45.
 
 Exit criteria:
 
-- No production execution can proceed without all required approvals and Phase 44 dry-run evidence.
-- Commands that mutate production require explicit execution flags and documented rollback points.
-- The plan preserves the lawyer-review requirement and no-final-legal-advice boundary.
+- Execution planning cannot pass without Phase 44 returning `production_cutover_dry_run_planned`.
+- Missing lawyer-owner, operator, or legal-review sign-off returns `awaiting_execution_approvals`.
+- Any production execution approval, production mutation approval, DB migration approval, raw data upload approval, release promotion approval, missing explicit execution flag, missing rollback point, incomplete observation window, or forbidden content blocks.
+- Decision report always preserves `production_execution_authorized=false`, `production_mutation_authorized=false`, `database_migration_authorized=false`, `raw_data_upload_authorized=false`, `release_promotion_authorized=false`, `lawyer_review_required=true`, and `no_final_legal_advice=true`.
+- Detached backend tests, frontend quality gate, Phase 45 execution-plan gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, production mutation, release promotion, or raw data staging.
 
 ### Phase 46: Post-Cutover Monitoring and Operational Handover
 

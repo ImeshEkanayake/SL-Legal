@@ -2262,6 +2262,41 @@ def load_production_cutover_dry_run_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def load_production_cutover_execution_plan_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase45_production_cutover_execution_plan.v1":
+        raise ValueError(
+            "production cutover execution plan manifest schema_version must be "
+            "phase45_production_cutover_execution_plan.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty prerequisites array")
+    dry_run_evidence = payload.get("dry_run_evidence")
+    if not isinstance(dry_run_evidence, list) or not dry_run_evidence:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty dry_run_evidence array")
+    approval_gates = payload.get("approval_gates")
+    if not isinstance(approval_gates, list) or not approval_gates:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty approval_gates array")
+    execution_commands = payload.get("execution_commands")
+    if not isinstance(execution_commands, list) or not execution_commands:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty execution_commands array")
+    rollback_points = payload.get("rollback_points")
+    if not isinstance(rollback_points, list) or not rollback_points:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty rollback_points array")
+    observation_windows = payload.get("observation_windows")
+    if not isinstance(observation_windows, list) or not observation_windows:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty observation_windows array")
+    evidence_handoff = payload.get("evidence_handoff")
+    if not isinstance(evidence_handoff, list) or not evidence_handoff:
+        raise ValueError("production cutover execution plan manifest must contain a non-empty evidence_handoff array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("production cutover execution plan manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -3324,6 +3359,268 @@ def build_production_cutover_dry_run_report(
             "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
             "phase43_status": phase43_status,
+        },
+    }
+
+
+def production_cutover_execution_command_from_mapping(
+    item: dict[str, Any],
+    *,
+    rollback_point_ids: set[str],
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    command_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    stage = str(item.get("stage") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    command = item.get("command")
+    expected_evidence = str(item.get("expected_evidence") or "").strip()
+    rollback_point_id = str(item.get("rollback_point_id") or "").strip()
+    blockers: list[dict[str, str]] = []
+    if not command_id:
+        raise ValueError("production cutover execution command id is required")
+    if not title:
+        raise ValueError(f"{command_id} title is required")
+    if stage not in {"preflight", "cutover", "smoke_verification", "rollback", "observation", "evidence_handoff"}:
+        blockers.append({"id": command_id, "status": "failed", "summary": "execution command has unsupported stage"})
+    if not isinstance(command, list) or not command or not all(str(part).strip() for part in command):
+        blockers.append({"id": command_id, "status": "failed", "summary": "execution command must be a non-empty string array"})
+        command_parts: list[str] = []
+    else:
+        command_parts = [str(part) for part in command]
+    if not expected_evidence:
+        blockers.append({"id": command_id, "status": "failed", "summary": "execution command expected evidence path is required"})
+    requires_explicit_flag = bool(item.get("requires_explicit_execution_flag", False))
+    explicit_flag = str(item.get("explicit_execution_flag") or "").strip()
+    execution_approved = bool(item.get("execution_approved", False))
+    risk_flags = {
+        "mutates_production": bool(item.get("mutates_production", False)),
+        "database_migration": bool(item.get("database_migration", False)),
+        "raw_data_upload": bool(item.get("raw_data_upload", False)),
+        "index_mutation": bool(item.get("index_mutation", False)),
+        "release_promotion": bool(item.get("release_promotion", False)),
+    }
+    mutating_or_promoting = any(risk_flags.values())
+    if execution_approved:
+        blockers.append({"id": command_id, "status": "failed", "summary": "Phase 45 must not approve execution"})
+    if mutating_or_promoting and not requires_explicit_flag:
+        blockers.append({"id": command_id, "status": "failed", "summary": "mutating commands require an explicit execution flag"})
+    if requires_explicit_flag and not explicit_flag:
+        blockers.append({"id": command_id, "status": "failed", "summary": "explicit execution flag label is required"})
+    if mutating_or_promoting and not rollback_point_id:
+        blockers.append({"id": command_id, "status": "failed", "summary": "mutating commands require a rollback point"})
+    if rollback_point_id and rollback_point_id not in rollback_point_ids:
+        blockers.append({"id": command_id, "status": "failed", "summary": "rollback point is not defined"})
+    return {
+        "id": command_id,
+        "title": title,
+        "stage": stage,
+        "owner": owner or None,
+        "command": command_parts,
+        "command_line": " ".join(shlex.quote(part) for part in command_parts) if command_parts else "",
+        "expected_evidence": expected_evidence,
+        "requires_explicit_execution_flag": requires_explicit_flag,
+        "explicit_execution_flag": explicit_flag or None,
+        "execution_approved": execution_approved,
+        "rollback_point_id": rollback_point_id or None,
+        **risk_flags,
+        "status": "execution_planned",
+    }, blockers
+
+
+def production_cutover_rollback_point_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    point_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    trigger = str(item.get("trigger") or "").strip()
+    action = str(item.get("action") or "").strip()
+    expected_evidence = str(item.get("expected_evidence") or "").strip()
+    blockers: list[dict[str, str]] = []
+    if not point_id:
+        raise ValueError("production cutover rollback point id is required")
+    if not title or not owner or not trigger or not action or not expected_evidence:
+        blockers.append({"id": point_id, "status": "failed", "summary": "rollback point is incomplete"})
+    return {
+        "id": point_id,
+        "title": title,
+        "owner": owner,
+        "trigger": trigger,
+        "action": action,
+        "expected_evidence": expected_evidence,
+        "status": "rollback_point_planned",
+    }, blockers
+
+
+def production_cutover_observation_window_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    window_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    duration_minutes = int(item.get("duration_minutes") or 0)
+    expected_evidence = str(item.get("expected_evidence") or "").strip()
+    metrics = [str(metric).strip() for metric in item.get("metrics", []) if str(metric).strip()]
+    blockers: list[dict[str, str]] = []
+    if not window_id:
+        raise ValueError("production cutover observation window id is required")
+    if not title or not owner or duration_minutes <= 0 or not expected_evidence or not metrics:
+        blockers.append({"id": window_id, "status": "failed", "summary": "observation window is incomplete"})
+    return {
+        "id": window_id,
+        "title": title,
+        "owner": owner,
+        "duration_minutes": duration_minutes,
+        "metrics": metrics,
+        "expected_evidence": expected_evidence,
+        "status": "observation_window_planned",
+    }, blockers
+
+
+def production_cutover_handoff_item_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    handoff_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    source_path = str(item.get("source_path") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    timing = str(item.get("timing") or "").strip()
+    blockers: list[dict[str, str]] = []
+    if not handoff_id:
+        raise ValueError("production cutover evidence handoff id is required")
+    if timing not in {"before_execution", "during_execution", "after_execution"}:
+        blockers.append({"id": handoff_id, "status": "failed", "summary": "handoff timing is unsupported"})
+    if not title or not source_path or not owner:
+        blockers.append({"id": handoff_id, "status": "failed", "summary": "evidence handoff item is incomplete"})
+    return {
+        "id": handoff_id,
+        "title": title,
+        "source_path": source_path,
+        "owner": owner,
+        "timing": timing,
+        "status": "handoff_planned",
+    }, blockers
+
+
+def build_production_cutover_execution_plan_report(
+    plan_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(plan_payload.get("target_release_tag") or "").strip()
+    repo = str(plan_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in plan_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in plan_payload["prerequisites"]
+    ]
+    dry_run_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in plan_payload["dry_run_evidence"]
+    ]
+    approval_gates = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in plan_payload["approval_gates"]
+    ]
+    rollback_points: list[dict[str, Any]] = []
+    rollback_blockers: list[dict[str, str]] = []
+    for item in plan_payload["rollback_points"]:
+        rollback_point, blockers = production_cutover_rollback_point_from_mapping(item)
+        rollback_points.append(rollback_point)
+        rollback_blockers.extend(blockers)
+    rollback_point_ids = {item["id"] for item in rollback_points if item["id"]}
+    execution_commands: list[dict[str, Any]] = []
+    command_blockers: list[dict[str, str]] = []
+    for item in plan_payload["execution_commands"]:
+        command, blockers = production_cutover_execution_command_from_mapping(
+            item,
+            rollback_point_ids=rollback_point_ids,
+        )
+        execution_commands.append(command)
+        command_blockers.extend(blockers)
+    observation_windows: list[dict[str, Any]] = []
+    observation_blockers: list[dict[str, str]] = []
+    for item in plan_payload["observation_windows"]:
+        window, blockers = production_cutover_observation_window_from_mapping(item)
+        observation_windows.append(window)
+        observation_blockers.extend(blockers)
+    evidence_handoff: list[dict[str, Any]] = []
+    handoff_blockers: list[dict[str, str]] = []
+    for item in plan_payload["evidence_handoff"]:
+        handoff, blockers = production_cutover_handoff_item_from_mapping(item)
+        evidence_handoff.append(handoff)
+        handoff_blockers.extend(blockers)
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    failed_items = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in [*dry_run_evidence, *approval_gates]
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_dry_run = [item for item in dry_run_evidence if item["required"] and item["status"] == "pending"]
+    pending_approvals = [item for item in approval_gates if item["required"] and item["status"] == "pending"]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in dry_run_evidence}
+    phase44_status = statuses.get("phase44_production_cutover_dry_run", "")
+    blockers = [
+        *prerequisite_blockers,
+        *failed_items,
+        *rollback_blockers,
+        *command_blockers,
+        *observation_blockers,
+        *handoff_blockers,
+    ]
+    if blockers:
+        status = "blocked"
+    elif phase44_status != "production_cutover_dry_run_planned" or pending_dry_run:
+        status = "awaiting_production_cutover_dry_run"
+    elif pending_approvals:
+        status = "awaiting_execution_approvals"
+    else:
+        status = "production_cutover_execution_plan_ready"
+    return {
+        "schema_version": "phase45_production_cutover_execution_plan.v1",
+        "source_schema_version": plan_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "cutover_environment": str(plan_payload.get("cutover_environment") or "production"),
+        "production_execution_authorized": False,
+        "production_mutation_authorized": False,
+        "database_migration_authorized": False,
+        "raw_data_upload_authorized": False,
+        "release_promotion_authorized": False,
+        "lawyer_review_required": True,
+        "no_final_legal_advice": True,
+        "phase46_monitoring_authorized": False,
+        "prerequisites": prerequisites,
+        "dry_run_evidence": dry_run_evidence,
+        "approval_gates": approval_gates,
+        "execution_commands": execution_commands,
+        "rollback_points": rollback_points,
+        "observation_windows": observation_windows,
+        "evidence_handoff": evidence_handoff,
+        "pending_dry_run_evidence": pending_dry_run,
+        "pending_approvals": pending_approvals,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_dry_run_evidence": len(dry_run_evidence),
+            "verified_dry_run_evidence": sum(1 for item in dry_run_evidence if item["status"] == "verified"),
+            "pending_dry_run_evidence": len(pending_dry_run),
+            "total_approval_gates": len(approval_gates),
+            "verified_approval_gates": sum(1 for item in approval_gates if item["status"] == "verified"),
+            "pending_approvals": len(pending_approvals),
+            "execution_commands": len(execution_commands),
+            "mutating_commands": sum(1 for item in execution_commands if item["mutates_production"]),
+            "commands_with_rollback_points": sum(1 for item in execution_commands if item["rollback_point_id"]),
+            "rollback_points": len(rollback_points),
+            "observation_windows": len(observation_windows),
+            "evidence_handoff_items": len(evidence_handoff),
+            "forbidden_terms": len(forbidden_terms),
+            "blockers": len(blockers),
+            "phase44_status": phase44_status,
         },
     }
 
