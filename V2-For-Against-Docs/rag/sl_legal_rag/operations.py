@@ -2297,6 +2297,55 @@ def load_production_cutover_execution_plan_manifest(path: Path) -> dict[str, Any
     return payload
 
 
+def load_post_cutover_monitoring_handover_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    schema_version = str(payload.get("schema_version") or "")
+    if schema_version != "phase46_post_cutover_monitoring_handover.v1":
+        raise ValueError(
+            "post-cutover monitoring handover manifest schema_version must be "
+            "phase46_post_cutover_monitoring_handover.v1"
+        )
+    prerequisites = payload.get("prerequisites")
+    if not isinstance(prerequisites, list) or not prerequisites:
+        raise ValueError("post-cutover monitoring handover manifest must contain a non-empty prerequisites array")
+    cutover_plan_evidence = payload.get("cutover_plan_evidence")
+    if not isinstance(cutover_plan_evidence, list) or not cutover_plan_evidence:
+        raise ValueError(
+            "post-cutover monitoring handover manifest must contain a non-empty cutover_plan_evidence array"
+        )
+    cutover_execution_evidence = payload.get("cutover_execution_evidence")
+    if not isinstance(cutover_execution_evidence, list) or not cutover_execution_evidence:
+        raise ValueError(
+            "post-cutover monitoring handover manifest must contain a non-empty cutover_execution_evidence array"
+        )
+    monitoring_evidence = payload.get("monitoring_evidence")
+    if not isinstance(monitoring_evidence, list) or not monitoring_evidence:
+        raise ValueError("post-cutover monitoring handover manifest must contain a non-empty monitoring_evidence array")
+    rollback_incident_evidence = payload.get("rollback_incident_evidence")
+    if not isinstance(rollback_incident_evidence, list) or not rollback_incident_evidence:
+        raise ValueError(
+            "post-cutover monitoring handover manifest must contain a non-empty rollback_incident_evidence array"
+        )
+    data_update_evidence = payload.get("data_update_evidence")
+    if not isinstance(data_update_evidence, list) or not data_update_evidence:
+        raise ValueError("post-cutover monitoring handover manifest must contain a non-empty data_update_evidence array")
+    dashboard_checks = payload.get("dashboard_checks")
+    if not isinstance(dashboard_checks, list) or not dashboard_checks:
+        raise ValueError("post-cutover monitoring handover manifest must contain a non-empty dashboard_checks array")
+    incident_response_templates = payload.get("incident_response_templates")
+    if not isinstance(incident_response_templates, list) or not incident_response_templates:
+        raise ValueError(
+            "post-cutover monitoring handover manifest must contain a non-empty incident_response_templates array"
+        )
+    handover_documents = payload.get("handover_documents")
+    if not isinstance(handover_documents, list) or not handover_documents:
+        raise ValueError("post-cutover monitoring handover manifest must contain a non-empty handover_documents array")
+    forbidden_terms = payload.get("forbidden_terms", [])
+    if not isinstance(forbidden_terms, list):
+        raise ValueError("post-cutover monitoring handover manifest forbidden_terms must be an array")
+    return payload
+
+
 def evaluate_hosted_capture_environment(
     payload: dict[str, Any],
     *,
@@ -3621,6 +3670,293 @@ def build_production_cutover_execution_plan_report(
             "forbidden_terms": len(forbidden_terms),
             "blockers": len(blockers),
             "phase44_status": phase44_status,
+        },
+    }
+
+
+def post_cutover_dashboard_check_from_mapping(
+    item: dict[str, Any],
+    *,
+    monitoring_evidence_ids: set[str],
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    check_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    metric_name = str(item.get("metric_name") or "").strip()
+    target = str(item.get("target") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    evidence_id = str(item.get("evidence_id") or "").strip()
+    severity = str(item.get("severity") or "high").strip()
+    blockers: list[dict[str, str]] = []
+    if not check_id:
+        raise ValueError("post-cutover dashboard check id is required")
+    if not title:
+        raise ValueError(f"{check_id} title is required")
+    if not metric_name:
+        blockers.append({"id": check_id, "status": "failed", "summary": "dashboard check metric_name is required"})
+    if not target:
+        blockers.append({"id": check_id, "status": "failed", "summary": "dashboard check target is required"})
+    if not owner:
+        blockers.append({"id": check_id, "status": "failed", "summary": "dashboard check owner is required"})
+    if not evidence_id:
+        blockers.append({"id": check_id, "status": "failed", "summary": "dashboard check evidence_id is required"})
+    elif evidence_id not in monitoring_evidence_ids:
+        blockers.append({"id": check_id, "status": "failed", "summary": "dashboard check references unknown evidence"})
+    if severity not in {"critical", "high", "medium", "low"}:
+        blockers.append({"id": check_id, "status": "failed", "summary": "dashboard check severity is unsupported"})
+    return {
+        "id": check_id,
+        "title": title,
+        "metric_name": metric_name,
+        "target": target,
+        "owner": owner,
+        "evidence_id": evidence_id,
+        "severity": severity,
+        "status": "dashboard_check_defined",
+    }, blockers
+
+
+def post_cutover_incident_template_from_mapping(item: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    template_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    trigger = str(item.get("trigger") or "").strip()
+    rollback_decision = str(item.get("rollback_decision") or "").strip()
+    evidence_path = str(item.get("evidence_path") or "").strip()
+    severity = str(item.get("severity") or "high").strip()
+    blockers: list[dict[str, str]] = []
+    if not template_id:
+        raise ValueError("post-cutover incident template id is required")
+    if not title:
+        raise ValueError(f"{template_id} title is required")
+    if not owner:
+        blockers.append({"id": template_id, "status": "failed", "summary": "incident template owner is required"})
+    if not trigger:
+        blockers.append({"id": template_id, "status": "failed", "summary": "incident template trigger is required"})
+    if not rollback_decision:
+        blockers.append({"id": template_id, "status": "failed", "summary": "rollback decision path is required"})
+    if not evidence_path:
+        blockers.append({"id": template_id, "status": "failed", "summary": "incident evidence path is required"})
+    if severity not in {"critical", "high", "medium", "low"}:
+        blockers.append({"id": template_id, "status": "failed", "summary": "incident template severity is unsupported"})
+    return {
+        "id": template_id,
+        "title": title,
+        "owner": owner,
+        "trigger": trigger,
+        "rollback_decision": rollback_decision,
+        "evidence_path": evidence_path,
+        "severity": severity,
+        "status": "incident_template_defined",
+    }, blockers
+
+
+def post_cutover_handover_document_from_mapping(
+    item: dict[str, Any],
+    project_root: Path,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    document_id = str(item.get("id") or "").strip()
+    title = str(item.get("title") or "").strip()
+    owner = str(item.get("owner") or "").strip()
+    audience = str(item.get("audience") or "").strip()
+    path_value = str(item.get("path") or "").strip()
+    section = str(item.get("section") or "").strip()
+    required = bool(item.get("required", True))
+    blockers: list[dict[str, str]] = []
+    if not document_id:
+        raise ValueError("post-cutover handover document id is required")
+    if not title:
+        raise ValueError(f"{document_id} title is required")
+    if required and (not owner or not audience or not path_value or not section):
+        blockers.append({"id": document_id, "status": "failed", "summary": "handover document definition is incomplete"})
+    path = Path(path_value)
+    if path_value and not path.is_absolute():
+        path = project_root / path
+    exists = bool(path_value) and path.is_file()
+    status = "verified" if exists else "pending"
+    if required and not exists:
+        blockers.append({"id": document_id, "status": "pending", "summary": "handover document is not present"})
+    return {
+        "id": document_id,
+        "title": title,
+        "owner": owner,
+        "audience": audience,
+        "path": path_value,
+        "section": section,
+        "required": required,
+        "exists": exists,
+        "status": status,
+        "summary": "handover document is present" if exists else "handover document is not present",
+    }, blockers
+
+
+def build_post_cutover_monitoring_handover_report(
+    handover_payload: dict[str, Any],
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
+    target_tag = str(handover_payload.get("target_release_tag") or "").strip()
+    repo = str(handover_payload.get("repo") or "").strip()
+    if not target_tag:
+        raise ValueError("target_release_tag is required")
+    if not repo:
+        raise ValueError("repo is required")
+    forbidden_terms = [str(term).strip() for term in handover_payload.get("forbidden_terms", []) if str(term).strip()]
+    prerequisites = [
+        evaluate_hosted_staging_validation_item(item, project_root, missing_status="missing")
+        for item in handover_payload["prerequisites"]
+    ]
+    cutover_plan_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in handover_payload["cutover_plan_evidence"]
+    ]
+    cutover_execution_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in handover_payload["cutover_execution_evidence"]
+    ]
+    monitoring_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in handover_payload["monitoring_evidence"]
+    ]
+    rollback_incident_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in handover_payload["rollback_incident_evidence"]
+    ]
+    data_update_evidence = [
+        evaluate_production_cutover_readiness_item(item, project_root, forbidden_terms=forbidden_terms)
+        for item in handover_payload["data_update_evidence"]
+    ]
+    monitoring_evidence_ids = {item["id"] for item in monitoring_evidence}
+    dashboard_checks: list[dict[str, Any]] = []
+    dashboard_blockers: list[dict[str, str]] = []
+    for item in handover_payload["dashboard_checks"]:
+        check, blockers = post_cutover_dashboard_check_from_mapping(
+            item,
+            monitoring_evidence_ids=monitoring_evidence_ids,
+        )
+        dashboard_checks.append(check)
+        dashboard_blockers.extend(blockers)
+    incident_response_templates: list[dict[str, Any]] = []
+    incident_template_blockers: list[dict[str, str]] = []
+    for item in handover_payload["incident_response_templates"]:
+        template, blockers = post_cutover_incident_template_from_mapping(item)
+        incident_response_templates.append(template)
+        incident_template_blockers.extend(blockers)
+    handover_documents: list[dict[str, Any]] = []
+    handover_document_blockers: list[dict[str, str]] = []
+    for item in handover_payload["handover_documents"]:
+        document, blockers = post_cutover_handover_document_from_mapping(item, project_root)
+        handover_documents.append(document)
+        handover_document_blockers.extend(blockers)
+    prerequisite_blockers = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in prerequisites
+        if item["required"] and item["status"] != "verified"
+    ]
+    all_evidence = [
+        *cutover_plan_evidence,
+        *cutover_execution_evidence,
+        *monitoring_evidence,
+        *rollback_incident_evidence,
+        *data_update_evidence,
+    ]
+    failed_evidence = [
+        {"id": item["id"], "status": item["status"], "summary": item["summary"]}
+        for item in all_evidence
+        if item["required"] and item["status"] == "failed"
+    ]
+    pending_cutover_plan = [item for item in cutover_plan_evidence if item["required"] and item["status"] == "pending"]
+    pending_cutover_execution = [
+        item for item in cutover_execution_evidence if item["required"] and item["status"] == "pending"
+    ]
+    pending_monitoring = [item for item in monitoring_evidence if item["required"] and item["status"] == "pending"]
+    pending_handover_evidence = [
+        item
+        for item in [*rollback_incident_evidence, *data_update_evidence]
+        if item["required"] and item["status"] == "pending"
+    ]
+    pending_handover_documents = [
+        item for item in handover_documents if item["required"] and item["status"] != "verified"
+    ]
+    statuses = {item["id"]: str(item.get("actual_status") or "") for item in all_evidence}
+    phase45_status = statuses.get("phase45_production_cutover_execution_plan", "")
+    blockers = [
+        *prerequisite_blockers,
+        *failed_evidence,
+        *dashboard_blockers,
+        *incident_template_blockers,
+        *handover_document_blockers,
+    ]
+    if blockers:
+        status = "blocked"
+    elif phase45_status != "production_cutover_execution_plan_ready" or pending_cutover_plan:
+        status = "awaiting_production_cutover_execution_plan"
+    elif pending_cutover_execution:
+        status = "awaiting_cutover_execution_evidence"
+    elif pending_monitoring:
+        status = "awaiting_monitoring_evidence"
+    elif pending_handover_evidence or pending_handover_documents:
+        status = "awaiting_operational_handover"
+    else:
+        status = "post_cutover_operational_handover_ready"
+    return {
+        "schema_version": "phase46_post_cutover_monitoring_handover.v1",
+        "source_schema_version": handover_payload["schema_version"],
+        "repo": repo,
+        "target_release_tag": target_tag,
+        "status": status,
+        "cutover_environment": str(handover_payload.get("cutover_environment") or "production"),
+        "production_execution_authorized": False,
+        "production_mutation_authorized": False,
+        "database_migration_authorized": False,
+        "raw_data_upload_authorized": False,
+        "release_promotion_authorized": False,
+        "lawyer_review_required": True,
+        "no_final_legal_advice": True,
+        "production_operational_complete": status == "post_cutover_operational_handover_ready",
+        "prerequisites": prerequisites,
+        "cutover_plan_evidence": cutover_plan_evidence,
+        "cutover_execution_evidence": cutover_execution_evidence,
+        "monitoring_evidence": monitoring_evidence,
+        "rollback_incident_evidence": rollback_incident_evidence,
+        "data_update_evidence": data_update_evidence,
+        "dashboard_checks": dashboard_checks,
+        "incident_response_templates": incident_response_templates,
+        "handover_documents": handover_documents,
+        "pending_cutover_plan": pending_cutover_plan,
+        "pending_cutover_execution": pending_cutover_execution,
+        "pending_monitoring_evidence": pending_monitoring,
+        "pending_handover_evidence": pending_handover_evidence,
+        "pending_handover_documents": pending_handover_documents,
+        "blockers": blockers,
+        "summary": {
+            "total_prerequisites": len(prerequisites),
+            "verified_prerequisites": sum(1 for item in prerequisites if item["status"] == "verified"),
+            "total_cutover_plan_evidence": len(cutover_plan_evidence),
+            "verified_cutover_plan_evidence": sum(1 for item in cutover_plan_evidence if item["status"] == "verified"),
+            "total_cutover_execution_evidence": len(cutover_execution_evidence),
+            "verified_cutover_execution_evidence": sum(
+                1 for item in cutover_execution_evidence if item["status"] == "verified"
+            ),
+            "total_monitoring_evidence": len(monitoring_evidence),
+            "verified_monitoring_evidence": sum(1 for item in monitoring_evidence if item["status"] == "verified"),
+            "total_rollback_incident_evidence": len(rollback_incident_evidence),
+            "verified_rollback_incident_evidence": sum(
+                1 for item in rollback_incident_evidence if item["status"] == "verified"
+            ),
+            "total_data_update_evidence": len(data_update_evidence),
+            "verified_data_update_evidence": sum(1 for item in data_update_evidence if item["status"] == "verified"),
+            "dashboard_checks": len(dashboard_checks),
+            "incident_response_templates": len(incident_response_templates),
+            "handover_documents": len(handover_documents),
+            "pending_cutover_plan": len(pending_cutover_plan),
+            "pending_cutover_execution": len(pending_cutover_execution),
+            "pending_monitoring_evidence": len(pending_monitoring),
+            "pending_handover_evidence": len(pending_handover_evidence),
+            "pending_handover_documents": len(pending_handover_documents),
+            "failed_evidence": len(failed_evidence),
+            "forbidden_terms": len(forbidden_terms),
+            "blockers": len(blockers),
+            "phase45_status": phase45_status,
         },
     }
 

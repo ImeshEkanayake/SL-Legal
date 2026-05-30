@@ -1119,16 +1119,26 @@ Outcome: production operation is monitored, documented, and handed over with rol
 Deliverables:
 
 - Post-cutover monitoring manifest.
+- Monitoring and handover builder that emits `awaiting_production_cutover_execution_plan`, `awaiting_cutover_execution_evidence`, `awaiting_monitoring_evidence`, `awaiting_operational_handover`, `post_cutover_operational_handover_ready`, or `blocked`.
+- Detached `post-cutover-monitoring-handover` mode.
+- Cutover execution evidence checks for reviewed Phase 45 execution, signed smoke verification, rollback availability, no DB migration, no raw data upload, lawyer-review boundary, and no final legal advice.
 - Operational dashboard checklist for API health, retrieval latency, source viewer latency, citation validation failures, review queue latency, and error rates.
-- Incident and rollback evidence template.
-- Handover document for support, legal review, data updates, and future corpus growth.
+- Monitoring evidence checks for post-cutover windows, alert review, latency targets, citation validation failure review, source-anchor health, and critical error-rate review.
+- Incident and rollback evidence templates for API health degradation and retrieval or citation quality incidents.
+- Rollback readiness, incident-response readiness, data-update separation, support handover, legal-review handover, data-update handover, and future corpus-growth handover checks.
+- Contract, runbook, tests, release note, operational handover document, and codebase map updates for Phase 46.
 
 Exit criteria:
 
 - Monitoring evidence is attached before production is considered operationally complete.
 - Rollback and incident-response evidence is reviewed.
 - Data update procedures remain separate from Git code release procedures.
-- No V1 changes, raw data upload, database migration, or unmanaged production mutation occurs outside approved execution phases.
+- Phase 46 cannot pass without Phase 45 returning `production_cutover_execution_plan_ready`.
+- Missing reviewed cutover execution evidence returns `awaiting_cutover_execution_evidence`; missing monitoring windows return `awaiting_monitoring_evidence`; missing rollback, incident-response, data-update, or handover evidence returns `awaiting_operational_handover`.
+- Any production authorization by Phase 46, DB migration authorization, raw data upload authorization, forbidden content, unknown dashboard evidence link, incomplete incident template, or missing handover document blocks.
+- Decision report always preserves `production_execution_authorized=false`, `production_mutation_authorized=false`, `database_migration_authorized=false`, `raw_data_upload_authorized=false`, `release_promotion_authorized=false`, `lawyer_review_required=true`, and `no_final_legal_advice=true`.
+- Detached backend tests, frontend quality gate, Phase 46 handover gate, secret scan, and marker scan pass.
+- No V1 changes, raw data upload, database migration, unmanaged production mutation, release promotion, or raw data staging.
 
 ## Production Evidence Requirements
 

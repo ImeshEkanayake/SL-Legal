@@ -1,0 +1,442 @@
+{
+  "schema_version": "phase46_post_cutover_monitoring_handover.v1",
+  "repo": "ImeshEkanayake/SL-Legal",
+  "target_release_tag": "v2-phase-45-production-cutover-execution-plan",
+  "phase_name": "V2 Phase 46: Post-Cutover Monitoring and Operational Handover",
+  "cutover_environment": "production",
+  "description": "Post-cutover monitoring and handover gate for validating production observation evidence, rollback and incident evidence, data-update separation, and operational handover.",
+  "forbidden_terms": [
+    "X-SL-Legal-Auth-Signature",
+    "X-SL-Legal-Body-SHA256",
+    "sl_legal_session=",
+    "Authorization: Bearer",
+    "postgres://",
+    "postgresql://",
+    "BEGIN PRIVATE KEY",
+    "BEGIN OPENSSH PRIVATE KEY",
+    "raw document body",
+    "raw response body",
+    "This is final legal advice",
+    "final legal advice"
+  ],
+  "prerequisites": [
+    {
+      "id": "phase45_manifest",
+      "title": "Phase 45 production cutover execution-plan manifest",
+      "type": "file",
+      "path": "rag/evals/phase45_production_cutover_execution_plan.json",
+      "required": true
+    },
+    {
+      "id": "phase45_contract",
+      "title": "Phase 45 production cutover execution-plan contract",
+      "type": "document",
+      "path": "Docs/v2_phase_45_production_cutover_execution_plan_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase45_runbook",
+      "title": "Phase 45 production cutover execution-plan runbook",
+      "type": "document",
+      "path": "Docs/v2_phase_45_production_cutover_execution_plan_runbook.md",
+      "required": true
+    },
+    {
+      "id": "phase45_release_note",
+      "title": "Phase 45 release note",
+      "type": "document",
+      "path": "Docs/releases/v2_phase_45_production_cutover_execution_plan.md",
+      "required": true
+    },
+    {
+      "id": "phase45_builder",
+      "title": "Phase 45 production cutover execution-plan builder",
+      "type": "file",
+      "path": "scripts/build_phase45_production_cutover_execution_plan.py",
+      "required": true
+    },
+    {
+      "id": "phase46_contract",
+      "title": "Phase 46 post-cutover monitoring and handover contract",
+      "type": "document",
+      "path": "Docs/v2_phase_46_post_cutover_monitoring_handover_contract.md",
+      "required": true
+    },
+    {
+      "id": "phase46_handover_document",
+      "title": "Phase 46 operational handover document",
+      "type": "document",
+      "path": "Docs/v2_phase_46_operational_handover.md",
+      "required": true
+    }
+  ],
+  "cutover_plan_evidence": [
+    {
+      "id": "phase45_production_cutover_execution_plan",
+      "title": "Phase 45 production cutover execution-plan report",
+      "group": "cutover_plan",
+      "type": "json_status",
+      "path": "logs/readiness/phase45-production-cutover-execution-plan.json",
+      "accepted_statuses": [
+        "production_cutover_execution_plan_ready"
+      ],
+      "pending_statuses": [
+        "awaiting_production_cutover_dry_run",
+        "awaiting_execution_approvals"
+      ],
+      "required_fields": {
+        "production_execution_authorized": false,
+        "production_mutation_authorized": false,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false,
+        "release_promotion_authorized": false,
+        "phase46_monitoring_authorized": false,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    }
+  ],
+  "cutover_execution_evidence": [
+    {
+      "id": "phase46_cutover_execution_record",
+      "title": "Reviewed production cutover execution record",
+      "group": "cutover_execution",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-cutover-execution-record.json",
+      "accepted_statuses": [
+        "production_cutover_executed"
+      ],
+      "pending_statuses": [
+        "awaiting_execution"
+      ],
+      "required_fields": {
+        "reviewed_phase45_execution_plan": true,
+        "executed_under_phase45_approval": true,
+        "rollback_available": true,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false,
+        "lawyer_review_required": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    },
+    {
+      "id": "phase46_signed_smoke_record",
+      "title": "Signed production smoke verification record",
+      "group": "cutover_execution",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-signed-smoke-record.json",
+      "accepted_statuses": [
+        "signed_smoke_passed"
+      ],
+      "pending_statuses": [
+        "awaiting_execution"
+      ],
+      "required_fields": {
+        "signed_health_passed": true,
+        "workspace_smoke_passed": true,
+        "source_viewer_smoke_passed": true,
+        "review_queue_smoke_passed": true,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false
+      },
+      "required": true
+    }
+  ],
+  "monitoring_evidence": [
+    {
+      "id": "api_health_monitoring",
+      "title": "API health monitoring window",
+      "group": "monitoring",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-api-health-monitoring.json",
+      "accepted_statuses": [
+        "healthy"
+      ],
+      "pending_statuses": [
+        "collecting"
+      ],
+      "required_fields": {
+        "window_completed": true,
+        "alerts_reviewed": true,
+        "p95_within_target": true
+      },
+      "required": true
+    },
+    {
+      "id": "retrieval_latency_monitoring",
+      "title": "Retrieval latency monitoring window",
+      "group": "monitoring",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-retrieval-latency-monitoring.json",
+      "accepted_statuses": [
+        "within_target"
+      ],
+      "pending_statuses": [
+        "collecting"
+      ],
+      "required_fields": {
+        "window_completed": true,
+        "p95_within_target": true,
+        "error_rate_within_target": true
+      },
+      "required": true
+    },
+    {
+      "id": "source_viewer_latency_monitoring",
+      "title": "Source viewer latency monitoring window",
+      "group": "monitoring",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-source-viewer-latency-monitoring.json",
+      "accepted_statuses": [
+        "within_target"
+      ],
+      "pending_statuses": [
+        "collecting"
+      ],
+      "required_fields": {
+        "window_completed": true,
+        "p95_within_target": true,
+        "anchor_error_rate_within_target": true
+      },
+      "required": true
+    },
+    {
+      "id": "citation_validation_monitoring",
+      "title": "Citation validation failure monitoring window",
+      "group": "monitoring",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-citation-validation-monitoring.json",
+      "accepted_statuses": [
+        "within_target"
+      ],
+      "pending_statuses": [
+        "collecting"
+      ],
+      "required_fields": {
+        "window_completed": true,
+        "failure_rate_reviewed": true,
+        "uncited_legal_claims_detected": false
+      },
+      "required": true
+    },
+    {
+      "id": "review_queue_latency_monitoring",
+      "title": "Review queue latency monitoring window",
+      "group": "monitoring",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-review-queue-latency-monitoring.json",
+      "accepted_statuses": [
+        "within_target"
+      ],
+      "pending_statuses": [
+        "collecting"
+      ],
+      "required_fields": {
+        "window_completed": true,
+        "p95_within_target": true,
+        "lawyer_review_required": true
+      },
+      "required": true
+    },
+    {
+      "id": "error_rate_monitoring",
+      "title": "Application error-rate monitoring window",
+      "group": "monitoring",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-error-rate-monitoring.json",
+      "accepted_statuses": [
+        "within_target"
+      ],
+      "pending_statuses": [
+        "collecting"
+      ],
+      "required_fields": {
+        "window_completed": true,
+        "error_rate_within_target": true,
+        "critical_alerts_open": false
+      },
+      "required": true
+    }
+  ],
+  "rollback_incident_evidence": [
+    {
+      "id": "rollback_readiness_review",
+      "title": "Rollback readiness and evidence review",
+      "group": "rollback_incident",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-rollback-readiness-review.json",
+      "accepted_statuses": [
+        "reviewed"
+      ],
+      "pending_statuses": [
+        "awaiting_review"
+      ],
+      "required_fields": {
+        "rollback_points_reviewed": true,
+        "rollback_evidence_attached": true,
+        "operator_owner_confirmed": true,
+        "database_migration_authorized": false,
+        "raw_data_upload_authorized": false
+      },
+      "required": true
+    },
+    {
+      "id": "incident_response_review",
+      "title": "Incident-response readiness review",
+      "group": "rollback_incident",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-incident-response-review.json",
+      "accepted_statuses": [
+        "reviewed"
+      ],
+      "pending_statuses": [
+        "awaiting_review"
+      ],
+      "required_fields": {
+        "support_owner_confirmed": true,
+        "lawyer_owner_confirmed": true,
+        "escalation_path_confirmed": true,
+        "no_final_legal_advice": true
+      },
+      "required": true
+    }
+  ],
+  "data_update_evidence": [
+    {
+      "id": "data_update_separation_review",
+      "title": "Data update and Git release separation review",
+      "group": "data_update",
+      "type": "json_status",
+      "path": "logs/production-cutover/phase46-data-update-separation-review.json",
+      "accepted_statuses": [
+        "accepted"
+      ],
+      "pending_statuses": [
+        "awaiting_review"
+      ],
+      "required_fields": {
+        "data_updates_separate_from_git": true,
+        "raw_data_upload_authorized": false,
+        "database_migration_authorized": false,
+        "corpus_growth_requires_separate_plan": true
+      },
+      "required": true
+    }
+  ],
+  "dashboard_checks": [
+    {
+      "id": "api_health_dashboard_check",
+      "title": "API health dashboard check",
+      "metric_name": "api_health.p95_ms",
+      "target": "p95 below 1500 ms for health and signed smoke paths",
+      "owner": "operator",
+      "severity": "critical",
+      "evidence_id": "api_health_monitoring"
+    },
+    {
+      "id": "retrieval_latency_dashboard_check",
+      "title": "Retrieval latency dashboard check",
+      "metric_name": "retrieval.p95_ms",
+      "target": "research pack API p95 below 8000 ms for warm indexes",
+      "owner": "operator",
+      "severity": "high",
+      "evidence_id": "retrieval_latency_monitoring"
+    },
+    {
+      "id": "source_viewer_latency_dashboard_check",
+      "title": "Source viewer latency dashboard check",
+      "metric_name": "source_viewer.p95_ms",
+      "target": "source viewer p95 below 1500 ms when pages and anchors exist",
+      "owner": "operator",
+      "severity": "high",
+      "evidence_id": "source_viewer_latency_monitoring"
+    },
+    {
+      "id": "citation_validation_dashboard_check",
+      "title": "Citation validation dashboard check",
+      "metric_name": "citation_validation.failure_rate",
+      "target": "citation validation failures visible and reviewed with zero known uncited legal claims",
+      "owner": "lawyer_owner",
+      "severity": "critical",
+      "evidence_id": "citation_validation_monitoring"
+    },
+    {
+      "id": "review_queue_latency_dashboard_check",
+      "title": "Review queue latency dashboard check",
+      "metric_name": "review_queue.p95_ms",
+      "target": "review queue p95 below 750 ms",
+      "owner": "operator",
+      "severity": "medium",
+      "evidence_id": "review_queue_latency_monitoring"
+    },
+    {
+      "id": "error_rate_dashboard_check",
+      "title": "Application error-rate dashboard check",
+      "metric_name": "application.error_rate",
+      "target": "critical alerts closed and application error rate within reviewed target",
+      "owner": "operator",
+      "severity": "critical",
+      "evidence_id": "error_rate_monitoring"
+    }
+  ],
+  "incident_response_templates": [
+    {
+      "id": "api_health_incident_template",
+      "title": "API health degradation incident template",
+      "owner": "operator",
+      "severity": "critical",
+      "trigger": "API health, signed smoke, or workspace access fails during the post-cutover observation window.",
+      "rollback_decision": "Use the Phase 45 deployment alias rollback point when health cannot be restored inside the observation window.",
+      "evidence_path": "logs/production-cutover/phase46-api-health-incident.json"
+    },
+    {
+      "id": "retrieval_quality_incident_template",
+      "title": "Retrieval or citation quality incident template",
+      "owner": "lawyer_owner",
+      "severity": "critical",
+      "trigger": "Retrieval quality, source anchors, or citation validation degrades lawyer-review readiness.",
+      "rollback_decision": "Pause affected workflow exposure and use the Phase 45 index consistency rollback point when source traceability regresses.",
+      "evidence_path": "logs/production-cutover/phase46-retrieval-quality-incident.json"
+    }
+  ],
+  "handover_documents": [
+    {
+      "id": "support_handover",
+      "title": "Support handover",
+      "owner": "operator",
+      "audience": "support",
+      "path": "Docs/v2_phase_46_operational_handover.md",
+      "section": "Support Handover",
+      "required": true
+    },
+    {
+      "id": "legal_review_handover",
+      "title": "Legal-review handover",
+      "owner": "lawyer_owner",
+      "audience": "legal_review",
+      "path": "Docs/v2_phase_46_operational_handover.md",
+      "section": "Legal Review Handover",
+      "required": true
+    },
+    {
+      "id": "data_update_handover",
+      "title": "Data update handover",
+      "owner": "operator",
+      "audience": "data_operations",
+      "path": "Docs/v2_phase_46_operational_handover.md",
+      "section": "Data Update Handover",
+      "required": true
+    },
+    {
+      "id": "future_corpus_growth_handover",
+      "title": "Future corpus growth handover",
+      "owner": "operator",
+      "audience": "data_operations",
+      "path": "Docs/v2_phase_46_operational_handover.md",
+      "section": "Future Corpus Growth",
+      "required": true
+    }
+  ]
+}

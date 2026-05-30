@@ -739,6 +739,20 @@ Phase 45 adds the production cutover execution-plan gate. The active implementat
 - `Docs/v2_phase_45_production_cutover_execution_plan_runbook.md`: operator runbook.
 - `Docs/releases/v2_phase_45_production_cutover_execution_plan.md`: release note and validation evidence.
 
+## V2 Phase 46 Post-Cutover Monitoring and Operational Handover
+
+Phase 46 adds the post-cutover monitoring and operational handover gate. The active implementation uses:
+
+- `rag/evals/phase46_post_cutover_monitoring_handover.json`: monitoring and handover manifest with Phase 45 execution-plan evidence, cutover execution evidence, monitoring windows, rollback and incident-response evidence, data-update separation evidence, dashboard checks, incident templates, and handover documents.
+- `rag/sl_legal_rag/operations.py`: `load_post_cutover_monitoring_handover_manifest` and `build_post_cutover_monitoring_handover_report`.
+- `scripts/build_phase46_post_cutover_monitoring_handover.py`: report builder for execution-plan waiting, cutover-evidence waiting, monitoring-evidence waiting, operational-handover waiting, ready, and blocked states.
+- `scripts/run_detached_quality_gate.sh`: `post-cutover-monitoring-handover` detached mode.
+- `tests/test_phase46_post_cutover_monitoring_handover.py`: coverage for local awaiting state, cutover execution waiting, monitoring waiting, handover waiting, ready handover state, authorization blockers, dashboard link blockers, forbidden-content blockers, data-boundary blockers, manifest validation, and CLI output.
+- `Docs/v2_phase_46_post_cutover_monitoring_handover_contract.md`: monitoring and handover contract.
+- `Docs/v2_phase_46_post_cutover_monitoring_handover_runbook.md`: operator runbook.
+- `Docs/v2_phase_46_operational_handover.md`: support, legal-review, data-update, and corpus-growth handover document.
+- `Docs/releases/v2_phase_46_post_cutover_monitoring_handover.md`: release note and validation evidence.
+
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
