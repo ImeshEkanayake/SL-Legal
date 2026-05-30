@@ -756,3 +756,9 @@ Phase 46 adds the post-cutover monitoring and operational handover gate. The act
 ## Data Boundary
 
 The large `data/` corpus is local and outside Git. Generated tracking CSVs are also outside normal Git. Keep the directory structure stable and publish manifests/checksums through the future data plan.
+
+## Pilot Hosting Plan
+
+The initial 3-user pilot hosting plan is documented in:
+
+- `Docs/v2_pilot_hosting_plan.md`: single-VM Google Compute Engine pilot architecture, VM and disk sizing, Cloud Storage use, estimated monthly cost, security rules, backup plan, monitoring checks, 10-case validation plan, upgrade triggers, and final hosting target.
